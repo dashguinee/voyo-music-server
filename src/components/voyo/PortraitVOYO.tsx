@@ -29,6 +29,8 @@ import { Track, ReactionType, DJMode } from '../../types';
 import { VoyoBottomNav } from './navigation/VoyoBottomNav';
 import { VoyoVerticalFeed } from './feed/VoyoVerticalFeed';
 import { CreatorUpload } from './upload/CreatorUpload';
+import { RecommendationZone } from '../recommendations/RecommendationZone';
+import { VoyoPortraitPlayer } from './VoyoPortraitPlayer';
 
 // DJ Mode Types (also exported from types/index.ts)
 
@@ -622,27 +624,38 @@ const OYOCentral = ({ djMode, djResponse, onTap }: OYOCentralProps) => {
       whileHover={{ scale: 1.05 }}
       whileTap={{ scale: 0.95 }}
     >
+      {/* GLOW STAGE - The dramatic backdrop */}
+      <div
+        className="absolute inset-0 rounded-full"
+        style={{
+          margin: '-30px',
+          filter: 'blur(20px)',
+          background: `radial-gradient(circle, ${getGlowColor()}40 0%, transparent 70%)`,
+        }}
+      />
+
       {/* Outer glow rings */}
       <motion.div
         className="absolute inset-0 rounded-full"
         style={{ margin: '-20px' }}
         animate={{
           boxShadow: [
-            `0 0 30px ${getGlowColor()}40, 0 0 60px ${getGlowColor()}20`,
-            `0 0 50px ${getGlowColor()}60, 0 0 100px ${getGlowColor()}30`,
-            `0 0 30px ${getGlowColor()}40, 0 0 60px ${getGlowColor()}20`,
+            `0 0 40px ${getGlowColor()}50, 0 0 80px ${getGlowColor()}25`,
+            `0 0 60px ${getGlowColor()}70, 0 0 120px ${getGlowColor()}35`,
+            `0 0 40px ${getGlowColor()}50, 0 0 80px ${getGlowColor()}25`,
           ]
         }}
         transition={{ duration: 2, repeat: Infinity }}
       />
 
-      {/* Main OYO Body - BIGGER */}
+      {/* Main OYO Body - BIGGER with MASSIVE DROP SHADOW */}
       <motion.div
         className="relative w-36 h-44 rounded-[2rem] flex flex-col items-center justify-center overflow-visible"
         style={{
           background: `linear-gradient(145deg, #2a1a4a 0%, #1a0a2e 50%, #0a0a0f 100%)`,
           border: `3px solid ${getGlowColor()}60`,
-          boxShadow: `0 0 40px ${getGlowColor()}30, inset 0 0 30px rgba(0,0,0,0.5)`,
+          boxShadow: `0 0 50px ${getGlowColor()}40, 0 20px 60px rgba(0,0,0,0.6), inset 0 0 30px rgba(0,0,0,0.5)`,
+          filter: `drop-shadow(0 0 50px ${getGlowColor()}30)`,
         }}
       >
         {/* Ear tufts */}
@@ -1023,18 +1036,18 @@ const ReactionBar = ({ onListenMode, onTextMode, isListening }: ReactionBarProps
         ))}
       </AnimatePresence>
 
-      <div className="flex items-center justify-center gap-2 px-4 py-3">
+      <div className="flex items-center justify-center gap-1.5 px-4 py-1.5">
         {reactions.map((reaction) => (
           <motion.button
             key={reaction.type}
-            className={`px-4 py-2 rounded-full bg-gradient-to-r ${reaction.color} border ${reaction.border} ${
+            className={`px-2.5 py-1 rounded-full bg-gradient-to-r ${reaction.color} border ${reaction.border} ${
               reaction.action === 'listen' && isListening ? 'ring-2 ring-cyan-400' : ''
             }`}
             onClick={() => handleReaction(reaction)}
             whileHover={{ scale: 1.05, y: -2 }}
             whileTap={{ scale: 0.95 }}
           >
-            <span className="text-white font-semibold text-xs">
+            <span className="text-white font-semibold text-[10px]">
               {reaction.emoji} {reaction.text}
             </span>
           </motion.button>
@@ -1299,13 +1312,13 @@ export const PortraitVOYO = () => {
 
   return (
     <>
-      <div className="flex flex-col h-full bg-[#0a0a0f] overflow-hidden relative">
+      <div className="flex flex-col h-full bg-[#050507] overflow-hidden relative">
 
         {/* ============================================ */}
-        {/* LAYER 1: MUSIC MODE (Bottom Layer) */}
+        {/* LAYER 1: MUSIC MODE - OG Portrait Vision */}
         {/* ============================================ */}
         <motion.div
-          className="absolute inset-0 flex flex-col z-0"
+          className="absolute inset-0 z-0 pb-20"
           animate={{
             scale: voyoActiveTab === 'music' ? 1 : 0.95,
             opacity: voyoActiveTab === 'music' ? 1 : 0,
@@ -1314,34 +1327,11 @@ export const PortraitVOYO = () => {
           transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
           style={{ pointerEvents: voyoActiveTab === 'music' ? 'auto' : 'none' }}
         >
-          {/* TOP: Timeline */}
-          <Timeline />
-
-          {/* MIDDLE: OYO CENTRAL LAYOUT */}
-          <div className="flex-1 flex items-center justify-center gap-4 px-4">
-            {/* Left: Now Playing Card */}
-            <NowPlayingCard />
-
-            {/* CENTER: OYO THE HERO */}
-            <OYOCentral
-              djMode={djMode}
-              djResponse={djResponse}
-              onTap={handleListenMode}
-            />
-
-            {/* Right: Next Up Card */}
-            <NextUpCard />
-          </div>
-
-          {/* REACTION BAR */}
-          <ReactionBar
-            onListenMode={handleListenMode}
-            onTextMode={handleTextMode}
-            isListening={djMode === 'listening'}
+          <VoyoPortraitPlayer
+            onVoyoFeed={() => setVoyoTab('feed')}
+            djMode={djMode === 'listening' || djMode === 'speaking'}
+            onToggleDJMode={handleListenMode}
           />
-
-          {/* BOTTOM: Tabs + Cards (now using new nav for music mode) */}
-          <BottomSection />
         </motion.div>
 
         {/* ============================================ */}

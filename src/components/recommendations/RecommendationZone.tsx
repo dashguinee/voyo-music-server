@@ -221,85 +221,88 @@ const CurvedRoulette = ({
   );
 };
 
-export const RecommendationZone = () => {
+export const RecommendationZone = ({ onVoyoFeedTap }: { onVoyoFeedTap?: () => void }) => {
   const {
     hotTracks,
     discoverTracks,
     setCurrentTrack,
   } = usePlayerStore();
 
-  const [isExpanded, setIsExpanded] = useState(false);
-
   const handleTrackSelect = (track: Track) => {
     setCurrentTrack(track);
   };
 
   return (
-    <motion.div
-      className="absolute bottom-0 left-0 right-0 z-30"
-      initial={{ y: '100%' }}
-      animate={{ y: isExpanded ? '0%' : 'calc(100% - 60px)' }}
-      transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-    >
-      {/* Pull Handle */}
-      <div
-        className="flex items-center justify-center py-2 cursor-pointer"
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
-        <div className="flex items-center gap-2 text-white/50">
-          <motion.div
-            animate={{ y: isExpanded ? 3 : -3 }}
-            transition={{ repeat: Infinity, repeatType: 'reverse', duration: 1 }}
-          >
-            <ChevronUp className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-          </motion.div>
-          <span className="text-[10px] uppercase tracking-wider">
-            {isExpanded ? 'Collapse' : 'Music Roulettes'}
-          </span>
-          <motion.div
-            animate={{ y: isExpanded ? 3 : -3 }}
-            transition={{ repeat: Infinity, repeatType: 'reverse', duration: 1 }}
-          >
-            <ChevronUp className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-          </motion.div>
-        </div>
-      </div>
-
-      {/* Main Content - Two Curved Roulettes */}
-      <div className="bg-[#0a0a0f]/95 backdrop-blur-xl border-t border-white/10 rounded-t-3xl px-4 py-6">
-        <div className="flex items-center justify-between gap-8 max-w-2xl mx-auto">
-          {/* HOT Roulette - Left */}
-          <CurvedRoulette
-            tracks={hotTracks}
-            isLeft={true}
-            label="HOT"
-            accentColor="#ef4444"
-            onTrackSelect={handleTrackSelect}
-          />
-
-          {/* Center divider with musical note aesthetic */}
-          <div className="flex flex-col items-center gap-2 opacity-30">
-            <div className="w-px h-20 bg-gradient-to-b from-transparent via-white/30 to-transparent" />
-            <span className="text-2xl">♪</span>
-            <div className="w-px h-20 bg-gradient-to-b from-transparent via-white/30 to-transparent" />
+    <div className="w-full px-2">
+      {/* THREE COLUMN LAYOUT: HOT | VOYO FEED | DISCOVER */}
+      <div className="flex items-start gap-2">
+        {/* HOT COLUMN - Left */}
+        <div className="flex-1">
+          <div className="flex items-center gap-1 mb-1.5">
+            <Flame className="w-3 h-3 text-red-400" />
+            <span className="text-[10px] font-bold text-red-400 uppercase">Hot</span>
           </div>
-
-          {/* DISCOVER Roulette - Right */}
-          <CurvedRoulette
-            tracks={discoverTracks}
-            isLeft={false}
-            label="DISCOVER"
-            accentColor="#a855f7"
-            onTrackSelect={handleTrackSelect}
-          />
+          <div className="flex flex-col gap-1.5">
+            {hotTracks.slice(0, 3).map((track) => (
+              <motion.button
+                key={track.id}
+                className="group"
+                onClick={() => handleTrackSelect(track)}
+                whileTap={{ scale: 0.95 }}
+              >
+                <div className="w-full h-12 rounded-lg overflow-hidden ring-1 ring-red-500/30">
+                  <img
+                    src={getYouTubeThumbnail(track.youtubeVideoId, 'medium')}
+                    alt={track.title}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              </motion.button>
+            ))}
+          </div>
         </div>
 
-        {/* Zone descriptions */}
-        <div className="flex justify-between mt-4 px-8 max-w-2xl mx-auto">
-          <span className="text-[10px] text-red-400/60">Tracks you love</span>
-          <span className="text-[10px] text-purple-400/60">New discoveries</span>
+        {/* VOYO FEED CENTER - The Bridge */}
+        <motion.button
+          className="flex-shrink-0 w-20"
+          onClick={onVoyoFeedTap}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+        >
+          <div className="flex flex-col items-center">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-600 via-pink-600 to-orange-500 flex items-center justify-center shadow-lg shadow-purple-500/30">
+              <span className="text-white font-black text-sm">VOYO</span>
+            </div>
+            <span className="text-[8px] text-white/50 mt-1 uppercase tracking-wider">Feed</span>
+          </div>
+        </motion.button>
+
+        {/* DISCOVER COLUMN - Right */}
+        <div className="flex-1">
+          <div className="flex items-center justify-end gap-1 mb-1.5">
+            <span className="text-[10px] font-bold text-purple-400 uppercase">Discover</span>
+            <Sparkles className="w-3 h-3 text-purple-400" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {discoverTracks.slice(0, 3).map((track) => (
+              <motion.button
+                key={track.id}
+                className="group"
+                onClick={() => handleTrackSelect(track)}
+                whileTap={{ scale: 0.95 }}
+              >
+                <div className="w-full h-12 rounded-lg overflow-hidden ring-1 ring-purple-500/30">
+                  <img
+                    src={getYouTubeThumbnail(track.youtubeVideoId, 'medium')}
+                    alt={track.title}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              </motion.button>
+            ))}
+          </div>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 };

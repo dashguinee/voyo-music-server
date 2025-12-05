@@ -18,7 +18,7 @@ export const VoyoBottomNav = () => {
   ];
 
   return (
-    <div className="px-4 py-3 bg-gradient-to-t from-black via-black/95 to-transparent">
+    <div className="glass-nav pb-safe pt-3 px-6">
       <div className="flex items-center justify-around max-w-md mx-auto">
         {tabs.map((tab) => (
           <motion.button
@@ -29,13 +29,18 @@ export const VoyoBottomNav = () => {
             whileTap={{ scale: 0.95 }}
           >
             {tab.id === 'feed' ? (
-              // VOYO Center Button - Special treatment
+              // VOYO Center Button - NEON GLOW TREATMENT
               <motion.div
                 className={`relative w-16 h-16 rounded-2xl flex flex-col items-center justify-center transition-all ${
                   voyoActiveTab === 'feed'
-                    ? 'bg-gradient-to-br from-purple-600 via-pink-600 to-orange-500 shadow-lg shadow-purple-500/40'
+                    ? 'bg-gradient-to-br from-purple-600 via-pink-600 to-orange-500'
                     : 'bg-white/10 border border-white/10'
                 }`}
+                style={{
+                  boxShadow: voyoActiveTab === 'feed'
+                    ? '0 0 30px rgba(168, 85, 247, 0.6), 0 0 60px rgba(236, 72, 153, 0.4), 0 8px 32px rgba(0,0,0,0.4)'
+                    : '0 4px 16px rgba(0,0,0,0.3)'
+                }}
                 animate={voyoActiveTab === 'feed' ? { scale: [1, 1.05, 1] } : {}}
                 transition={{ duration: 2, repeat: Infinity }}
               >

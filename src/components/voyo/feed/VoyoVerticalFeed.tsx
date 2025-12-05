@@ -128,9 +128,9 @@ const FeedItemCard = ({
         webkit-playsinline="true"
       />
 
-      {/* Gradient overlays */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/80" />
-      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-black/30" />
+      {/* Gradient overlays - CINEMATIC */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-black/40" />
 
       {/* Mute Button */}
       <motion.button
@@ -249,10 +249,10 @@ const FeedItemCard = ({
         </motion.div>
 
         {/* Username */}
-        <h3 className="font-bold text-white text-base mb-1">@{item.user}</h3>
+        <h3 className="font-bold text-white text-base mb-1 drop-shadow-lg">@{item.user}</h3>
 
         {/* Caption */}
-        <p className="text-sm text-white/90 line-clamp-2 mb-3">{item.caption}</p>
+        <p className="text-sm text-white/90 line-clamp-2 mb-3 drop-shadow-lg">{item.caption}</p>
 
         {/* Song Info */}
         <motion.div

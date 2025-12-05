@@ -52,7 +52,7 @@ function App() {
   const { currentTrack } = usePlayerStore();
   const [bgError, setBgError] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [appMode, setAppMode] = useState<AppMode>('dj'); // Start with DJ mode!
+  const [appMode, setAppMode] = useState<AppMode>('voyo'); // Start with VOYO Superapp!
   const isLandscape = useOrientation();
 
   // Get background image URL with fallback
