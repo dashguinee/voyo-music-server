@@ -12,11 +12,361 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Play, Pause, SkipForward, SkipBack, Zap, Flame, Plus
+  Play, Pause, SkipForward, SkipBack, Zap, Flame, Plus, Maximize2, Film
 } from 'lucide-react';
 import { usePlayerStore } from '../../store/playerStore';
 import { getThumbnailUrl } from '../../data/tracks';
 import { Track, ReactionType } from '../../types';
+
+// ============================================
+// FULLSCREEN BACKGROUND LAYER - Album art with dark overlay
+// Creates the "floating in space" atmosphere
+// ============================================
+const FullscreenBackground = ({ trackId, isVideoMode }: { trackId?: string; isVideoMode: boolean }) => {
+  if (!trackId) return null;
+
+  return (
+    <div className="absolute inset-0 z-0 overflow-hidden">
+      {/* Album art - blurred and scaled up for cinematic effect */}
+      <motion.div
+        className="absolute inset-0"
+        initial={{ opacity: 0, scale: 1.1 }}
+        animate={{ opacity: 1, scale: 1.05 }}
+        transition={{ duration: 1.5, ease: 'easeOut' }}
+        key={trackId} // Re-animate on track change
+      >
+        <img
+          src={getThumbnailUrl(trackId, 'max')}
+          alt=""
+          className="w-full h-full object-cover blur-2xl scale-110"
+        />
+      </motion.div>
+
+      {/* Dark overlay gradient - makes reactions POP */}
+      <div
+        className="absolute inset-0"
+        style={{
+          background: `linear-gradient(
+            to bottom,
+            rgba(2, 2, 3, 0.75) 0%,
+            rgba(2, 2, 3, 0.65) 30%,
+            rgba(2, 2, 3, 0.70) 60%,
+            rgba(2, 2, 3, 0.85) 100%
+          )`
+        }}
+      />
+
+      {/* Extra vignette for depth */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: 'radial-gradient(ellipse at center, transparent 0%, rgba(0,0,0,0.4) 100%)'
+        }}
+      />
+
+      {/* Subtle color tint from album dominant color (approximated with purple) */}
+      <div
+        className="absolute inset-0 pointer-events-none opacity-20"
+        style={{
+          background: 'linear-gradient(135deg, rgba(147, 51, 234, 0.3) 0%, rgba(99, 102, 241, 0.2) 50%, rgba(219, 39, 119, 0.2) 100%)',
+          mixBlendMode: 'overlay',
+        }}
+      />
+    </div>
+  );
+};
+
+// ============================================
+// BACKDROP TOGGLE - Two-state with double-click/hold for library
+// ============================================
+const BackdropToggle = ({
+  isEnabled,
+  onToggle,
+  onOpenLibrary,
+}: {
+  isEnabled: boolean;
+  onToggle: () => void;
+  onOpenLibrary: () => void;
+}) => {
+  const holdTimer = useRef<NodeJS.Timeout | null>(null);
+  const clickCount = useRef(0);
+  const clickTimer = useRef<NodeJS.Timeout | null>(null);
+
+  const handlePressStart = () => {
+    // Start hold timer - 500ms to trigger library
+    holdTimer.current = setTimeout(() => {
+      onOpenLibrary();
+      holdTimer.current = null;
+    }, 500);
+  };
+
+  const handlePressEnd = () => {
+    // If hold timer is still active, it was a quick tap
+    if (holdTimer.current) {
+      clearTimeout(holdTimer.current);
+      holdTimer.current = null;
+    }
+  };
+
+  const handleClick = () => {
+    clickCount.current++;
+
+    if (clickCount.current === 1) {
+      // Start timer for double-click detection
+      clickTimer.current = setTimeout(() => {
+        // Single click - toggle backdrop
+        if (clickCount.current === 1) {
+          onToggle();
+        }
+        clickCount.current = 0;
+      }, 250);
+    } else if (clickCount.current === 2) {
+      // Double click - open library
+      if (clickTimer.current) {
+        clearTimeout(clickTimer.current);
+      }
+      clickCount.current = 0;
+      onOpenLibrary();
+    }
+  };
+
+  return (
+    <motion.button
+      onClick={handleClick}
+      onMouseDown={handlePressStart}
+      onMouseUp={handlePressEnd}
+      onMouseLeave={handlePressEnd}
+      onTouchStart={handlePressStart}
+      onTouchEnd={handlePressEnd}
+      className="absolute left-4 top-1/2 -translate-y-1/2 z-50 group"
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
+      initial={{ opacity: 0, x: -20 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: 0.3 }}
+    >
+      {/* Vertical pill container */}
+      <div className={`
+        relative w-9 h-[72px] rounded-full
+        backdrop-blur-xl border transition-all duration-300
+        ${isEnabled
+          ? 'bg-purple-500/15 border-purple-500/30 shadow-[0_0_25px_rgba(147,51,234,0.25)]'
+          : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20'
+        }
+      `}>
+        {/* Toggle knob - slides between OFF and ON */}
+        <motion.div
+          className={`
+            absolute left-1/2 -translate-x-1/2 w-7 h-7 rounded-full
+            flex items-center justify-center transition-colors duration-300
+            ${isEnabled
+              ? 'bg-gradient-to-br from-purple-500 to-indigo-600 shadow-[0_0_15px_rgba(147,51,234,0.7)]'
+              : 'bg-white/15 border border-white/20'
+            }
+          `}
+          animate={{ y: isEnabled ? 38 : 4 }}
+          transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+        >
+          {/* Icon changes based on state */}
+          <motion.div
+            animate={{ rotate: isEnabled ? 0 : 180, opacity: 1 }}
+            transition={{ duration: 0.3 }}
+          >
+            {isEnabled ? (
+              <Film size={13} className="text-white" />
+            ) : (
+              <div className="w-3 h-0.5 bg-gray-400 rounded-full" />
+            )}
+          </motion.div>
+        </motion.div>
+
+        {/* Labels - rotated on side */}
+        <div className="absolute -left-0.5 top-2 text-[5px] font-black text-gray-500/60 tracking-[0.15em] -rotate-90 origin-bottom-left uppercase">
+          off
+        </div>
+        <div className="absolute -left-0.5 bottom-7 text-[5px] font-black text-purple-400/80 tracking-[0.15em] -rotate-90 origin-bottom-left uppercase">
+          bg
+        </div>
+      </div>
+
+      {/* Tooltip on hover */}
+      <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+        <div className="bg-black/80 backdrop-blur-sm text-white text-[9px] px-2 py-1.5 rounded-lg whitespace-nowrap border border-white/10">
+          <span className="font-medium">{isEnabled ? 'Backdrop On' : 'Backdrop Off'}</span>
+          <div className="text-[7px] text-gray-400 mt-0.5">Hold or 2× tap for library</div>
+        </div>
+      </div>
+    </motion.button>
+  );
+};
+
+// ============================================
+// BACKDROP LIBRARY MODAL - Choose from presets or custom
+// ============================================
+const BackdropLibrary = ({
+  isOpen,
+  onClose,
+  currentBackdrop,
+  onSelect,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  currentBackdrop: string;
+  onSelect: (backdrop: string) => void;
+}) => {
+  if (!isOpen) return null;
+
+  const backdrops = [
+    { id: 'album', name: 'Album Art', preview: '🎵', type: 'dynamic' },
+    { id: 'gradient-purple', name: 'Purple Wave', preview: '🟣', type: 'animated' },
+    { id: 'gradient-ocean', name: 'Ocean Dream', preview: '🔵', type: 'animated' },
+    { id: 'gradient-sunset', name: 'Sunset Fire', preview: '🟠', type: 'animated' },
+    { id: 'gradient-aurora', name: 'Aurora', preview: '🟢', type: 'animated' },
+    { id: 'particles', name: 'Particle Storm', preview: '✨', type: 'animated' },
+    { id: 'video', name: 'Music Video', preview: '🎬', type: 'video', locked: true },
+  ];
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-[90] flex items-end justify-center"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      {/* Backdrop overlay */}
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      {/* Library panel */}
+      <motion.div
+        className="relative w-full max-w-md bg-[#0a0a0f]/95 backdrop-blur-xl border-t border-white/10 rounded-t-3xl p-6 pb-10"
+        initial={{ y: '100%' }}
+        animate={{ y: 0 }}
+        exit={{ y: '100%' }}
+        transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+      >
+        {/* Handle */}
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 w-12 h-1 bg-white/20 rounded-full" />
+
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-bold text-white">Backdrop Library</h3>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-full bg-white/5 hover:bg-white/10 transition-colors"
+          >
+            <Plus size={16} className="text-gray-400 rotate-45" />
+          </button>
+        </div>
+
+        {/* Grid of backdrops */}
+        <div className="grid grid-cols-3 gap-3">
+          {backdrops.map((bd) => (
+            <motion.button
+              key={bd.id}
+              onClick={() => !bd.locked && onSelect(bd.id)}
+              className={`
+                relative aspect-square rounded-2xl overflow-hidden border-2 transition-all
+                ${currentBackdrop === bd.id
+                  ? 'border-purple-500 shadow-[0_0_20px_rgba(147,51,234,0.4)]'
+                  : 'border-white/10 hover:border-white/30'
+                }
+                ${bd.locked ? 'opacity-50' : ''}
+              `}
+              whileHover={bd.locked ? {} : { scale: 1.05 }}
+              whileTap={bd.locked ? {} : { scale: 0.95 }}
+            >
+              {/* Preview */}
+              <div
+                className="absolute inset-0 flex items-center justify-center text-3xl"
+                style={{
+                  background: bd.id.includes('gradient')
+                    ? `linear-gradient(135deg, ${
+                        bd.id === 'gradient-purple' ? '#7c3aed, #2563eb' :
+                        bd.id === 'gradient-ocean' ? '#0ea5e9, #06b6d4' :
+                        bd.id === 'gradient-sunset' ? '#f97316, #dc2626' :
+                        '#10b981, #8b5cf6'
+                      })`
+                    : bd.id === 'particles' ? '#1a1a2e' :
+                    bd.id === 'album' ? 'linear-gradient(135deg, #1e1b4b, #0f172a)' :
+                    '#111'
+                }}
+              >
+                {bd.preview}
+              </div>
+
+              {/* Type badge */}
+              <div className="absolute top-2 right-2">
+                <span className={`
+                  text-[7px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full
+                  ${bd.type === 'animated' ? 'bg-cyan-500/30 text-cyan-300' :
+                    bd.type === 'video' ? 'bg-orange-500/30 text-orange-300' :
+                    'bg-purple-500/30 text-purple-300'
+                  }
+                `}>
+                  {bd.type}
+                </span>
+              </div>
+
+              {/* Lock icon */}
+              {bd.locked && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                  <span className="text-xl">🔒</span>
+                </div>
+              )}
+
+              {/* Selected checkmark */}
+              {currentBackdrop === bd.id && (
+                <div className="absolute bottom-2 right-2 w-5 h-5 rounded-full bg-purple-500 flex items-center justify-center">
+                  <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                </div>
+              )}
+
+              {/* Name */}
+              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2 pt-6">
+                <span className="text-[9px] font-bold text-white">{bd.name}</span>
+              </div>
+            </motion.button>
+          ))}
+        </div>
+
+        {/* Coming soon note */}
+        <div className="mt-4 text-center">
+          <span className="text-[10px] text-gray-500">
+            More animated backdrops coming soon • Upload your own
+          </span>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
+
+// ============================================
+// EXPAND BUTTON - Opens fullscreen video mode
+// ============================================
+const ExpandVideoButton = ({ onClick }: { onClick: () => void }) => (
+  <motion.button
+    onClick={onClick}
+    className="absolute top-3 right-3 z-30 p-2 rounded-xl bg-black/40 backdrop-blur-sm border border-white/10 text-white/60 hover:text-white hover:bg-black/60 hover:border-purple-500/30 transition-all group"
+    whileHover={{ scale: 1.1 }}
+    whileTap={{ scale: 0.9 }}
+    initial={{ opacity: 0, scale: 0.8 }}
+    animate={{ opacity: 1, scale: 1 }}
+    transition={{ delay: 0.2 }}
+  >
+    <Maximize2 size={16} />
+    {/* Tooltip */}
+    <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+      <div className="bg-black/80 backdrop-blur-sm text-white text-[9px] px-2 py-1 rounded whitespace-nowrap">
+        Watch Video
+      </div>
+    </div>
+  </motion.button>
+);
 
 // Spring configs
 const springs = {
@@ -134,7 +484,7 @@ const StreamCard = ({ track, onTap, isPlayed }: { track: Track; onTap: () => voi
 // ============================================
 // BIG CENTER CARD (NOW PLAYING - Large artwork with VOYO brand tint)
 // ============================================
-const BigCenterCard = ({ track }: { track: Track }) => (
+const BigCenterCard = ({ track, onExpandVideo }: { track: Track; onExpandVideo?: () => void }) => (
   <motion.div
     className="relative w-52 h-52 md:w-60 md:h-60 rounded-[2rem] overflow-hidden border border-white/10 z-20 group"
     style={{ boxShadow: '0 20px 60px -15px rgba(0,0,0,0.8), 0 0 40px rgba(147,51,234,0.15)' }}
@@ -156,6 +506,10 @@ const BigCenterCard = ({ track }: { track: Track }) => (
         mixBlendMode: 'overlay',
       }}
     />
+    {/* Expand Video Button - shows on hover */}
+    {onExpandVideo && (
+      <ExpandVideoButton onClick={onExpandVideo} />
+    )}
     {/* Title overlay at bottom - IMPROVED with truncation and better font */}
     <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/80 to-transparent p-4 pt-20">
       <h1
@@ -516,6 +870,72 @@ const ReactionBar = ({
 };
 
 // ============================================
+// FULLSCREEN VIDEO PLAYER - Takes over screen for video watching
+// ============================================
+const FullscreenVideoPlayer = ({
+  track,
+  isPlaying,
+  onClose,
+  onTogglePlay,
+}: {
+  track: Track;
+  isPlaying: boolean;
+  onClose: () => void;
+  onTogglePlay: () => void;
+}) => (
+  <motion.div
+    className="fixed inset-0 z-[100] bg-black flex flex-col"
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    exit={{ opacity: 0 }}
+  >
+    {/* Video Container - YouTube iframe would go here */}
+    <div className="flex-1 relative bg-black flex items-center justify-center">
+      {/* Placeholder - in production this would be a YouTube embed */}
+      <div className="relative w-full h-full max-w-4xl mx-auto">
+        <img
+          src={getThumbnailUrl(track.trackId, 'max')}
+          alt={track.title}
+          className="w-full h-full object-contain"
+        />
+        {/* Play overlay */}
+        <motion.button
+          onClick={onTogglePlay}
+          className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/40 transition-colors"
+          whileTap={{ scale: 0.95 }}
+        >
+          <div className="w-20 h-20 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
+            {isPlaying ? (
+              <Pause size={32} className="text-white" />
+            ) : (
+              <Play size={32} className="text-white ml-1" />
+            )}
+          </div>
+        </motion.button>
+      </div>
+    </div>
+
+    {/* Bottom Bar - Track info and close */}
+    <div className="bg-black/90 backdrop-blur-xl border-t border-white/10 p-4">
+      <div className="flex items-center justify-between max-w-4xl mx-auto">
+        <div className="flex-1 min-w-0">
+          <h2 className="text-white font-bold text-lg truncate">{track.title}</h2>
+          <p className="text-purple-300 text-sm truncate">{track.artist}</p>
+        </div>
+        <motion.button
+          onClick={onClose}
+          className="ml-4 px-6 py-2 rounded-full bg-white/10 border border-white/20 text-white text-sm font-bold hover:bg-white/20 transition-colors"
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+        >
+          Close
+        </motion.button>
+      </div>
+    </div>
+  </motion.div>
+);
+
+// ============================================
 // MAIN COMPONENT - Clean V2 Style (matching screenshot)
 // ============================================
 export const VoyoPortraitPlayer = ({
@@ -530,6 +950,8 @@ export const VoyoPortraitPlayer = ({
   const {
     currentTrack,
     isPlaying,
+    isVideoMode,
+    toggleVideoMode,
     queue,
     history,
     hotTracks,
@@ -544,6 +966,13 @@ export const VoyoPortraitPlayer = ({
     duration,
     seekTo,
   } = usePlayerStore();
+
+  // Backdrop state
+  const [backdropEnabled, setBackdropEnabled] = useState(true); // ON by default for the floaty feel
+  const [currentBackdrop, setCurrentBackdrop] = useState('album'); // 'album', 'gradient-purple', etc.
+  const [isBackdropLibraryOpen, setIsBackdropLibraryOpen] = useState(false);
+  // State for fullscreen video mode
+  const [isFullscreenVideo, setIsFullscreenVideo] = useState(false);
 
   // SCRUB STATE - Hold prev/next to scrub time
   const [isScrubbing, setIsScrubbing] = useState(false);
@@ -624,10 +1053,51 @@ export const VoyoPortraitPlayer = ({
   return (
     <div className="relative h-full w-full bg-[#020203] text-white font-sans overflow-hidden flex flex-col">
 
-      {/* Background Ambience */}
-      <div className="absolute top-[-10%] left-[-10%] w-[600px] h-[600px] bg-indigo-900/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-purple-900/10 rounded-full blur-[100px] pointer-events-none" />
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.04] mix-blend-overlay pointer-events-none" />
+      {/* FULLSCREEN BACKGROUND - Album art with dark overlay for floating effect */}
+      {backdropEnabled && (
+        <FullscreenBackground
+          trackId={currentTrack?.trackId}
+          isVideoMode={false}
+        />
+      )}
+
+      {/* BACKDROP TOGGLE - Sleek vertical toggle on left side */}
+      <BackdropToggle
+        isEnabled={backdropEnabled}
+        onToggle={() => setBackdropEnabled(!backdropEnabled)}
+        onOpenLibrary={() => setIsBackdropLibraryOpen(true)}
+      />
+
+      {/* BACKDROP LIBRARY MODAL */}
+      <AnimatePresence>
+        {isBackdropLibraryOpen && (
+          <BackdropLibrary
+            isOpen={isBackdropLibraryOpen}
+            onClose={() => setIsBackdropLibraryOpen(false)}
+            currentBackdrop={currentBackdrop}
+            onSelect={(bd) => {
+              setCurrentBackdrop(bd);
+              setBackdropEnabled(true);
+              setIsBackdropLibraryOpen(false);
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Noise texture overlay */}
+      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay pointer-events-none z-[1]" />
+
+      {/* FULLSCREEN VIDEO PLAYER - Shows when expand button clicked */}
+      <AnimatePresence>
+        {isFullscreenVideo && currentTrack && (
+          <FullscreenVideoPlayer
+            track={currentTrack}
+            isPlaying={isPlaying}
+            onClose={() => setIsFullscreenVideo(false)}
+            onTogglePlay={togglePlay}
+          />
+        )}
+      </AnimatePresence>
 
       {/* --- TOP SECTION (History/Queue) --- */}
       <div className="pt-8 px-6 flex justify-between items-start z-20 h-[18%]">
@@ -679,9 +1149,12 @@ export const VoyoPortraitPlayer = ({
       {/* --- CENTER SECTION (Hero + Engine) --- */}
       <div className="flex-1 flex flex-col items-center relative z-10 -mt-2">
 
-        {/* 1. Main Artwork */}
+        {/* 1. Main Artwork with Expand Video Button */}
         {currentTrack ? (
-          <BigCenterCard track={currentTrack} />
+          <BigCenterCard
+            track={currentTrack}
+            onExpandVideo={() => setIsFullscreenVideo(true)}
+          />
         ) : (
           <div className="w-48 h-48 rounded-[2rem] bg-white/5 border border-white/10 flex items-center justify-center">
             <Play size={32} className="text-white/20" />
