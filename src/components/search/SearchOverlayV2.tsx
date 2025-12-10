@@ -9,7 +9,7 @@ import { motion, AnimatePresence, useMotionValue, useTransform, PanInfo } from '
 import { Search, X, Loader2, Music2, Clock, Play, Plus, ListPlus, Compass, Disc3 } from 'lucide-react';
 import { usePlayerStore } from '../../store/playerStore';
 import { Track } from '../../types';
-import { searchMusic, SearchResult } from '../../services/api';
+import { searchMusic, SearchResult, API_BASE } from '../../services/api';
 import { TRACKS } from '../../data/tracks';
 
 interface SearchOverlayProps {
@@ -326,10 +326,7 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
     });
 
     // Convert Track to SearchResult format (seed data uses raw YouTube IDs, not VOYO IDs)
-    // Use same API_BASE logic as in api.ts
-    const API_BASE = import.meta.env.PROD
-      ? 'https://voyo-music-server-production.up.railway.app'
-      : 'http://localhost:3001';
+    // Use centralized API_BASE from api.ts
 
     return matches.slice(0, 5).map(track => ({
       voyoId: track.trackId, // Seed data has raw YouTube IDs, backend will accept both

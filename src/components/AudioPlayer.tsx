@@ -9,7 +9,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { usePlayerStore } from '../store/playerStore';
 import { usePreferenceStore } from '../store/preferenceStore';
-import { getAudioStream, getVideoStream } from '../services/api';
+import { getAudioStream, getVideoStream, API_BASE } from '../services/api';
 import { audioEngine, BufferStatus } from '../services/audioEngine';
 
 // Constants for Spotify-beating optimization
@@ -268,9 +268,7 @@ export const AudioPlayer = () => {
   useEffect(() => {
     if (!currentTrack || isVideoMode) return;
 
-    const apiBase = import.meta.env.PROD
-      ? 'https://voyo-music-server-production.up.railway.app'
-      : 'http://localhost:3001';
+    const apiBase = API_BASE;
 
     // How many tracks to preload depends on progress
     // - Always preload at least 1 (queue[0]) for instant next-track playback

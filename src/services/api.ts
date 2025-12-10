@@ -4,9 +4,11 @@
  */
 
 // Use production backend in production, localhost in dev
-const API_BASE = import.meta.env.PROD
-  ? 'https://voyo-music-server-production.up.railway.app'
-  : 'http://localhost:3001';
+// Override with VITE_BACKEND_URL env var to force production in dev
+export const API_BASE = import.meta.env.VITE_BACKEND_URL
+  || (import.meta.env.PROD
+    ? 'https://voyo-music-server-production.up.railway.app'
+    : 'http://localhost:3001');
 
 export interface SearchResult {
   voyoId: string;  // STEALTH: VOYO ID (vyo_XXXXX) instead of YouTube ID
