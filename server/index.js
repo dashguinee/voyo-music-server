@@ -1096,7 +1096,7 @@ const server = http.createServer(async (req, res) => {
 
         res.writeHead(200, {
           ...corsHeaders,
-          'Content-Type': 'audio/webm; codecs=opus',
+          'Content-Type': 'audio/mpeg',  // yt-dlp outputs M4A/AAC which has ID3 headers
           'Transfer-Encoding': 'chunked',
         });
 
