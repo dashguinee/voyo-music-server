@@ -1072,6 +1072,59 @@ const server = http.createServer(async (req, res) => {
       console.log(`[CDN/Stream] Streaming ${type} (${quality}) for ${youtubeId}`);
       cacheStats.activeStreams++;
 
+      // Check if URL is HLS (manifest URL) - YouTube serves HLS to some regions
+      const isHLS = streamUrl.includes('manifest.googlevideo.com') || streamUrl.includes('.m3u8');
+
+      if (isHLS && type === 'audio') {
+        // HLS detected - use yt-dlp to download and pipe directly
+        // This bypasses CORS issues since we download the full audio on server
+        console.log(`[CDN/Stream] HLS detected, using yt-dlp pipe for ${youtubeId}`);
+
+        const format = quality === 'low' ? '249/250/140' : quality === 'medium' ? '250/251/140' : '251/250/140';
+        const ytUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
+
+        const ytdlp = spawn(YT_DLP_PATH, [
+          '-f', format,
+          '-o', '-',  // Output to stdout
+          '--no-warnings',
+          '--quiet',
+          ytUrl
+        ], {
+          env: { ...process.env, PATH: `${process.env.HOME}/.deno/bin:${process.env.HOME}/.local/bin:${process.env.PATH}` }
+        });
+
+        res.writeHead(200, {
+          ...corsHeaders,
+          'Content-Type': 'audio/webm; codecs=opus',
+          'Transfer-Encoding': 'chunked',
+        });
+
+        ytdlp.stdout.pipe(res);
+
+        ytdlp.stderr.on('data', (data) => {
+          console.error(`[CDN/Stream] yt-dlp stderr: ${data}`);
+        });
+
+        ytdlp.on('close', (code) => {
+          cacheStats.activeStreams--;
+          if (code !== 0) {
+            console.error(`[CDN/Stream] yt-dlp exited with code ${code}`);
+          }
+        });
+
+        ytdlp.on('error', (err) => {
+          console.error('[CDN/Stream] yt-dlp error:', err);
+          cacheStats.activeStreams--;
+          if (!res.headersSent) {
+            res.writeHead(500, corsHeaders);
+            res.end(JSON.stringify({ error: getVoyoError('STREAM_UNAVAILABLE') }));
+          }
+        });
+
+        return;
+      }
+
+      // Direct URL - proxy as normal
       // Parse the googlevideo URL
       const parsedStream = new URL(streamUrl);
 
