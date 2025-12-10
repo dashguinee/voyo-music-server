@@ -22,6 +22,7 @@ import { SearchOverlayV2 as SearchOverlay } from './components/search/SearchOver
 import { AnimatedBackground, BackgroundPicker, BackgroundType, ReactionCanvas } from './components/backgrounds/AnimatedBackgrounds';
 import { usePlayerStore } from './store/playerStore';
 import { getYouTubeThumbnail } from './data/tracks';
+import { setupMobileAudioUnlock } from './utils/mobileAudioUnlock';
 
 // App modes
 type AppMode = 'classic' | 'voyo' | 'video' | 'dj';
@@ -57,6 +58,11 @@ function App() {
   const [backgroundType, setBackgroundType] = useState<BackgroundType>('glow'); // Clean ambient glow
   const [isBackgroundPickerOpen, setIsBackgroundPickerOpen] = useState(false);
   const isLandscape = useOrientation();
+
+  // MOBILE FIX: Setup audio unlock on app mount
+  useEffect(() => {
+    setupMobileAudioUnlock();
+  }, []);
 
   // Get background image URL with fallback
   const getBackgroundUrl = () => {

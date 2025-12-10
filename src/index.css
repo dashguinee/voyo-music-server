@@ -307,3 +307,171 @@ body {
 .font-display {
   font-family: 'Plus Jakarta Sans', sans-serif;
 }
+
+/* ============================================ */
+/* MOBILE-OPTIMIZED ANIMATIONS (Dec 2025)
+/* GPU-accelerated, respects prefers-reduced-motion
+/* ============================================ */
+
+/* EnergyWave bar pulse - subtle, GPU-accelerated */
+@keyframes wave-pulse {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(1.05); }
+}
+
+.animate-wave-pulse {
+  animation: wave-pulse 0.8s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* Current position glow pulse */
+@keyframes glow-pulse-energy {
+  0%, 100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+
+.animate-glow-pulse {
+  animation: glow-pulse-energy 1s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+/* Shimmer effect - desktop only */
+@keyframes shimmer {
+  0% {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  50% { opacity: 0.5; }
+  100% {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s linear infinite;
+  will-change: transform, opacity;
+}
+
+/* Quick fade in */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.15s ease-out forwards;
+}
+
+/* Spinning vinyl - CSS instead of JS */
+@keyframes spin-vinyl {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin-vinyl {
+  animation: spin-vinyl 4s linear infinite;
+  will-change: transform;
+}
+
+/* Fast spin for scrubbing */
+.animate-spin-fast {
+  animation: spin-vinyl 0.4s linear infinite;
+  will-change: transform;
+}
+
+/* Ambient glow breathing - for backgrounds */
+@keyframes ambient-breathe {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.8;
+  }
+}
+
+.animate-ambient-breathe {
+  animation: ambient-breathe 6s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+/* Secondary ambient glow with movement */
+@keyframes ambient-secondary {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(30px, -20px) scale(1.15);
+  }
+}
+
+.animate-ambient-secondary {
+  animation: ambient-secondary 8s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* ============================================ */
+/* REDUCED MOTION SUPPORT
+/* Respects user's accessibility preferences
+/* ============================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-wave-pulse,
+  .animate-glow-pulse,
+  .animate-shimmer,
+  .animate-spin-vinyl,
+  .animate-spin-fast,
+  .animate-ambient-breathe,
+  .animate-ambient-secondary,
+  .animate-float,
+  .pulse-glow,
+  .playing-indicator {
+    animation: none !important;
+  }
+}
+
+/* ============================================ */
+/* MOBILE PERFORMANCE OPTIMIZATIONS
+/* ============================================ */
+
+@media (max-width: 768px), (pointer: coarse) {
+  /* Disable blur effects on mobile - major performance killer */
+  .blur-2xl {
+    filter: blur(12px) !important; /* Reduced from 24px */
+  }
+
+  /* Reduce backdrop blur intensity */
+  .backdrop-blur-xl {
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+  }
+
+  /* Disable shimmer on mobile */
+  .animate-shimmer {
+    animation: none !important;
+  }
+
+  /* Simpler shadows on mobile */
+  .glass-panel,
+  .glass-card {
+    backdrop-filter: blur(10px) !important;
+    -webkit-backdrop-filter: blur(10px) !important;
+  }
+}

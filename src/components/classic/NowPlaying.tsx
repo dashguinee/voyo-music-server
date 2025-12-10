@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { usePlayerStore } from '../../store/playerStore';
 import { getTrackThumbnailUrl } from '../../utils/imageHelpers';
+import { useMobilePlay } from '../../hooks/useMobilePlay';
 
 interface NowPlayingProps {
   isOpen: boolean;
@@ -40,13 +41,13 @@ export const NowPlaying = ({ isOpen, onClose }: NowPlayingProps) => {
     isPlaying,
     progress,
     duration,
-    togglePlay,
     nextTrack,
     prevTrack,
     seekTo,
     volume,
     setVolume
   } = usePlayerStore();
+  const { handlePlayPause } = useMobilePlay(); // MOBILE FIX
 
   const [isLiked, setIsLiked] = useState(false);
   const [isShuffled, setIsShuffled] = useState(false);
@@ -169,7 +170,9 @@ export const NowPlaying = ({ isOpen, onClose }: NowPlayingProps) => {
               onClick={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
                 const percent = ((e.clientX - rect.left) / rect.width) * 100;
-                seekTo(percent);
+                // FIX: Convert percentage to seconds (seekTo expects seconds, not percentage)
+                const timeInSeconds = (percent / 100) * duration;
+                seekTo(timeInSeconds);
               }}
             >
               <motion.div
@@ -210,7 +213,7 @@ export const NowPlaying = ({ isOpen, onClose }: NowPlayingProps) => {
 
             <motion.button
               className="w-16 h-16 rounded-full bg-white flex items-center justify-center"
-              onClick={togglePlay}
+              onClick={handlePlayPause}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >

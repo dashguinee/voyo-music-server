@@ -15,6 +15,7 @@ import {
   decodeVoyoId,
   sanitizeSearchResult,
   isValidVoyoId,
+  isValidYouTubeId,
   getVoyoError
 } from './stealth.js';
 
@@ -149,6 +150,46 @@ function cleanupRateLimitData() {
 
 // Run cleanup every 5 minutes
 setInterval(cleanupRateLimitData, 5 * 60 * 1000);
+
+// ========================================
+// CACHE CLEANUP - Prevent memory leaks
+// ========================================
+
+function cleanupExpiredCache() {
+  const now = Date.now();
+  let cleaned = 0;
+
+  // Clean stream cache (4 hour TTL)
+  for (const [key, entry] of streamCache.entries()) {
+    if (now - entry.timestamp > CACHE_TTL) {
+      streamCache.delete(key);
+      cleaned++;
+    }
+  }
+
+  // Clean thumbnail cache (24 hour TTL) - CRITICAL: prevents memory leaks
+  for (const [key, entry] of thumbnailCache.entries()) {
+    if (now - entry.timestamp > THUMBNAIL_CACHE_TTL) {
+      thumbnailCache.delete(key);
+      cleaned++;
+    }
+  }
+
+  // Clean prefetch cache (30 min TTL)
+  for (const [key, entry] of prefetchCache.entries()) {
+    if (now - entry.timestamp > PREFETCH_TTL) {
+      prefetchCache.delete(key);
+      cleaned++;
+    }
+  }
+
+  if (cleaned > 0) {
+    console.log(`[Cache Cleanup] Removed ${cleaned} expired entries (stream: ${streamCache.size}, thumb: ${thumbnailCache.size}, prefetch: ${prefetchCache.size})`);
+  }
+}
+
+// Run cache cleanup every 10 minutes
+setInterval(cleanupExpiredCache, 10 * 60 * 1000);
 
 // ========================================
 
@@ -655,6 +696,13 @@ const server = http.createServer(async (req, res) => {
 
   // Get stream URL (audio or video) with quality selection
   if (pathname === '/stream' && query.v) {
+    // SECURITY: Validate video ID before processing
+    if (!isValidYouTubeId(query.v)) {
+      console.warn(`[Stream] REJECTED invalid video ID: ${query.v}`);
+      res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: getVoyoError('INVALID_ID') }));
+      return;
+    }
     try {
       const type = query.type === 'video' ? 'video' : 'audio';
       const quality = query.quality || 'high'; // low, medium, high
@@ -676,6 +724,13 @@ const server = http.createServer(async (req, res) => {
 
   // PROXY endpoint - streams audio through our server with range support
   if (pathname === '/proxy' && query.v) {
+    // SECURITY: Validate video ID before processing
+    if (!isValidYouTubeId(query.v)) {
+      console.warn(`[Proxy] REJECTED invalid video ID: ${query.v}`);
+      res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: getVoyoError('INVALID_ID') }));
+      return;
+    }
     try {
       const type = query.type === 'video' ? 'video' : 'audio';
       const quality = query.quality || 'high'; // low, medium, high
@@ -762,6 +817,13 @@ const server = http.createServer(async (req, res) => {
 
   // Thumbnail proxy - HIDE YouTube completely
   if (pathname === '/thumbnail' && query.id) {
+    // SECURITY: Validate video ID before processing
+    if (!isValidYouTubeId(query.id)) {
+      console.warn(`[Thumbnail] REJECTED invalid video ID: ${query.id}`);
+      res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: getVoyoError('INVALID_ID') }));
+      return;
+    }
     try {
       const quality = query.quality || 'high';
       const imageData = await getThumbnail(query.id, quality);
@@ -783,6 +845,13 @@ const server = http.createServer(async (req, res) => {
 
   // Download audio file
   if (pathname === '/download' && req.method === 'GET' && query.v) {
+    // SECURITY: Validate video ID before processing
+    if (!isValidYouTubeId(query.v)) {
+      console.warn(`[Download] REJECTED invalid video ID: ${query.v}`);
+      res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: getVoyoError('INVALID_ID') }));
+      return;
+    }
     try {
       const result = await downloadAudio(query.v);
       res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
@@ -796,6 +865,13 @@ const server = http.createServer(async (req, res) => {
 
   // Delete downloaded file
   if (pathname === '/download' && req.method === 'DELETE' && query.v) {
+    // SECURITY: Validate video ID before processing
+    if (!isValidYouTubeId(query.v)) {
+      console.warn(`[Delete] REJECTED invalid video ID: ${query.v}`);
+      res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: getVoyoError('INVALID_ID') }));
+      return;
+    }
     try {
       const success = deleteDownload(query.v);
       res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
@@ -926,15 +1002,17 @@ const server = http.createServer(async (req, res) => {
       const trackId = pathname.split('/cdn/art/')[1];
 
       // Accept BOTH VOYO IDs (vyo_XXXXX) and raw YouTube IDs (for seed tracks)
+      // SECURITY: All IDs validated with strict regex to prevent command injection
       let youtubeId;
       if (isValidVoyoId(trackId)) {
         youtubeId = decodeVoyoId(trackId);
         console.log(`[CDN/Art] VOYO ID: ${trackId} -> ${youtubeId}`);
-      } else if (trackId && trackId.length >= 8 && trackId.length <= 15) {
-        // Raw YouTube ID (typically 11 chars, but can vary)
+      } else if (isValidYouTubeId(trackId)) {
+        // Raw YouTube ID - VALIDATED with strict alphanumeric regex
         youtubeId = trackId;
         console.log(`[CDN/Art] Raw ID: ${trackId}`);
       } else {
+        console.warn(`[CDN/Art] REJECTED invalid ID: ${trackId}`);
         res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: getVoyoError('INVALID_ID') }));
         return;
@@ -966,15 +1044,17 @@ const server = http.createServer(async (req, res) => {
       const trackId = pathname.split('/cdn/stream/')[1];
 
       // Accept BOTH VOYO IDs (vyo_XXXXX) and raw YouTube IDs (for seed tracks)
+      // SECURITY: All IDs validated with strict regex to prevent command injection
       let youtubeId;
       if (isValidVoyoId(trackId)) {
         youtubeId = decodeVoyoId(trackId);
         console.log(`[CDN/Stream] VOYO ID: ${trackId} -> ${youtubeId}`);
-      } else if (trackId && trackId.length >= 8 && trackId.length <= 15) {
-        // Raw YouTube ID (typically 11 chars, but can vary)
+      } else if (isValidYouTubeId(trackId)) {
+        // Raw YouTube ID - VALIDATED with strict alphanumeric regex
         youtubeId = trackId;
         console.log(`[CDN/Stream] Raw ID: ${trackId}`);
       } else {
+        console.warn(`[CDN/Stream] REJECTED invalid ID: ${trackId}`);
         res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: getVoyoError('INVALID_ID') }));
         return;

@@ -239,16 +239,17 @@ const FeedItemCard = ({
           </div>
         </motion.button>
 
-        {/* Spinning Album Art */}
-        <motion.div
-          className="w-10 h-10 rounded-lg overflow-hidden border border-white/20"
-          animate={isActive ? { rotate: 360 } : {}}
-          transition={{ duration: 4, repeat: Infinity, ease: 'linear' }}
+        {/* Spinning Album Art - CSS animation for mobile performance */}
+        <div
+          className={`w-10 h-10 rounded-lg overflow-hidden border border-white/20 ${
+            isActive ? 'animate-spin-vinyl' : ''
+          }`}
+          style={{ willChange: isActive ? 'transform' : 'auto' }}
         >
           <div className="w-full h-full bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center">
             <Music2 className="w-5 h-5 text-white" />
           </div>
-        </motion.div>
+        </div>
       </div>
 
       {/* Bottom Info */}

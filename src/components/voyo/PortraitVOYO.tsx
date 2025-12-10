@@ -24,6 +24,7 @@ import { SkipBack, SkipForward, Play, Pause, Plus, Send, X, Volume2 } from 'luci
 import { usePlayerStore } from '../../store/playerStore';
 import { getYouTubeThumbnail } from '../../data/tracks';
 import { Track, ReactionType, DJMode } from '../../types';
+import { useMobilePlay } from '../../hooks/useMobilePlay';
 
 // Import new VOYO Superapp components
 import { VoyoBottomNav } from './navigation/VoyoBottomNav';
@@ -367,7 +368,8 @@ const OYOOwl = ({ djMode, djResponse, onTap }: OYOOwlProps) => {
 // CENTER STAGE - BIG NOW PLAYING CARD
 // ============================================
 const CenterStageCard = () => {
-  const { currentTrack, isPlaying, togglePlay, progress, currentTime, duration } = usePlayerStore();
+  const { currentTrack, isPlaying, progress, currentTime, duration } = usePlayerStore();
+  const { handlePlayPause } = useMobilePlay(); // MOBILE FIX: Use direct play handler
   const [imgError, setImgError] = useState(false);
 
   // Format time helper
@@ -427,10 +429,10 @@ const CenterStageCard = () => {
         transition={{ duration: 3, repeat: Infinity }}
       />
 
-      {/* Play Button Overlay */}
+      {/* Play Button Overlay - MOBILE FIX: Direct play in user gesture */}
       <motion.button
         className="absolute inset-0 flex items-center justify-center"
-        onClick={togglePlay}
+        onClick={handlePlayPause}
       >
         <motion.div
           className="w-16 h-16 rounded-full flex items-center justify-center"
@@ -829,7 +831,8 @@ const OYOCentral = ({ djMode, djResponse, onTap }: OYOCentralProps) => {
 // NOW PLAYING CARD (Left side - smaller)
 // ============================================
 const NowPlayingCard = () => {
-  const { currentTrack, isPlaying, togglePlay, progress } = usePlayerStore();
+  const { currentTrack, isPlaying, progress } = usePlayerStore();
+  const { handlePlayPause } = useMobilePlay(); // MOBILE FIX: Direct play
 
   if (!currentTrack) {
     return (
@@ -842,7 +845,7 @@ const NowPlayingCard = () => {
   return (
     <motion.button
       className="relative w-28 h-36 rounded-2xl overflow-hidden"
-      onClick={togglePlay}
+      onClick={handlePlayPause}
       whileHover={{ scale: 1.05, y: -5 }}
       whileTap={{ scale: 0.95 }}
       style={{

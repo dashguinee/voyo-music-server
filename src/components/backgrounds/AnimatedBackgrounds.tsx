@@ -78,41 +78,26 @@ export const ReactionCanvas = () => {
 
 // ============================================
 // SIMPLE AMBIENT GLOW - Clean, cinematic
+// MOBILE OPTIMIZED: Uses CSS animations instead of Framer Motion
 // ============================================
 const AmbientGlow = () => {
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {/* Center glow - purple/pink */}
-      <motion.div
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[100%] h-[100%] rounded-full"
+      {/* Center glow - purple/pink - CSS animation for mobile performance */}
+      <div
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[100%] h-[100%] rounded-full animate-ambient-breathe"
         style={{
           background: 'radial-gradient(ellipse at center, rgba(147, 51, 234, 0.12) 0%, transparent 60%)',
-        }}
-        animate={{
-          scale: [1, 1.1, 1],
-          opacity: [0.6, 0.8, 0.6],
-        }}
-        transition={{
-          duration: 6,
-          repeat: Infinity,
-          ease: 'easeInOut',
+          willChange: 'transform, opacity',
         }}
       />
-      {/* Secondary glow - pink accent */}
-      <motion.div
-        className="absolute top-1/3 right-1/4 w-[60%] h-[60%] rounded-full"
+      {/* Secondary glow - pink accent - CSS animation with different timing */}
+      <div
+        className="absolute top-1/3 right-1/4 w-[60%] h-[60%] rounded-full animate-ambient-secondary"
         style={{
           background: 'radial-gradient(ellipse at center, rgba(219, 39, 119, 0.08) 0%, transparent 50%)',
-        }}
-        animate={{
-          x: [0, 30, 0],
-          y: [0, -20, 0],
-          scale: [1, 1.15, 1],
-        }}
-        transition={{
-          duration: 8,
-          repeat: Infinity,
-          ease: 'easeInOut',
+          willChange: 'transform',
+          animation: 'ambient-secondary 8s ease-in-out infinite',
         }}
       />
     </div>

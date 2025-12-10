@@ -57,7 +57,6 @@ export const AudioPlayer = () => {
   const currentVideoId = useRef<string | null>(null);
   const loadingRef = useRef<boolean>(false);
   const isPlayingRef = useRef<boolean>(isPlaying); // Track isPlaying in ref to avoid stale closures
-  const shouldAutoPlayOnLoad = useRef<boolean>(false); // FIX: Track if we should auto-play on canplay
 
   // Preference tracking state
   const sessionStartTime = useRef<number>(0);
@@ -66,10 +65,6 @@ export const AudioPlayer = () => {
   // Keep isPlayingRef in sync
   useEffect(() => {
     isPlayingRef.current = isPlaying;
-    // FIX: If isPlaying becomes true while loading, mark for auto-play
-    if (isPlaying) {
-      shouldAutoPlayOnLoad.current = true;
-    }
   }, [isPlaying]);
 
   // Detect network quality on mount
@@ -103,7 +98,7 @@ export const AudioPlayer = () => {
     return isVideoMode ? videoRef.current : audioRef.current;
   }, [isVideoMode]);
 
-  // Cleanup: End session and clear cache when component unmounts
+  // Cleanup: End session when component unmounts
   useEffect(() => {
     return () => {
       if (lastTrackId.current) {
@@ -112,9 +107,6 @@ export const AudioPlayer = () => {
         console.log('[Prefs] Component unmounting, ending session');
         endListenSession(listenDuration, 0);
       }
-      // Clean up audioEngine cache to free memory
-      audioEngine.clearAllCache();
-      console.log('[AudioEngine] Cache cleared on unmount');
     };
   }, [endListenSession, getActiveElement]);
 
@@ -167,13 +159,6 @@ export const AudioPlayer = () => {
       lastTrackId.current = currentTrack.id;
       console.log('[Prefs] Started tracking:', currentTrack.title);
 
-      // FIX: When loading a NEW track, capture current isPlaying state for auto-play
-      // This is crucial for skip/next/prev which set isPlaying: true before this effect runs
-      if (isPlaying) {
-        shouldAutoPlayOnLoad.current = true;
-        console.log('[AudioPlayer] Will auto-play when canplay fires');
-      }
-
       // Prevent duplicate loads
       if (loadingRef.current) return;
       loadingRef.current = true;
@@ -182,24 +167,10 @@ export const AudioPlayer = () => {
       currentVideoId.current = currentTrack.trackId;
 
       try {
-        // OPTIMIZATION: Check if track is already cached by audioEngine
-        const cachedUrl = audioEngine.getCachedTrack(currentTrack.trackId);
-        let streamUrl: string;
-
-        if (cachedUrl && !isVideoMode) {
-          // Use cached blob URL for instant playback
-          console.log('[AudioEngine] Using cached track - instant playback!');
-          streamUrl = cachedUrl;
-        } else {
-          // Get audio or video stream based on mode with quality parameter
-          if (isVideoMode) {
-            streamUrl = (await getVideoStream(currentTrack.trackId)).url;
-          } else {
-            const baseUrl = await getAudioStream(currentTrack.trackId);
-            // Add quality parameter based on current streamQuality
-            streamUrl = `${baseUrl}&quality=${streamQuality}`;
-          }
-        }
+        // Get audio or video stream based on mode
+        const streamUrl = isVideoMode
+          ? (await getVideoStream(currentTrack.trackId)).url
+          : await getAudioStream(currentTrack.trackId);
 
         if (streamUrl) {
           console.log('[AudioPlayer] Got stream URL:', streamUrl);
@@ -207,7 +178,7 @@ export const AudioPlayer = () => {
 
           const element = isVideoMode ? videoRef.current : audioRef.current;
           if (element) {
-            // Clear any previous errors
+            // FIX: Clear any previous errors
             element.src = '';
             element.load();
 
@@ -217,27 +188,20 @@ export const AudioPlayer = () => {
 
             // Wait for canplay event before trying to play
             const handleCanPlay = () => {
-              // FIX: Check both isPlayingRef AND shouldAutoPlayOnLoad for more reliable auto-play
-              // shouldAutoPlayOnLoad is set when track changes with isPlaying: true (skip/next/prev)
-              const shouldPlay = isPlayingRef.current || shouldAutoPlayOnLoad.current;
-              console.log('[AudioPlayer] canplay event - isPlaying:', isPlayingRef.current, 'shouldAutoPlay:', shouldAutoPlayOnLoad.current);
-              if (shouldPlay) {
-                console.log('[AudioPlayer] Auto-playing new track');
+              // Use ref to get current isPlaying state (avoids stale closure)
+              console.log('[AudioPlayer] canplay event - isPlaying:', isPlayingRef.current);
+              if (isPlayingRef.current) {
                 element.play().catch(err => {
                   console.error('[AudioPlayer] Autoplay failed:', err);
                 });
-                // Reset the flag after successful play trigger
-                shouldAutoPlayOnLoad.current = false;
               }
               element.removeEventListener('canplay', handleCanPlay);
             };
 
-            // Handle errors and retry
+            // FIX: Handle errors and retry
             const handleError = () => {
               console.error('[AudioPlayer] Load error, clearing cache');
               currentStreamUrl.current = null;
-              // Clear this track from audioEngine cache
-              audioEngine.clearTrackCache(currentTrack.trackId);
               element.removeEventListener('error', handleError);
             };
 
@@ -258,70 +222,58 @@ export const AudioPlayer = () => {
     };
 
     loadStream();
-  }, [currentTrack?.trackId, isVideoMode, isPlaying, streamQuality, getActiveElement, startListenSession, endListenSession]);
+  }, [currentTrack?.trackId, isVideoMode, isPlaying]);
 
-  // SMART PREFETCH: Warm up next tracks in queue for INSTANT playback
-  // Strategy:
-  // - Immediately start preloading queue[0] (next track) as soon as we have a currentTrack
-  // - At 50% progress: Also preload queue[1] and queue[2]
-  // - Server-side prefetch is triggered when tracks are added to queue (see playerStore)
+  // PRE-BUFFER: Warm up next track in queue when current track is 50% played
   useEffect(() => {
-    if (!currentTrack || isVideoMode) return;
+    const nextTrackInQueue = queue[0]?.track;
+    if (!nextTrackInQueue || !currentTrack || isVideoMode) return;
 
-    const apiBase = import.meta.env.PROD
-      ? 'https://voyo-music-server-production.up.railway.app'
-      : 'http://localhost:3001';
+    // Check if we should pre-buffer (when > threshold of current track played)
+    const shouldPreBuffer = progress > PREFETCH_THRESHOLD && !preBufferCache.has(nextTrackInQueue.trackId);
 
-    // How many tracks to preload depends on progress
-    // - Always preload at least 1 (queue[0]) for instant next-track playback
-    // - At 50%+ progress, preload 2 more (queue[1], queue[2])
-    const maxTracksToPreload = progress > PREFETCH_THRESHOLD ? 3 : 1;
-    const tracksToPreload = queue.slice(0, maxTracksToPreload);
+    if (shouldPreBuffer) {
+      console.log('[PreBuffer] Warming up next track:', nextTrackInQueue.title);
+      preBufferCache.set(nextTrackInQueue.trackId, true);
+      setPrefetchStatus(nextTrackInQueue.trackId, 'loading');
 
-    tracksToPreload.forEach((queueItem, index) => {
-      const track = queueItem.track;
-      if (!track?.trackId) return;
+      // Create hidden audio element to pre-load
+      const preBuffer = new Audio();
+      preBuffer.preload = 'auto';
+      preBuffer.volume = 0;
 
-      // Skip if already cached or already loading
-      if (audioEngine.isTrackCached(track.trackId) || preBufferCache.has(track.trackId)) {
-        return;
-      }
+      // Use the same API endpoint as the main player with quality parameter
+      const apiBase = import.meta.env.PROD
+        ? 'https://voyo-music-server-production.up.railway.app'
+        : 'http://localhost:3001';
+      preBuffer.src = `${apiBase}/cdn/stream/${nextTrackInQueue.trackId}?type=audio&quality=${streamQuality}`;
 
-      console.log(`[AudioEngine] Prefetching queue[${index}]:`, track.title);
-      preBufferCache.set(track.trackId, true);
-      setPrefetchStatus(track.trackId, 'loading');
+      // Track when enough data is buffered
+      preBuffer.addEventListener('canplaythrough', () => {
+        console.log('[PreBuffer] Next track READY:', nextTrackInQueue.title);
+        setPrefetchStatus(nextTrackInQueue.trackId, 'ready');
+      }, { once: true });
 
-      // Stagger preloads by 500ms to avoid network congestion
-      setTimeout(() => {
-        audioEngine.preloadTrack(
-          track.trackId,
-          apiBase,
-          (prefetchProgress) => {
-            // Only log progress for first track to reduce noise
-            if (index === 0 && prefetchProgress % 25 === 0) {
-              console.log('[AudioEngine] Next track prefetch:', prefetchProgress, '%');
-            }
-          }
-        ).then(() => {
-          console.log('[AudioEngine] ✓ Prefetch ready:', track.title);
-          setPrefetchStatus(track.trackId, 'ready');
+      preBuffer.addEventListener('loadedmetadata', () => {
+        console.log('[PreBuffer] Next track metadata loaded:', nextTrackInQueue.title);
+      }, { once: true });
 
-          // Log estimated network speed occasionally
-          if (index === 0) {
-            const networkSpeed = audioEngine.estimateNetworkSpeed();
-            console.log('[AudioEngine] Network speed:', networkSpeed, 'kbps');
-          }
-        }).catch((error) => {
-          console.error('[AudioEngine] Prefetch failed:', track.title, error);
-          preBufferCache.delete(track.trackId);
-          setPrefetchStatus(track.trackId, 'error');
-        });
-      }, index * 500);
-    });
+      preBuffer.addEventListener('error', () => {
+        console.error('[PreBuffer] Failed to pre-load:', nextTrackInQueue.title);
+        preBufferCache.delete(nextTrackInQueue.trackId);
+        setPrefetchStatus(nextTrackInQueue.trackId, 'error');
+      }, { once: true });
+
+      preBufferRef.current = preBuffer;
+      preBuffer.load();
+    }
 
     return () => {
-      // Cancel active prefetch if track changes
-      audioEngine.cancelPrefetch();
+      // Cleanup pre-buffer element when component updates
+      if (preBufferRef.current) {
+        preBufferRef.current.src = '';
+        preBufferRef.current = null;
+      }
     };
   }, [progress, queue, currentTrack, isVideoMode, streamQuality, setPrefetchStatus]);
 
@@ -455,14 +407,9 @@ export const AudioPlayer = () => {
   return (
     <>
       {/* Hidden audio element - always renders */}
-      {/* MOBILE FIX: Added playsInline, webkit-playsinline, crossOrigin for iOS/Android */}
       <audio
         ref={audioRef}
         preload="auto"
-        playsInline
-        // @ts-ignore - webkit prefix for older iOS
-        webkit-playsinline="true"
-        crossOrigin="anonymous"
         style={{ display: 'none' }}
       />
 
@@ -471,9 +418,6 @@ export const AudioPlayer = () => {
         ref={videoRef}
         preload="auto"
         playsInline
-        // @ts-ignore - webkit prefix for older iOS
-        webkit-playsinline="true"
-        crossOrigin="anonymous"
         style={{ display: 'none' }}
       />
     </>

@@ -3,17 +3,49 @@
  *
  * Replaces boring progress bars with an animated waveform visualization.
  * Features:
- * - 40 vertical bars creating a horizontal waveform
+ * - 40 vertical bars creating a horizontal waveform (20 on mobile for performance)
  * - Bars pulse/animate based on generated "energy" pattern
  * - Current position shown with bright glow/highlight
  * - Tap anywhere to seek to that position
  * - Time display: current / total
  * - Gradient: purple → pink (VOYO brand)
+ *
+ * MOBILE OPTIMIZATIONS (Dec 2025):
+ * - Reduced bar count on mobile (20 vs 40)
+ * - CSS animations instead of Framer Motion for pulses
+ * - Respects prefers-reduced-motion
+ * - Uses will-change hints for GPU acceleration
  */
 
-import { useRef, useMemo, useState } from 'react';
+import { useRef, useMemo, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { usePlayerStore } from '../../store/playerStore';
+
+// Detect mobile and reduced motion preferences
+const useMediaQueries = () => {
+  const [isMobile, setIsMobile] = useState(false);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+
+  useEffect(() => {
+    // Check mobile
+    const checkMobile = () => setIsMobile(window.innerWidth < 768 || 'ontouchstart' in window);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+
+    // Check reduced motion
+    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setPrefersReducedMotion(motionQuery.matches);
+    const handleMotionChange = (e: MediaQueryListEvent) => setPrefersReducedMotion(e.matches);
+    motionQuery.addEventListener('change', handleMotionChange);
+
+    return () => {
+      window.removeEventListener('resize', checkMobile);
+      motionQuery.removeEventListener('change', handleMotionChange);
+    };
+  }, []);
+
+  return { isMobile, prefersReducedMotion };
+};
 
 interface EnergyWaveProps {
   className?: string;
@@ -53,8 +85,10 @@ export const EnergyWave = ({ className = '' }: EnergyWaveProps) => {
   const { progress, currentTime, duration, seekTo, currentTrack } = usePlayerStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoveredBar, setHoveredBar] = useState<number | null>(null);
+  const { isMobile, prefersReducedMotion } = useMediaQueries();
 
-  const BAR_COUNT = 40;
+  // MOBILE OPTIMIZATION: Reduce bar count for better performance
+  const BAR_COUNT = isMobile ? 20 : 40;
 
   // Generate wave pattern based on current track
   const wavePattern = useMemo(() => {
@@ -108,6 +142,8 @@ export const EnergyWave = ({ className = '' }: EnergyWaveProps) => {
           // Bar height (scaled)
           const barHeight = height * 100;
 
+          // MOBILE OPTIMIZATION: Use CSS animations instead of Framer Motion for infinite loops
+          // Only use Framer Motion for entrance animation
           return (
             <motion.div
               key={index}
@@ -115,23 +151,15 @@ export const EnergyWave = ({ className = '' }: EnergyWaveProps) => {
               style={{
                 height: `${barHeight}%`,
                 minHeight: '20%',
+                // GPU acceleration hint
+                willChange: 'transform',
+                transform: 'translateZ(0)',
               }}
               initial={{ scaleY: 0 }}
-              animate={{
-                scaleY: 1,
-                // Pulse animation for played bars
-                scale: isPlayed ? [1, 1.05, 1] : 1,
-              }}
-              transition={{
-                scaleY: { duration: 0.3, delay: index * 0.01 },
-                scale: {
-                  duration: 0.8,
-                  repeat: Infinity,
-                  delay: index * 0.05,
-                },
-              }}
+              animate={{ scaleY: 1 }}
+              transition={{ duration: 0.3, delay: index * 0.01 }}
             >
-              {/* Bar Background */}
+              {/* Bar Background - CSS animation for pulse */}
               <div
                 className={`
                   absolute inset-0 rounded-t-full transition-all duration-200
@@ -141,49 +169,32 @@ export const EnergyWave = ({ className = '' }: EnergyWaveProps) => {
                   }
                   ${isCurrent ? 'brightness-150' : ''}
                   ${isHovered ? 'brightness-125' : ''}
+                  ${isPlayed && !prefersReducedMotion ? 'animate-wave-pulse' : ''}
                 `}
+                style={{
+                  animationDelay: `${index * 50}ms`,
+                }}
               />
 
-              {/* Glow Effect on Current Position */}
-              {isCurrent && (
-                <motion.div
-                  className="absolute inset-0 rounded-t-full bg-gradient-to-t from-yellow-400 to-white"
-                  animate={{
-                    opacity: [0.6, 1, 0.6],
-                    scale: [1, 1.1, 1],
-                  }}
-                  transition={{
-                    duration: 1,
-                    repeat: Infinity,
-                    ease: 'easeInOut',
-                  }}
+              {/* Glow Effect on Current Position - CSS animation */}
+              {isCurrent && !prefersReducedMotion && (
+                <div
+                  className="absolute inset-0 rounded-t-full bg-gradient-to-t from-yellow-400 to-white animate-glow-pulse"
                 />
               )}
 
-              {/* Shimmer Effect on Played Bars */}
-              {isPlayed && (
-                <motion.div
-                  className="absolute inset-0 rounded-t-full bg-gradient-to-t from-transparent via-white/30 to-transparent"
-                  animate={{
-                    y: ['100%', '-100%'],
-                    opacity: [0, 0.5, 0],
-                  }}
-                  transition={{
-                    duration: 2,
-                    repeat: Infinity,
-                    delay: index * 0.1,
-                    ease: 'linear',
-                  }}
+              {/* Shimmer Effect DISABLED on mobile for performance */}
+              {isPlayed && !isMobile && !prefersReducedMotion && (
+                <div
+                  className="absolute inset-0 rounded-t-full bg-gradient-to-t from-transparent via-white/30 to-transparent animate-shimmer"
+                  style={{ animationDelay: `${index * 100}ms` }}
                 />
               )}
 
-              {/* Hover Indicator */}
-              {isHovered && !isPlayed && (
-                <motion.div
-                  className="absolute inset-0 rounded-t-full bg-gradient-to-t from-purple-400/50 to-pink-400/50"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.15 }}
+              {/* Hover Indicator - only on desktop */}
+              {isHovered && !isPlayed && !isMobile && (
+                <div
+                  className="absolute inset-0 rounded-t-full bg-gradient-to-t from-purple-400/50 to-pink-400/50 animate-fade-in"
                 />
               )}
             </motion.div>

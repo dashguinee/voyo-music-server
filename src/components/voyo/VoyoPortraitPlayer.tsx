@@ -18,6 +18,8 @@ import { usePlayerStore } from '../../store/playerStore';
 import { getThumbnailUrl, getTrackThumbnailUrl } from '../../utils/imageHelpers';
 import { Track, ReactionType } from '../../types';
 import { SmartImage } from '../ui/SmartImage';
+import { unlockMobileAudio, isMobileDevice } from '../../utils/mobileAudioUnlock';
+import { useMobilePlay } from '../../hooks/useMobilePlay';
 
 // ============================================
 // FULLSCREEN BACKGROUND LAYER - Album art with dark overlay
@@ -1062,7 +1064,6 @@ export const VoyoPortraitPlayer = ({
     history,
     hotTracks,
     discoverTracks,
-    togglePlay,
     nextTrack,
     prevTrack,
     setCurrentTrack,
@@ -1072,6 +1073,9 @@ export const VoyoPortraitPlayer = ({
     duration,
     seekTo,
   } = usePlayerStore();
+
+  // MOBILE FIX: Use direct play handler
+  const { handlePlayPause } = useMobilePlay();
 
   // Backdrop state
   const [backdropEnabled, setBackdropEnabled] = useState(true); // ON by default for the floaty feel
@@ -1276,7 +1280,7 @@ export const VoyoPortraitPlayer = ({
             track={currentTrack}
             isPlaying={isPlaying}
             onClose={() => setIsFullscreenVideo(false)}
-            onTogglePlay={togglePlay}
+            onTogglePlay={handlePlayPause}
           />
         )}
       </AnimatePresence>
@@ -1376,7 +1380,7 @@ export const VoyoPortraitPlayer = ({
         {/* 2. THE ENGINE (Play Control) - SPINNING VINYL DISK + HOLD TO SCRUB */}
         <PlayControls
           isPlaying={isPlaying}
-          onToggle={togglePlay}
+          onToggle={handlePlayPause}
           onPrev={prevTrack}
           onNext={nextTrack}
           currentTime={currentTime}

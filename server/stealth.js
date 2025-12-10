@@ -101,11 +101,28 @@ export function isValidVoyoId(voyoId) {
 
   try {
     // Try to decode - if it works, it's valid
-    decodeVoyoId(voyoId);
-    return true;
+    const decoded = decodeVoyoId(voyoId);
+    // Also validate the decoded YouTube ID
+    return isValidYouTubeId(decoded);
   } catch {
     return false;
   }
+}
+
+/**
+ * SECURITY: Validate YouTube video ID format
+ * YouTube IDs are 11 characters: alphanumeric, hyphens, underscores only
+ * This prevents command injection when IDs are passed to yt-dlp
+ *
+ * @param {string} youtubeId
+ * @returns {boolean}
+ */
+export function isValidYouTubeId(youtubeId) {
+  if (!youtubeId || typeof youtubeId !== 'string') return false;
+  // YouTube IDs: exactly 11 chars, only alphanumeric + hyphen + underscore
+  // Strict regex prevents ANY shell metacharacters
+  const YOUTUBE_ID_REGEX = /^[a-zA-Z0-9_-]{11}$/;
+  return YOUTUBE_ID_REGEX.test(youtubeId);
 }
 
 /**

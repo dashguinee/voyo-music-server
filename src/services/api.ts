@@ -128,6 +128,29 @@ export async function healthCheck(): Promise<boolean> {
 }
 
 /**
+ * PREFETCH: Warm up a track on server-side for instant playback
+ * Non-blocking - returns immediately with 202 Accepted
+ * Server caches the stream URL so subsequent requests are instant
+ * @param trackId VOYO track ID (vyo_XXXXX) or raw YouTube ID
+ * @param quality Stream quality level (low/medium/high)
+ */
+export async function prefetchTrack(trackId: string, quality: 'low' | 'medium' | 'high' = 'high'): Promise<boolean> {
+  try {
+    // Fire and forget - don't await, just trigger
+    fetch(`${API_BASE}/prefetch?v=${trackId}&quality=${quality}`, {
+      method: 'GET',
+    }).catch(() => {
+      // Ignore errors - prefetch is best effort
+    });
+    console.log(`[API] Prefetch triggered for: ${trackId}`);
+    return true;
+  } catch (error) {
+    console.warn('[API] Prefetch error (non-critical):', error);
+    return false;
+  }
+}
+
+/**
  * OFFLINE MODE - Download Management
  * Note: Download features use YouTube IDs internally but can work with VOYO IDs
  */

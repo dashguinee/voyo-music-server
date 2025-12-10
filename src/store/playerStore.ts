@@ -15,6 +15,7 @@ import {
   getPersonalizedDiscoveryTracks,
 } from '../services/personalization';
 import { BitrateLevel, BufferStatus } from '../services/audioEngine';
+import { prefetchTrack } from '../services/api';
 
 // Network quality types
 type NetworkQuality = 'slow' | 'medium' | 'fast' | 'unknown';
@@ -305,6 +306,15 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         addedAt: new Date().toISOString(),
         source: 'manual',
       };
+
+      // INSTANT PLAYBACK: Trigger server-side prefetch when track is added to queue
+      // This warms up the stream cache so playback is instant when track is selected
+      if (track.trackId) {
+        const quality = state.streamQuality || 'high';
+        prefetchTrack(track.trackId, quality);
+        console.log(`[Queue] Prefetching added track: ${track.title}`);
+      }
+
       if (position !== undefined) {
         const newQueue = [...state.queue];
         newQueue.splice(position, 0, newItem);
