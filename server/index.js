@@ -1080,14 +1080,15 @@ const server = http.createServer(async (req, res) => {
         // This bypasses CORS issues since we download the full audio on server
         console.log(`[CDN/Stream] HLS detected, using yt-dlp pipe for ${youtubeId}`);
 
-        const format = quality === 'low' ? '249/250/140' : quality === 'medium' ? '250/251/140' : '251/250/140';
+        // Use 'bestaudio' with fallback - explicit itags may not be available in all regions
+        const format = 'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio';
         const ytUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
 
         const ytdlp = spawn(YT_DLP_PATH, [
           '-f', format,
           '-o', '-',  // Output to stdout
           '--no-warnings',
-          '--quiet',
+          '--no-playlist',
           ytUrl
         ], {
           env: { ...process.env, PATH: `${process.env.HOME}/.deno/bin:${process.env.HOME}/.local/bin:${process.env.PATH}` }
@@ -1101,8 +1102,17 @@ const server = http.createServer(async (req, res) => {
 
         ytdlp.stdout.pipe(res);
 
+        let stderrData = '';
         ytdlp.stderr.on('data', (data) => {
+          stderrData += data.toString();
           console.error(`[CDN/Stream] yt-dlp stderr: ${data}`);
+        });
+
+        // Log stderr on close if there were issues
+        ytdlp.on('close', (code) => {
+          if (code !== 0 && stderrData) {
+            console.error(`[CDN/Stream] yt-dlp failed (${code}): ${stderrData}`);
+          }
         });
 
         ytdlp.on('close', (code) => {
