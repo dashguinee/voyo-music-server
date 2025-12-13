@@ -17,7 +17,6 @@ let innertube: Innertube | null = null;
  */
 async function getInnertube(): Promise<Innertube> {
   if (!innertube) {
-    console.log('[VOYO Client] Initializing Innertube...');
 
     innertube = await Innertube.create({
       // Use our Cloudflare proxy for all requests
@@ -27,7 +26,6 @@ async function getInnertube(): Promise<Innertube> {
         // Proxy YouTube API requests through Cloudflare
         if (url.includes('youtube.com') || url.includes('googlevideo.com')) {
           const proxyUrl = `${PROXY_URL}?url=${encodeURIComponent(url)}`;
-          console.log('[VOYO Client] Proxying:', url.substring(0, 80) + '...');
           return fetch(proxyUrl, {
             ...init,
             headers: {
@@ -43,7 +41,6 @@ async function getInnertube(): Promise<Innertube> {
       generate_session_locally: true,
     });
 
-    console.log('[VOYO Client] Innertube ready');
   }
 
   return innertube;
@@ -61,12 +58,10 @@ export async function extractAudio(videoId: string): Promise<{
   try {
     const yt = await getInnertube();
 
-    console.log(`[VOYO Client] Extracting: ${videoId}`);
     const info = await yt.getBasicInfo(videoId);
 
     // Check playability
     if (!info.playability_status?.status || info.playability_status.status !== 'OK') {
-      console.log('[VOYO Client] Not playable:', info.playability_status?.reason);
       return null;
     }
 
@@ -77,7 +72,6 @@ export async function extractAudio(videoId: string): Promise<{
     );
 
     if (audioFormats.length === 0) {
-      console.log('[VOYO Client] No audio formats');
       return null;
     }
 
@@ -98,7 +92,6 @@ export async function extractAudio(videoId: string): Promise<{
     }
 
     if (!url) {
-      console.log('[VOYO Client] URL deciphering failed');
       return null;
     }
 
@@ -110,7 +103,6 @@ export async function extractAudio(videoId: string): Promise<{
     };
 
   } catch (error) {
-    console.error('[VOYO Client] Extraction error:', error);
     return null;
   }
 }

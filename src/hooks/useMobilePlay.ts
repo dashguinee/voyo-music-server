@@ -42,7 +42,6 @@ export function useMobilePlay() {
 
     // If no audio element yet, just toggle state and let AudioPlayer handle it
     if (!element) {
-      console.log('[MobilePlay] No element yet, toggling state');
       togglePlay();
       return;
     }
@@ -54,17 +53,14 @@ export function useMobilePlay() {
 
     if (isPlaying) {
       // Pause - this always works
-      console.log('[MobilePlay] Pausing');
       element.pause();
       togglePlay();
     } else {
       // Play - DIRECTLY in user gesture handler
-      console.log('[MobilePlay] Playing directly in user gesture');
 
       try {
         // Check if element has a source
         if (!element.src || element.src === '') {
-          console.log('[MobilePlay] No source yet, toggling state to trigger load');
           togglePlay();
           return;
         }
@@ -77,13 +73,10 @@ export function useMobilePlay() {
           togglePlay();
         }
 
-        console.log('[MobilePlay] Play successful!');
       } catch (err: any) {
-        console.error('[MobilePlay] Play failed:', err);
 
         if (err.name === 'NotAllowedError') {
           // Autoplay was blocked - try again on next tap
-          console.log('[MobilePlay] NotAllowedError - user needs to tap again');
         }
 
         // Still toggle state so UI stays in sync
@@ -107,7 +100,6 @@ export function useMobilePlay() {
       await element.play();
       return true;
     } catch (err) {
-      console.error('[MobilePlay] Force play failed:', err);
       return false;
     }
   }, [isVideoMode]);

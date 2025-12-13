@@ -49,7 +49,6 @@ export function calculateTrackScore(track: Track, preferences: Record<string, Tr
   // 1. EXPLICIT SIGNALS (strongest)
   if (pref?.explicitLike !== undefined) {
     score += pref.explicitLike ? WEIGHTS.EXPLICIT_LIKE : WEIGHTS.EXPLICIT_DISLIKE;
-    console.log(`[Prefs] ${track.title} - Explicit: ${pref.explicitLike ? '+100' : '-200'}`);
   }
 
   // 2. LISTEN BEHAVIOR (strong)
@@ -68,25 +67,12 @@ export function calculateTrackScore(track: Track, preferences: Record<string, Tr
     // Skip penalty
     const skipScore = pref.skips * WEIGHTS.SKIP_PENALTY;
     score += skipScore;
-
-    console.log(`[Prefs] ${track.title} - Behavior: completion=${completionScore.toFixed(1)}, reactions=${reactionScore}, skips=${skipScore}`);
   }
-
-  // 3. ARTIST AFFINITY (indirect signal)
-  // TODO: Implement artist affinity based on all tracks by this artist
-  // For now, skip this to keep it simple
-
-  // 4. TAG AFFINITY (indirect signal)
-  // TODO: Implement tag affinity based on user's preferred tags
-
-  // 5. MOOD AFFINITY (indirect signal)
-  // TODO: Implement mood affinity
 
   // 6. POPULARITY BOOST (small)
   const popularityBoost = track.oyeScore * WEIGHTS.OYE_SCORE_BOOST;
   score += popularityBoost;
 
-  console.log(`[Prefs] ${track.title} - FINAL SCORE: ${score.toFixed(2)}`);
   return score;
 }
 
@@ -96,7 +82,6 @@ export function calculateTrackScore(track: Track, preferences: Record<string, Tr
  */
 export function getPersonalizedHotTracks(limit: number = 5): Track[] {
   const preferences = usePreferenceStore.getState().trackPreferences;
-  console.log('[Prefs] Calculating personalized HOT tracks...');
 
   // Score all tracks
   const scored = TRACKS.map((track) => ({
@@ -121,7 +106,6 @@ export function getPersonalizedDiscoveryTracks(
   excludeIds: string[] = []
 ): Track[] {
   const preferences = usePreferenceStore.getState().trackPreferences;
-  console.log('[Prefs] Calculating personalized DISCOVERY for:', currentTrack.title);
 
   // Filter out excluded tracks
   const candidates = TRACKS.filter(
@@ -168,10 +152,7 @@ export function getPersonalizedDiscoveryTracks(
   scored.sort((a, b) => b.score - a.score);
 
   // Return top N
-  const result = scored.slice(0, limit).map((s) => s.track);
-  console.log('[Prefs] Discovery tracks:', result.map(t => t.title));
-
-  return result;
+  return scored.slice(0, limit).map((s) => s.track);
 }
 
 /**
@@ -231,44 +212,7 @@ export function debugPreferences(): void {
   const state = usePreferenceStore.getState();
   const prefs = Object.values(state.trackPreferences);
 
-  console.log('[Prefs] === PREFERENCE DEBUG ===');
-  console.log(`Total tracks tracked: ${prefs.length}`);
-
   if (prefs.length === 0) {
-    console.log('No preferences recorded yet. Start listening!');
     return;
   }
-
-  // Top completed
-  const topCompleted = prefs
-    .sort((a, b) => b.completions - a.completions)
-    .slice(0, 3);
-
-  console.log('\nTop Completed:');
-  topCompleted.forEach((p) => {
-    const track = TRACKS.find((t) => t.id === p.trackId);
-    console.log(`  ${track?.title || p.trackId}: ${p.completions} completions`);
-  });
-
-  // Top skipped
-  const topSkipped = prefs
-    .sort((a, b) => b.skips - a.skips)
-    .slice(0, 3);
-
-  console.log('\nTop Skipped:');
-  topSkipped.forEach((p) => {
-    const track = TRACKS.find((t) => t.id === p.trackId);
-    console.log(`  ${track?.title || p.trackId}: ${p.skips} skips`);
-  });
-
-  // Most reactions
-  const topReactions = prefs
-    .sort((a, b) => b.reactions - a.reactions)
-    .slice(0, 3);
-
-  console.log('\nMost Reactions:');
-  topReactions.forEach((p) => {
-    const track = TRACKS.find((t) => t.id === p.trackId);
-    console.log(`  ${track?.title || p.trackId}: ${p.reactions} reactions`);
-  });
 }

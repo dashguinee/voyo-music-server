@@ -200,12 +200,12 @@ export const BoostButton = ({ variant = 'full', className = '' }: BoostButtonPro
     );
   }
 
-  // Ready to boost - show button
+  // Ready to boost - show button - FIX 2: Touch target 44px for icon variant
   if (variant === 'icon') {
     return (
       <motion.button
         onClick={handleBoost}
-        className={`w-8 h-8 rounded-full bg-gradient-to-br from-amber-500/20 to-orange-500/20 border border-amber-500/30 flex items-center justify-center hover:from-amber-500/30 hover:to-orange-500/30 transition-colors ${className}`}
+        className={`min-w-[44px] min-h-[44px] w-11 h-11 rounded-full bg-gradient-to-br from-amber-500/20 to-orange-500/20 border border-amber-500/30 flex items-center justify-center hover:from-amber-500/30 hover:to-orange-500/30 transition-colors ${className}`}
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.9 }}
         title="Boost HD - Download for offline"

@@ -354,6 +354,13 @@ export const VoyoVerticalFeed = ({ isActive }: { isActive: boolean }) => {
         <button className="text-white/50 text-sm font-semibold">Following</button>
         <button className="text-white text-sm font-bold border-b-2 border-white pb-1">For You</button>
       </div>
+
+      {/* DEMO MODE BANNER */}
+      <div className="absolute bottom-20 left-0 right-0 flex items-center justify-center pointer-events-none">
+        <div className="bg-yellow-500/90 text-black px-4 py-2 rounded-lg font-bold text-sm shadow-lg">
+          DEMO MODE - Preview Content
+        </div>
+      </div>
     </motion.div>
   );
 };

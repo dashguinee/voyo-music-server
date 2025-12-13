@@ -182,7 +182,6 @@ const TrackItem = ({
           onError={(e) => {
             const target = e.target as HTMLImageElement;
             target.style.opacity = '0';
-            console.error('[SearchOverlay] Failed to load thumbnail:', result.thumbnail);
           }}
         />
         <motion.div
@@ -272,7 +271,7 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const { setCurrentTrack, addToQueue, queue } = usePlayerStore();
+  const { setCurrentTrack, addToQueue, queue, updateDiscoveryForTrack } = usePlayerStore();
 
   // Sync queue items from store
   useEffect(() => {
@@ -384,7 +383,6 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
       // Ignore abort errors
       if (err?.name === 'AbortError') return;
 
-      console.error('[SearchOverlay] Search error:', err);
       // Still show seed results even if YouTube fails
       const seedResults = searchSeedData(searchQuery);
       if (seedResults.length > 0) {
@@ -453,7 +451,10 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
       targetZone: 'discovery',
     });
     // Add to discovery items (for now just show similar tracks)
-    setDiscoveryItems(prev => [resultToTrack(result), ...prev].slice(0, 5));
+    const track = resultToTrack(result);
+    setDiscoveryItems(prev => [track, ...prev].slice(0, 5));
+    // FIX 1: Wire to player store to update recommendations!
+    updateDiscoveryForTrack(track);
   };
 
   const handleFlyingCDComplete = () => {
@@ -496,7 +497,10 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
           targetZone: zone,
         });
         if (zone === 'discovery') {
-          setDiscoveryItems(prev => [resultToTrack(result), ...prev].slice(0, 5));
+          const track = resultToTrack(result);
+          setDiscoveryItems(prev => [track, ...prev].slice(0, 5));
+          // FIX 1: Wire drag-and-drop to player store too!
+          updateDiscoveryForTrack(track);
         }
       }
     }
@@ -587,6 +591,40 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
 
               {/* Results List */}
               <div className="flex-1 overflow-y-auto space-y-1">
+                {/* FIX 2: Search History UI */}
+                {!query && searchHistory.length > 0 && !isSearching && (
+                  <div className="mb-4">
+                    <p className="text-white/40 text-xs mb-2 px-1">Recent Searches</p>
+                    <div className="flex flex-wrap gap-2">
+                      {searchHistory.map((historyQuery, i) => (
+                        <button
+                          key={i}
+                          onClick={() => handleSearch(historyQuery)}
+                          className="group flex items-center gap-2 px-3 py-1.5 rounded-full text-sm text-white/60 hover:text-white/90 transition-colors"
+                          style={{
+                            background: 'linear-gradient(135deg, rgba(139,92,246,0.15) 0%, rgba(59,130,246,0.15) 100%)',
+                            border: '1px solid rgba(139,92,246,0.2)',
+                          }}
+                        >
+                          <Clock className="w-3 h-3" />
+                          <span className="text-xs">{historyQuery}</span>
+                          <X
+                            className="w-3 h-3 opacity-0 group-hover:opacity-60 transition-opacity"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSearchHistory(prev => {
+                                const updated = prev.filter(q => q !== historyQuery);
+                                localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(updated));
+                                return updated;
+                              });
+                            }}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Empty state */}
                 {!query && !isSearching && results.length === 0 && (
                   <div className="text-center py-16">
@@ -600,6 +638,14 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
                 {error && (
                   <div className="text-center py-8">
                     <p className="text-red-400/80">{error}</p>
+                  </div>
+                )}
+
+                {/* FIX 3: Empty Results State */}
+                {!isSearching && query.length >= 2 && results.length === 0 && !error && (
+                  <div className="text-center py-8">
+                    <p className="text-white/60">No results for "{query}"</p>
+                    <p className="text-white/40 text-sm mt-2">Try different keywords</p>
                   </div>
                 )}
 

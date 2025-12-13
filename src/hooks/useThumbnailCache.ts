@@ -36,7 +36,6 @@ const getCache = (): Record<string, CachedThumbnail> => {
 
     return validCache;
   } catch (error) {
-    console.error('[ThumbnailCache] Failed to load cache:', error);
     return {};
   }
 };
@@ -48,7 +47,6 @@ const setCache = (cache: Record<string, CachedThumbnail>): void => {
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
   } catch (error) {
-    console.error('[ThumbnailCache] Failed to save cache:', error);
   }
 };
 
@@ -148,7 +146,6 @@ export const clearThumbnailCache = (): void => {
   try {
     localStorage.removeItem(CACHE_KEY);
   } catch (error) {
-    console.error('[ThumbnailCache] Failed to clear cache:', error);
   }
 };
 

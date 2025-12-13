@@ -140,8 +140,6 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
       cacheSize: size,
       isInitialized: true,
     });
-
-    console.log(`[VOYO Cache] Initialized: ${tracks.length} tracks, ${(size / 1024 / 1024).toFixed(2)}MB`);
   },
 
   checkCache: async (trackId: string) => {
@@ -149,7 +147,6 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
     if (cached) {
       const url = await getCachedTrackUrl(trackId);
       if (url) {
-        console.log(`[VOYO Cache] HIT: ${trackId}`);
         return url;
       }
     }
@@ -163,21 +160,17 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
     // Already downloading or complete?
     const existing = downloads.get(trackId);
     if (existing && (existing.status === 'downloading' || existing.status === 'complete')) {
-      console.log(`[VOYO Boost] Already boosting/boosted: ${trackId}`);
       return;
     }
 
     // Check if already cached
     const cached = await isTrackCached(trackId);
     if (cached) {
-      console.log(`[VOYO Boost] Already boosted: ${trackId}`);
       const newDownloads = new Map(downloads);
       newDownloads.set(trackId, { trackId, progress: 100, status: 'complete' });
       set({ downloads: newDownloads });
       return;
     }
-
-    console.log(`[VOYO Boost] Starting: ${title}`);
 
     // Update status to downloading
     const newDownloads = new Map(downloads);
@@ -189,15 +182,18 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
       const youtubeId = decodeVoyoId(trackId);
       const proxyUrl = `${API_URL}/proxy?v=${youtubeId}&quality=high`;
 
-      console.log(`[VOYO Boost] Downloading via proxy: ${proxyUrl}`);
-
-      // Download with progress tracking
+      // Download with progress tracking (throttled to 500ms)
+      let lastUpdateTime = 0;
       const success = await downloadTrack(
         trackId,
         proxyUrl,
         { title, artist, duration, thumbnail, quality: 'boosted' },
         'boosted',
         (progress) => {
+          const now = Date.now();
+          if (now - lastUpdateTime < 500) return; // Throttle updates
+          lastUpdateTime = now;
+
           const currentDownloads = new Map(get().downloads);
           currentDownloads.set(trackId, {
             trackId,
@@ -209,8 +205,6 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
       );
 
       if (success) {
-        console.log(`[VOYO Boost] ⚡ SUCCESS: ${title}`);
-
         const finalDownloads = new Map(get().downloads);
         finalDownloads.set(trackId, { trackId, progress: 100, status: 'complete' });
 
@@ -234,7 +228,6 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
       }
 
     } catch (error) {
-      console.error(`[VOYO Boost] Failed: ${trackId}`, error);
       const failedDownloads = new Map(get().downloads);
       failedDownloads.set(trackId, {
         trackId,
@@ -252,7 +245,6 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
 
     // Only auto-queue if auto-boost is enabled
     if (!autoBoostEnabled) {
-      console.log(`[VOYO Auto-Boost] Disabled, skipping: ${trackId}`);
       return;
     }
 
@@ -264,7 +256,6 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
 
     // Check network settings
     if (!shouldAutoDownload()) {
-      console.log(`[VOYO Auto-Boost] Network conditions not met: ${trackId}`);
       return;
     }
 
@@ -275,8 +266,6 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
     const newDownloads = new Map(downloads);
     newDownloads.set(trackId, { trackId, progress: 0, status: 'queued' });
     set({ downloads: newDownloads });
-
-    console.log(`[VOYO Auto-Boost] Queued: ${title}`);
 
     // Start processing
     get().processQueue();
@@ -356,13 +345,11 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
   enableAutoBoost: () => {
     localStorage.setItem('voyo-auto-boost', 'true');
     set({ autoBoostEnabled: true, showAutoBoostPrompt: false });
-    console.log('[VOYO] Auto-Boost ENABLED');
   },
 
   disableAutoBoost: () => {
     localStorage.setItem('voyo-auto-boost', 'false');
     set({ autoBoostEnabled: false });
-    console.log('[VOYO] Auto-Boost DISABLED');
   },
 
   dismissAutoBoostPrompt: () => {

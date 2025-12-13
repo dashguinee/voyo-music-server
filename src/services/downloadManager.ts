@@ -151,7 +151,6 @@ export async function downloadTrack(
   onProgress?: (progress: number) => void
 ): Promise<boolean> {
   try {
-    console.log(`[VOYO Download] Starting: ${trackId}`);
 
     // Fetch the audio file
     const response = await fetch(audioUrl);
@@ -222,17 +221,14 @@ export async function downloadTrack(
 
     return new Promise((resolve) => {
       transaction.oncomplete = () => {
-        console.log(`[VOYO Download] Complete: ${trackId} (${(blob.size / 1024 / 1024).toFixed(2)}MB)`);
         resolve(true);
       };
       transaction.onerror = () => {
-        console.error('[VOYO Download] Store error:', transaction.error);
         resolve(false);
       };
     });
 
   } catch (error) {
-    console.error('[VOYO Download] Failed:', error);
     return false;
   }
 }
@@ -348,4 +344,4 @@ export function shouldAutoDownload(): boolean {
 }
 
 // Initialize DB on load
-initDB().catch(console.error);
+initDB().catch(() => {});

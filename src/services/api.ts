@@ -35,7 +35,6 @@ export interface StreamResponse {
  */
 export async function searchMusic(query: string, limit: number = 10): Promise<SearchResult[]> {
   try {
-    console.log(`[VOYO API] Searching: ${query}`);
     const response = await fetch(
       `${API_URL}/api/search?q=${encodeURIComponent(query)}&limit=${limit}`,
       { signal: AbortSignal.timeout(15000) }
@@ -57,7 +56,6 @@ export async function searchMusic(query: string, limit: number = 10): Promise<Se
       views: item.views || 0,
     }));
   } catch (error) {
-    console.error('[VOYO API] Search error:', error);
     throw error;
   }
 }
@@ -88,7 +86,6 @@ function decodeVoyoId(voyoId: string): string {
   try {
     return atob(base64);
   } catch {
-    console.warn('[VOYO] Failed to decode VOYO ID:', voyoId);
     return voyoId;
   }
 }
@@ -112,7 +109,6 @@ export async function tryEdgeExtraction(voyoId: string): Promise<EdgeStreamResul
   const youtubeId = decodeVoyoId(voyoId);
 
   try {
-    console.log(`[VOYO Edge] Trying worker for: ${youtubeId}`);
     const response = await fetch(`${EDGE_WORKER_URL}/stream?v=${youtubeId}`, {
       signal: AbortSignal.timeout(8000)
     });
@@ -120,14 +116,11 @@ export async function tryEdgeExtraction(voyoId: string): Promise<EdgeStreamResul
     const data = await response.json();
 
     if (data.url) {
-      console.log(`[VOYO Edge] SUCCESS via ${data.client}: ${data.bitrate}bps`);
       return data as EdgeStreamResult;
     }
 
-    console.log(`[VOYO Edge] Blocked: ${data.error || 'No URL returned'}`);
     return null;
   } catch (error) {
-    console.warn('[VOYO Edge] Worker error:', error);
     return null;
   }
 }
@@ -158,8 +151,6 @@ export async function getAudioStream(videoId: string, quality: string = 'high'):
   const youtubeId = decodeVoyoId(videoId);
 
   try {
-    console.log(`[VOYO] Getting stream for: ${youtubeId}`);
-
     const response = await fetch(`${API_URL}/stream?v=${youtubeId}&quality=${quality}`, {
       signal: AbortSignal.timeout(15000)
     });
@@ -171,23 +162,12 @@ export async function getAudioStream(videoId: string, quality: string = 'high'):
     const data = await response.json();
 
     if (data.url) {
-      // Log what we got
-      if (data.cached) {
-        console.log(`[VOYO] 🚀 BOOSTED - Serving from VOYO cache`);
-      } else {
-        console.log(`[VOYO] ▶️ First play - YouTube direct`);
-        if (data.boosting) {
-          console.log(`[VOYO] ⏳ Boost in progress - next play will be cached`);
-        }
-      }
-
       return data.url;
     }
 
     throw new Error(data.error || 'No URL returned');
 
   } catch (err) {
-    console.error('[VOYO] Extraction failed:', err);
     return `iframe:${youtubeId}`;
   }
 }
@@ -267,7 +247,6 @@ export async function getVideoDetails(videoId: string): Promise<any> {
     });
     return response.json();
   } catch (error) {
-    console.error('[VOYO API] Video details error:', error);
     return null;
   }
 }
@@ -301,7 +280,6 @@ export async function getTrending(region: string = 'US'): Promise<SearchResult[]
     // Use search with trending terms as fallback
     return searchMusic('trending music 2025', 20);
   } catch (error) {
-    console.error('[VOYO API] Trending error:', error);
     return [];
   }
 }
@@ -314,10 +292,8 @@ export async function prefetchTrack(trackId: string): Promise<boolean> {
     const response = await fetch(`${API_URL}/prefetch?v=${trackId}`, {
       signal: AbortSignal.timeout(5000),
     });
-    console.log(`[VOYO API] Prefetch ${trackId}: ${response.ok ? 'warming' : 'failed'}`);
     return response.ok;
   } catch (error) {
-    console.warn('[VOYO API] Prefetch error:', error);
     return false;
   }
 }
@@ -346,14 +322,12 @@ export async function isDownloaded(trackId: string): Promise<boolean> {
  */
 export async function downloadTrack(trackId: string): Promise<boolean> {
   try {
-    console.log(`[VOYO API] Downloading: ${trackId}`);
     const response = await fetch(`${API_URL}/download?v=${trackId}`, {
       signal: AbortSignal.timeout(60000), // 1 minute for download
     });
     const data = await response.json();
     return data.success === true;
   } catch (error) {
-    console.error('[VOYO API] Download error:', error);
     return false;
   }
 }

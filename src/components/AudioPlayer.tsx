@@ -22,6 +22,9 @@ export const AudioPlayer = () => {
   const playerRef = useRef<YT.Player | null>(null);
   const currentVideoId = useRef<string | null>(null);
   const loadingRef = useRef<boolean>(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const cachedUrlRef = useRef<string | null>(null);
+  const iframeRetryCount = useRef<number>(0);
 
   const [playbackMode, setPlaybackMode] = useState<PlaybackMode>('iframe');
 
@@ -67,10 +70,13 @@ export const AudioPlayer = () => {
   }, []);
 
   // Initialize IFrame player
-  const initIframePlayer = useCallback((videoId: string) => {
+  const initIframePlayer = useCallback((videoId: string, retryCount: number = 0) => {
     if (!(window as any).YT?.Player) {
-      console.log('[VOYO] YT API not ready, retrying...');
-      setTimeout(() => initIframePlayer(videoId), 500);
+      if (retryCount >= 10) {
+        setBufferHealth(0, 'emergency');
+        return;
+      }
+      setTimeout(() => initIframePlayer(videoId, retryCount + 1), 500);
       return;
     }
 
@@ -101,7 +107,6 @@ export const AudioPlayer = () => {
       },
       events: {
         onReady: (event: any) => {
-          console.log('[VOYO IFrame] Ready - Playing instantly');
           event.target.setVolume(volume);
           if (isPlaying) {
             event.target.playVideo();
@@ -111,7 +116,6 @@ export const AudioPlayer = () => {
         onStateChange: (event: any) => {
           const state = event.data;
           if (state === 0) { // ENDED
-            console.log('[VOYO IFrame] Track ended');
             nextTrack();
           } else if (state === 1) { // PLAYING
             setBufferHealth(100, 'healthy');
@@ -120,7 +124,6 @@ export const AudioPlayer = () => {
           }
         },
         onError: (event: any) => {
-          console.error('[VOYO IFrame] Error:', event.data);
           setBufferHealth(0, 'emergency');
         },
       },
@@ -134,9 +137,14 @@ export const AudioPlayer = () => {
       if (loadingRef.current) return;
       if (currentVideoId.current === currentTrack.trackId) return;
 
+      // Cancel previous load operation
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      abortControllerRef.current = new AbortController();
+
       loadingRef.current = true;
       currentVideoId.current = currentTrack.trackId;
-      console.log('[VOYO] Loading:', currentTrack.title);
 
       // End previous session
       if (lastTrackId.current && lastTrackId.current !== currentTrack.id) {
@@ -154,18 +162,22 @@ export const AudioPlayer = () => {
 
         if (cachedUrl) {
           // ⚡ BOOSTED - Play from local cache (instant, offline-ready)
-          console.log('[VOYO] ⚡ BOOSTED - Playing from local cache');
           setPlaybackMode('cached');
           setPlaybackSource('cached');
 
           if (audioRef.current) {
+            // Revoke previous blob URL
+            if (cachedUrlRef.current) {
+              URL.revokeObjectURL(cachedUrlRef.current);
+            }
+            cachedUrlRef.current = cachedUrl;
+
             audioRef.current.src = cachedUrl;
             audioRef.current.load();
 
             audioRef.current.oncanplay = () => {
               if (isPlaying) {
                 audioRef.current?.play().catch(err => {
-                  console.error('[VOYO] Cached playback failed:', err);
                 });
               }
             };
@@ -176,7 +188,6 @@ export const AudioPlayer = () => {
 
         // 2. NOT CACHED - Use IFrame for instant playback
         // User can click "⚡ Boost HD" to download for next time
-        console.log('[VOYO] Not boosted - Using IFrame (instant start)');
         setPlaybackMode('iframe');
         setPlaybackSource('iframe');
 
@@ -184,7 +195,6 @@ export const AudioPlayer = () => {
         initIframePlayer(ytId);
 
       } catch (error) {
-        console.error('[VOYO] Load error:', error);
         // Fallback to IFrame
         setPlaybackMode('iframe');
         setPlaybackSource('iframe');
@@ -196,6 +206,14 @@ export const AudioPlayer = () => {
     };
 
     loadTrack();
+
+    // Cleanup: revoke blob URL on unmount
+    return () => {
+      if (cachedUrlRef.current) {
+        URL.revokeObjectURL(cachedUrlRef.current);
+        cachedUrlRef.current = null;
+      }
+    };
   }, [currentTrack?.trackId, initIframePlayer, isPlaying, startListenSession, endListenSession, checkCache, setPlaybackSource]);
 
   // Handle play/pause
@@ -203,7 +221,6 @@ export const AudioPlayer = () => {
     if (playbackMode === 'cached' && audioRef.current) {
       if (isPlaying) {
         audioRef.current.play().catch(err => {
-          console.error('[VOYO] Play failed:', err);
         });
       } else {
         audioRef.current.pause();
@@ -290,7 +307,6 @@ export const AudioPlayer = () => {
   }, [setDuration]);
 
   const handleEnded = useCallback(() => {
-    console.log('[VOYO] Track ended');
     const el = audioRef.current;
     if (el && currentTrack) {
       endListenSession(el.currentTime, 0);

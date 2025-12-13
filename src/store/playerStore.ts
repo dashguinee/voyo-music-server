@@ -132,7 +132,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   progress: 0,
   currentTime: 0,
   duration: 0,
-  volume: 80,
+  volume: parseInt(localStorage.getItem('voyo-volume') || '80', 10),
   seekPosition: null,
   viewMode: 'card',
   isVideoMode: false,
@@ -178,7 +178,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     if (state.currentTrack) {
       get().addToHistory(state.currentTrack, state.currentTime);
     }
-    set({ currentTrack: track, isPlaying: true, progress: 0, currentTime: 0 });
+    set({ currentTrack: track, isPlaying: true, progress: 0, currentTime: 0, seekPosition: null });
 
     // AUTO-TRIGGER: Update smart discovery for this track
     get().updateDiscoveryForTrack(track);
@@ -195,7 +195,10 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   seekTo: (time) => set({ seekPosition: time, currentTime: time }),
   clearSeekPosition: () => set({ seekPosition: null }),
 
-  setVolume: (volume) => set({ volume }),
+  setVolume: (volume) => {
+    localStorage.setItem('voyo-volume', String(volume));
+    set({ volume });
+  },
 
   nextTrack: () => {
     const state = get();
@@ -304,6 +307,11 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   // Queue Actions
   addToQueue: (track, position) => {
     set((state) => {
+      // FIX 4: Duplicate detection
+      if (state.queue.some(q => q.track.id === track.id)) {
+        return state; // Don't add duplicate
+      }
+
       const newItem: QueueItem = {
         track,
         addedAt: new Date().toISOString(),
@@ -313,7 +321,6 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       // INSTANT PLAYBACK: Warm up the track for streaming
       if (track.trackId) {
         prefetchTrack(track.trackId);
-        console.log(`[Queue] Track ready: ${track.title}`);
       }
 
       if (position !== undefined) {
@@ -524,7 +531,6 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       }
 
       set({ networkQuality: quality, streamQuality });
-      console.log(`[Network] Detected: ${quality}, Stream quality: ${streamQuality}`);
 
       // Listen for changes
       connection.addEventListener?.('change', () => {

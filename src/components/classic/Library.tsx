@@ -108,7 +108,6 @@ const SongRow = ({
         }, 30000);
       }
     } catch (error) {
-      console.error('[Teaser] Failed to play preview:', error);
       setTeaserState('idle');
     }
   };

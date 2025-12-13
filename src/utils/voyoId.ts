@@ -39,7 +39,6 @@ export function decodeVoyoId(voyoId: string): string {
   try {
     return atob(base64);
   } catch (err) {
-    console.error('Failed to decode VOYO ID:', voyoId, err);
     throw new Error('Failed to decode VOYO ID');
   }
 }

@@ -70,6 +70,7 @@ class AudioEngine {
 
   // Preload cache - stores blob URLs for preloaded tracks
   private preloadCache: Map<string, string> = new Map();
+  private readonly MAX_CACHE_SIZE = 10;  // LRU cache limit
 
   // Prefetch tracking
   private activePrefetch: Map<string, PrefetchStatus> = new Map();
@@ -79,11 +80,7 @@ class AudioEngine {
   private static instance: AudioEngine | null = null;
 
   private constructor() {
-    console.log('[AudioEngine] Initialized with:', {
-      bufferTarget: this.BUFFER_TARGET,
-      emergencyThreshold: this.EMERGENCY_THRESHOLD,
-      prefetchProgress: this.PREFETCH_PROGRESS,
-    });
+    // Audio engine initialized
   }
 
   static getInstance(): AudioEngine {
@@ -188,7 +185,6 @@ class AudioEngine {
       this.networkStats.speed = Math.round(totalSpeed / count);
       this.networkStats.lastMeasured = now;
 
-      console.log('[AudioEngine] Network speed updated:', this.networkStats.speed, 'kbps');
     }
   }
 
@@ -238,17 +234,14 @@ class AudioEngine {
   ): Promise<void> {
     // Check if already cached
     if (this.preloadCache.has(trackId)) {
-      console.log('[AudioEngine] Track already cached:', trackId);
       return;
     }
 
     // Check if already loading
     if (this.activePrefetch.has(trackId)) {
-      console.log('[AudioEngine] Track already loading:', trackId);
       return;
     }
 
-    console.log('[AudioEngine] Starting preload for:', trackId);
 
     const prefetchStatus: PrefetchStatus = {
       trackId,
@@ -307,8 +300,20 @@ class AudioEngine {
       const blob = new Blob(chunks, { type: 'audio/mpeg' });
       const blobUrl = URL.createObjectURL(blob);
 
-      // Cache the blob URL
+      // Cache the blob URL with LRU eviction
       this.preloadCache.set(trackId, blobUrl);
+
+      // LRU eviction: if cache exceeds limit, remove oldest entry
+      if (this.preloadCache.size > this.MAX_CACHE_SIZE) {
+        const oldestKey = this.preloadCache.keys().next().value;
+        if (oldestKey) {
+          const oldestUrl = this.preloadCache.get(oldestKey);
+          if (oldestUrl) {
+            URL.revokeObjectURL(oldestUrl);
+          }
+          this.preloadCache.delete(oldestKey);
+        }
+      }
 
       const duration = Date.now() - startTime;
 
@@ -319,18 +324,10 @@ class AudioEngine {
       prefetchStatus.progress = 100;
       prefetchStatus.endTime = Date.now();
 
-      console.log('[AudioEngine] Preload complete:', trackId, {
-        bytes: receivedBytes,
-        duration: `${duration}ms`,
-        speed: `${Math.round((receivedBytes / duration) * 8)} kbps`,
-      });
-
     } catch (error: any) {
       if (error.name === 'AbortError') {
-        console.log('[AudioEngine] Preload aborted:', trackId);
         prefetchStatus.status = 'pending';
       } else {
-        console.error('[AudioEngine] Preload failed:', trackId, error);
         prefetchStatus.status = 'failed';
       }
 
@@ -392,7 +389,6 @@ class AudioEngine {
 
     this.preloadCache.clear();
     this.activePrefetch.clear();
-    console.log('[AudioEngine] All cache cleared');
   }
 
   /**

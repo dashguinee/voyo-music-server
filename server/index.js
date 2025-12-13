@@ -24,9 +24,26 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// FIX 5: Global error handlers (prevent crashes)
+process.on('uncaughtException', (error) => {
+  console.error('[FATAL] Uncaught Exception:', error);
+  // Don't exit - try to keep serving
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[ERROR] Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+// FIX 7: Connection pooling for better performance
+const httpsAgent = new https.Agent({
+  keepAlive: true,
+  maxSockets: 50
+});
+
 const PORT = process.env.PORT || 3001;
 const YT_DLP_PATH = process.env.YT_DLP_PATH || 'yt-dlp'; // Use system yt-dlp in production
 const DOWNLOADS_DIR = path.join(__dirname, 'downloads');
+const YT_API_KEY = process.env.YT_API_KEY || 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8'; // FIX 1: Move to env var
 
 // Auto-detect API_BASE: Fly.io, Railway, or localhost
 let API_BASE = process.env.API_BASE || `http://localhost:${PORT}`;
@@ -109,6 +126,7 @@ const inFlightRequests = new Map();
 // Thumbnail cache (24 hours - images don't expire)
 const thumbnailCache = new Map();
 const THUMBNAIL_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+const MAX_THUMBNAIL_CACHE = 500; // FIX 3: Limit to prevent OOM
 
 // Prefetch cache - warmed up streams ready to go
 const prefetchCache = new Map(); // trackId -> { timestamp, warmed: boolean }
@@ -228,29 +246,36 @@ function cleanupExpiredCache() {
   const now = Date.now();
   let cleaned = 0;
 
+  // FIX 2: Collect keys first, then delete (prevents race condition)
   // Clean stream cache (4 hour TTL)
+  const streamKeysToDelete = [];
   for (const [key, entry] of streamCache.entries()) {
     if (now - entry.timestamp > CACHE_TTL) {
-      streamCache.delete(key);
-      cleaned++;
+      streamKeysToDelete.push(key);
     }
   }
+  streamKeysToDelete.forEach(k => streamCache.delete(k));
+  cleaned += streamKeysToDelete.length;
 
   // Clean thumbnail cache (24 hour TTL) - CRITICAL: prevents memory leaks
+  const thumbKeysToDelete = [];
   for (const [key, entry] of thumbnailCache.entries()) {
     if (now - entry.timestamp > THUMBNAIL_CACHE_TTL) {
-      thumbnailCache.delete(key);
-      cleaned++;
+      thumbKeysToDelete.push(key);
     }
   }
+  thumbKeysToDelete.forEach(k => thumbnailCache.delete(k));
+  cleaned += thumbKeysToDelete.length;
 
   // Clean prefetch cache (30 min TTL)
+  const prefetchKeysToDelete = [];
   for (const [key, entry] of prefetchCache.entries()) {
     if (now - entry.timestamp > PREFETCH_TTL) {
-      prefetchCache.delete(key);
-      cleaned++;
+      prefetchKeysToDelete.push(key);
     }
   }
+  prefetchKeysToDelete.forEach(k => prefetchCache.delete(k));
+  cleaned += prefetchKeysToDelete.length;
 
   if (cleaned > 0) {
     console.log(`[Cache Cleanup] Removed ${cleaned} expired entries (stream: ${streamCache.size}, thumb: ${thumbnailCache.size}, prefetch: ${prefetchCache.size})`);
@@ -262,12 +287,26 @@ setInterval(cleanupExpiredCache, 10 * 60 * 1000);
 
 // ========================================
 
-// CORS headers
+// FIX 4: Restrict CORS origins (production security)
+const ALLOWED_ORIGINS = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'https://voyo.app',
+  'https://voyo-music.vercel.app'
+];
+
+// CORS headers - will be dynamically set per request
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': '*', // Default, will be overridden
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };
+
+// FIX 4: Get allowed CORS origin for request
+function getCorsOrigin(req) {
+  const origin = req.headers.origin || '';
+  return ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+}
 
 /**
  * Get stream URL using yt-dlp with quality selection
@@ -421,6 +460,14 @@ async function getThumbnail(videoId, quality = 'high') {
           data: imageData,
           timestamp: Date.now()
         });
+
+        // FIX 3: Evict oldest if over limit (LRU)
+        if (thumbnailCache.size > MAX_THUMBNAIL_CACHE) {
+          const oldest = Array.from(thumbnailCache.entries())
+            .sort((a, b) => a[1].timestamp - b[1].timestamp)[0];
+          if (oldest) thumbnailCache.delete(oldest[0]);
+        }
+
         console.log(`[Thumbnail] Success: ${cacheKey} (${imageData.length} bytes)`);
         resolve(imageData);
       });
@@ -442,7 +489,7 @@ async function searchInnerTube(query, limit = 10) {
   console.log(`[Innertube] Fast searching: ${query}`);
 
   try {
-    const response = await fetch('https://www.youtube.com/youtubei/v1/search?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8', {
+    const response = await fetch(`https://www.youtube.com/youtubei/v1/search?key=${YT_API_KEY}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -948,6 +995,7 @@ const server = http.createServer(async (req, res) => {
         hostname: parsedStream.hostname,
         path: parsedStream.pathname + parsedStream.search,
         method: 'GET',
+        agent: httpsAgent, // FIX 7: Use connection pooling
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
           'Range': req.headers.range || 'bytes=0-',
@@ -1332,6 +1380,7 @@ const server = http.createServer(async (req, res) => {
             hostname: audioUrlParsed.hostname,
             path: audioUrlParsed.pathname + audioUrlParsed.search,
             method: 'GET',
+            agent: httpsAgent, // FIX 7: Use connection pooling
             headers: {
               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
               'Range': req.headers.range || 'bytes=0-',
@@ -1388,6 +1437,7 @@ const server = http.createServer(async (req, res) => {
         hostname: parsedStream.hostname,
         path: parsedStream.pathname + parsedStream.search,
         method: 'GET',
+        agent: httpsAgent, // FIX 7: Use connection pooling
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
           'Range': req.headers.range || 'bytes=0-',

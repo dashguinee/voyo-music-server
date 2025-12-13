@@ -34,10 +34,8 @@ export function unlockMobileAudio(): Promise<void> {
       source.start(0);
 
       audioUnlocked = true;
-      console.log('[MobileAudio] Audio pipeline unlocked');
       resolve();
     } catch (e) {
-      console.warn('[MobileAudio] Unlock failed:', e);
       audioUnlocked = true;
       resolve();
     }

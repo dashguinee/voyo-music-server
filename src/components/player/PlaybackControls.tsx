@@ -48,10 +48,10 @@ export const PlaybackControls: React.FC<PlaybackControlsProps> = ({
         borderRadius: '12px',
       }}
     >
-      {/* Shuffle Button */}
+      {/* Shuffle Button - FIX 2: Touch target 44px */}
       <button
         onClick={handleShuffleClick}
-        className="group relative flex items-center gap-2 transition-all duration-300"
+        className="group relative flex items-center gap-2 transition-all duration-300 min-h-[44px] min-w-[44px] justify-center"
         style={{
           color: shuffleMode ? '#a855f7' : '#6b7280',
           filter: shuffleMode ? 'drop-shadow(0 0 8px rgba(168, 85, 247, 0.5))' : 'none',
@@ -175,8 +175,9 @@ export const PlaybackControls: React.FC<PlaybackControlsProps> = ({
   );
 };
 
-// Add custom CSS animation for shuffle roulette spin
+// FIX 6: Add custom CSS animation for shuffle roulette spin with cleanup
 const style = document.createElement('style');
+style.setAttribute('data-component', 'playback-controls-roulette');
 style.textContent = `
   @keyframes spin-roulette {
     0% {
@@ -190,4 +191,8 @@ style.textContent = `
     }
   }
 `;
-document.head.appendChild(style);
+
+// Only append if not already present
+if (!document.querySelector('style[data-component="playback-controls-roulette"]')) {
+  document.head.appendChild(style);
+}

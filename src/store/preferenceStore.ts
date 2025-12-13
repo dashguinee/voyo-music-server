@@ -123,7 +123,6 @@ export const usePreferenceStore = create<PreferenceStore>()(
       // Start tracking a listen session
       startListenSession: (trackId: string) => {
         const now = new Date().toISOString();
-        console.log('[Prefs] Started session:', trackId);
 
         set({
           currentSession: {
@@ -145,14 +144,6 @@ export const usePreferenceStore = create<PreferenceStore>()(
         const now = new Date().toISOString();
         const completed = duration >= currentSession.duration * 0.8; // 80% threshold
         const skipped = duration < currentSession.duration * 0.2; // 20% threshold
-
-        console.log('[Prefs] Ended session:', {
-          trackId: currentSession.trackId,
-          duration,
-          completed,
-          skipped,
-          reactions,
-        });
 
         // Update session
         set({
@@ -203,11 +194,6 @@ export const usePreferenceStore = create<PreferenceStore>()(
                 createdAt: now,
               };
 
-          console.log('[Prefs] Skip recorded:', trackId, {
-            skips: updated.skips,
-            totalListens: updated.totalListens,
-          });
-
           return {
             trackPreferences: {
               ...state.trackPreferences,
@@ -244,12 +230,6 @@ export const usePreferenceStore = create<PreferenceStore>()(
                 createdAt: now,
               };
 
-          console.log('[Prefs] Completion recorded:', trackId, {
-            completions: updated.completions,
-            totalListens: updated.totalListens,
-            completionRate: calculateCompletionRate(updated).toFixed(1) + '%',
-          });
-
           return {
             trackPreferences: {
               ...state.trackPreferences,
@@ -269,10 +249,6 @@ export const usePreferenceStore = create<PreferenceStore>()(
             ...existing,
             reactions: existing.reactions + 1,
           };
-
-          console.log('[Prefs] Reaction recorded:', trackId, {
-            reactions: updated.reactions,
-          });
 
           // Also update current session if it matches
           const updatedSession = state.currentSession?.trackId === trackId && state.currentSession
@@ -317,7 +293,6 @@ export const usePreferenceStore = create<PreferenceStore>()(
                 createdAt: now,
               };
 
-          console.log('[Prefs] Explicit like set:', trackId, liked);
 
           return {
             trackPreferences: {
@@ -359,7 +334,6 @@ export const usePreferenceStore = create<PreferenceStore>()(
 
       // Clear all preferences (reset)
       clearPreferences: () => {
-        console.log('[Prefs] Clearing all preferences');
         set({
           trackPreferences: {},
           artistPreferences: {},

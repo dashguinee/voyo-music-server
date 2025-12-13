@@ -480,14 +480,17 @@ const PortalBelt = ({ tracks, onTap, onTeaser, playedTrackIds, type }: PortalBel
   const cardWidth = 72; // 64px + gap
   const totalWidth = tracks.length * cardWidth;
 
-  // Auto-scroll animation
+  // Auto-scroll animation - FIX 1: Bulletproof cleanup
   useEffect(() => {
     if (tracks.length === 0) return;
 
     let animationId: number;
     let lastTime = 0;
+    let mounted = true; // Guard for unmount
 
     const animate = (time: number) => {
+      if (!mounted) return; // Early exit if unmounted
+
       if (!isPaused && lastTime) {
         const delta = time - lastTime;
         setOffset(prev => {
@@ -503,7 +506,11 @@ const PortalBelt = ({ tracks, onTap, onTeaser, playedTrackIds, type }: PortalBel
     };
 
     animationId = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(animationId);
+
+    return () => {
+      mounted = false; // Stop animation loop
+      cancelAnimationFrame(animationId);
+    };
   }, [tracks.length, isPaused, speed, totalWidth]);
 
   // Render cards with wrap-around positioning
@@ -1001,9 +1008,9 @@ const ReactionBar = ({
 
   return (
     <div className="flex gap-3 mb-4 z-30 relative">
-      {/* OYO */}
+      {/* OYO - FIX 2: Touch target 44px minimum */}
       <motion.button
-        className="h-8 px-4 rounded-full bg-[#1e1b4b] border border-indigo-500/30 text-indigo-300 text-xs font-bold flex items-center gap-2 hover:bg-indigo-900/40 transition-colors relative"
+        className="min-h-[44px] h-11 px-4 rounded-full bg-[#1e1b4b] border border-indigo-500/30 text-indigo-300 text-xs font-bold flex items-center gap-2 hover:bg-indigo-900/40 transition-colors relative"
         style={{
           scale: getScale('oyo'),
           boxShadow: getGlow('oyo', '0 0 15px rgba(99,102,241,0.3)')
@@ -1026,9 +1033,9 @@ const ReactionBar = ({
         )}
       </motion.button>
 
-      {/* OYÉ */}
+      {/* OYÉ - FIX 2: Touch target 44px minimum */}
       <motion.button
-        className="h-8 px-4 rounded-full bg-white/5 border border-white/10 text-gray-300 text-xs font-bold hover:bg-white/10 transition-colors relative"
+        className="min-h-[44px] h-11 px-4 rounded-full bg-white/5 border border-white/10 text-gray-300 text-xs font-bold hover:bg-white/10 transition-colors relative"
         style={{
           scale: getScale('oye'),
           boxShadow: isCharging('oye') ? `0 0 ${15 + currentMultiplier * 5}px rgba(168,85,247,${0.3 + currentMultiplier * 0.1})` : ''
@@ -1051,9 +1058,9 @@ const ReactionBar = ({
         )}
       </motion.button>
 
-      {/* Wazzguán */}
+      {/* Wazzguán - FIX 2: Touch target 44px minimum */}
       <motion.button
-        className="h-8 px-4 rounded-full bg-white/5 border border-white/10 text-gray-300 text-xs font-bold hover:bg-white/10 transition-colors relative"
+        className="min-h-[44px] h-11 px-4 rounded-full bg-white/5 border border-white/10 text-gray-300 text-xs font-bold hover:bg-white/10 transition-colors relative"
         style={{
           scale: getScale('wazzguan'),
           boxShadow: isCharging('wazzguan') ? `0 0 ${15 + currentMultiplier * 5}px rgba(34,197,94,${0.3 + currentMultiplier * 0.1})` : ''
@@ -1076,9 +1083,9 @@ const ReactionBar = ({
         )}
       </motion.button>
 
-      {/* Fire */}
+      {/* Fire - FIX 2: Touch target 44px minimum */}
       <motion.button
-        className="h-8 px-4 rounded-full bg-[#431407] border border-orange-500/30 text-orange-300 text-xs font-bold flex items-center gap-2 hover:bg-orange-900/40 transition-colors relative"
+        className="min-h-[44px] h-11 px-4 rounded-full bg-[#431407] border border-orange-500/30 text-orange-300 text-xs font-bold flex items-center gap-2 hover:bg-orange-900/40 transition-colors relative"
         style={{
           scale: getScale('fire'),
           boxShadow: getGlow('fire', '0 0 15px rgba(249,115,22,0.2)')
@@ -1334,7 +1341,10 @@ export const VoyoPortraitPlayer = ({
   }, []);
 
   return (
-    <div className="relative h-full w-full bg-[#020203] text-white font-sans overflow-hidden flex flex-col">
+    <div
+      className="relative w-full bg-[#020203] text-white font-sans overflow-hidden flex flex-col"
+      style={{ height: 'calc(100vh - env(safe-area-inset-bottom))' }}
+    >
 
       {/* FULLSCREEN BACKGROUND - Album art with dark overlay for floating effect */}
       {backdropEnabled && (
@@ -1416,8 +1426,8 @@ export const VoyoPortraitPlayer = ({
         )}
       </AnimatePresence>
 
-      {/* --- TOP SECTION (History/Queue) --- */}
-      <div className="pt-8 px-6 flex justify-between items-start z-20 h-[18%]">
+      {/* --- TOP SECTION (History/Queue) - FIX 4: Safe area insets --- */}
+      <div className="px-6 flex justify-between items-start z-20 h-[18%]" style={{ paddingTop: 'max(2rem, env(safe-area-inset-top))' }}>
 
         {/* Left: History (played tracks with overlay) */}
         <div className="flex gap-3">
@@ -1547,8 +1557,11 @@ export const VoyoPortraitPlayer = ({
         <ReactionBar onReaction={handleReaction} />
       </div>
 
-      {/* --- BOTTOM SECTION: DASHBOARD --- */}
-      <div className="h-[40%] w-full bg-[#08080a]/95 backdrop-blur-2xl rounded-t-[2.5rem] border-t border-white/5 relative z-40 flex flex-col pt-5 shadow-[0_-20px_60px_-10px_rgba(0,0,0,1)]">
+      {/* --- BOTTOM SECTION: DASHBOARD - FIX 4: Safe area insets --- */}
+      <div
+        className="h-[40%] w-full bg-[#08080a]/95 backdrop-blur-2xl rounded-t-[2.5rem] border-t border-white/5 relative z-40 flex flex-col pt-5 shadow-[0_-20px_60px_-10px_rgba(0,0,0,1)]"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
 
         {/* Stream Labels */}
         <div className="flex justify-between px-6 mb-3">
