@@ -19,7 +19,15 @@ const QUALITY_MAP: Record<ThumbnailQuality, string> = {
  * @param quality - Thumbnail quality level
  */
 export const getThumb = (trackId: string, quality: ThumbnailQuality = 'high'): string => {
-  return `https://i.ytimg.com/vi/${trackId}/${QUALITY_MAP[quality]}.jpg`;
+  // Decode VOYO ID if needed
+  let ytId = trackId;
+  if (trackId.startsWith('vyo_')) {
+    const encoded = trackId.substring(4);
+    let base64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+    while (base64.length % 4 !== 0) base64 += '=';
+    try { ytId = atob(base64); } catch { ytId = trackId; }
+  }
+  return `https://i.ytimg.com/vi/${ytId}/${QUALITY_MAP[quality]}.jpg`;
 };
 
 /**

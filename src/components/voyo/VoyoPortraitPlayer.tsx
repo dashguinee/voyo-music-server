@@ -43,7 +43,7 @@ const FullscreenBackground = ({ trackId, isVideoMode }: { trackId?: string; isVi
         key={trackId} // Re-animate on track change
       >
         <SmartImage
-          src={getThumbnailUrl(trackId, 'max')}
+          src={getThumbnailUrl(trackId, 'high')}
           alt="Background"
           className="w-full h-full object-cover blur-2xl scale-110"
           trackId={trackId}
@@ -1004,7 +1004,7 @@ const FullscreenVideoPlayer = ({
       {/* Placeholder - in production this would be a YouTube embed */}
       <div className="relative w-full h-full max-w-4xl mx-auto">
         <SmartImage
-          src={getTrackThumbnailUrl(track, 'max')}
+          src={getTrackThumbnailUrl(track, 'high')}
           alt={track.title}
           className="w-full h-full object-contain"
           trackId={track.trackId}
