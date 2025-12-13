@@ -437,6 +437,57 @@ body {
   will-change: transform;
 }
 
+/* Custom Backdrop Animations */
+@keyframes backdrop-zoom {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+@keyframes backdrop-pan {
+  0% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(-5%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+.animate-backdrop-zoom {
+  animation: backdrop-zoom 20s ease-in-out infinite;
+  will-change: transform;
+}
+
+.animate-backdrop-pan {
+  animation: backdrop-pan 30s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* Slider thumb styling for custom backdrop settings */
+input[type="range"].slider-thumb::-webkit-slider-thumb {
+  width: 16px;
+  height: 16px;
+  background: var(--voyo-purple);
+  cursor: pointer;
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(139, 92, 246, 0.8);
+}
+
+input[type="range"].slider-thumb::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background: var(--voyo-purple);
+  cursor: pointer;
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(139, 92, 246, 0.8);
+}
+
 /* ============================================ */
 /* REDUCED MOTION SUPPORT
 /* Respects user's accessibility preferences
@@ -459,6 +510,8 @@ body {
   .animate-spin-fast,
   .animate-ambient-breathe,
   .animate-ambient-secondary,
+  .animate-backdrop-zoom,
+  .animate-backdrop-pan,
   .animate-float,
   .pulse-glow,
   .playing-indicator {
