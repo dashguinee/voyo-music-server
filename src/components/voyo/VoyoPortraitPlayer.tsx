@@ -565,68 +565,18 @@ const PortalBelt = ({ tracks, onTap, onTeaser, playedTrackIds, type }: PortalBel
   };
 
   return (
-    <div className="flex-1 flex items-center">
-      {/* LEFT: Portal label (where cards exit) */}
-      {isHot && (
-        <div className="flex-shrink-0 w-10 h-20 flex items-center justify-center relative">
-          <div
-            className="absolute inset-0 rounded-r-xl"
-            style={{
-              background: 'linear-gradient(to right, rgba(239,68,68,0.5), rgba(239,68,68,0.1))',
-              boxShadow: 'inset 0 0 20px rgba(239,68,68,0.3)',
-            }}
-          />
-          <span className="text-[9px] font-bold text-red-400 tracking-wider -rotate-90 whitespace-nowrap relative z-10">
-            HOT
-          </span>
-        </div>
-      )}
-
-      {/* Cards belt */}
-      <div
-        ref={containerRef}
-        className="flex-1 relative h-20 overflow-hidden rounded-xl"
-        onMouseEnter={() => setIsPaused(true)}
-        onMouseLeave={() => setIsPaused(false)}
-        onTouchStart={() => setIsPaused(true)}
-        onTouchEnd={() => setTimeout(() => setIsPaused(false), 2000)}
-        style={{
-          background: isHot
-            ? 'linear-gradient(90deg, rgba(239,68,68,0.1) 0%, transparent 20%, transparent 80%, rgba(239,68,68,0.05) 100%)'
-            : 'linear-gradient(90deg, rgba(59,130,246,0.05) 0%, transparent 20%, transparent 80%, rgba(59,130,246,0.1) 100%)',
-        }}
-      >
-        {/* Cards container */}
-        <div className="absolute inset-0">
-          {renderCards()}
-        </div>
-
-        {/* Left fade (exit portal) */}
-        <div
-          className="absolute left-0 top-0 bottom-0 w-6 pointer-events-none z-10"
-          style={{
-            background: isHot
-              ? 'linear-gradient(to right, rgba(239,68,68,0.6), transparent)'
-              : 'linear-gradient(to right, rgba(59,130,246,0.6), transparent)',
-          }}
-        />
+    <div
+      ref={containerRef}
+      className="flex-1 relative h-20 overflow-hidden"
+      onMouseEnter={() => setIsPaused(true)}
+      onMouseLeave={() => setIsPaused(false)}
+      onTouchStart={() => setIsPaused(true)}
+      onTouchEnd={() => setTimeout(() => setIsPaused(false), 2000)}
+    >
+      {/* Cards container */}
+      <div className="absolute inset-0">
+        {renderCards()}
       </div>
-
-      {/* RIGHT: Portal label (where cards enter - for Discovery) */}
-      {!isHot && (
-        <div className="flex-shrink-0 w-10 h-20 flex items-center justify-center relative">
-          <div
-            className="absolute inset-0 rounded-l-xl"
-            style={{
-              background: 'linear-gradient(to left, rgba(59,130,246,0.5), rgba(59,130,246,0.1))',
-              boxShadow: 'inset 0 0 20px rgba(59,130,246,0.3)',
-            }}
-          />
-          <span className="text-[9px] font-bold text-blue-400 tracking-wider rotate-90 whitespace-nowrap relative z-10">
-            DISCOVER
-          </span>
-        </div>
-      )}
     </div>
   );
 };
@@ -1608,10 +1558,16 @@ export const VoyoPortraitPlayer = ({
           <span className="text-[10px] font-bold tracking-[0.2em] text-cyan-500 uppercase">DISCOVERY</span>
         </div>
 
-        {/* Horizontal Scroll Deck */}
-        <div className="flex items-center relative px-2">
+        {/* Horizontal Scroll Deck with Portal Lines */}
+        <div className="flex items-center relative">
 
-          {/* LEFT: HOT Portal Belt (red glow, scrolls left) */}
+          {/* LEFT EDGE: Red Portal Line (cards exit here) */}
+          <div className="absolute left-0 top-0 bottom-0 w-1 z-20">
+            <div className="h-full w-full bg-gradient-to-b from-transparent via-red-500 to-transparent opacity-80" />
+            <div className="absolute inset-0 bg-red-500 blur-md opacity-50" />
+          </div>
+
+          {/* HOT Belt */}
           <PortalBelt
             tracks={hotTracks.slice(0, 8)}
             onTap={setCurrentTrack}
@@ -1620,21 +1576,38 @@ export const VoyoPortraitPlayer = ({
             type="hot"
           />
 
-          {/* CENTER: VOYO FEED Button */}
-          <div className="flex-shrink-0 px-3 relative">
-            <div className="w-[1px] h-20 absolute left-0 top-1/2 -translate-y-1/2 bg-gradient-to-b from-transparent via-white/10 to-transparent" />
-            <div className="w-[1px] h-20 absolute right-0 top-1/2 -translate-y-1/2 bg-gradient-to-b from-transparent via-white/10 to-transparent" />
+          {/* CENTER: VOYO FEED Button with Dual Glow */}
+          <div className="flex-shrink-0 px-2 relative">
+            {/* Left glow (red) */}
+            <div
+              className="absolute left-0 top-1/2 -translate-y-1/2 w-10 h-16 -translate-x-2"
+              style={{
+                background: 'radial-gradient(ellipse at right center, rgba(239,68,68,0.4) 0%, transparent 70%)',
+              }}
+            />
+            {/* Right glow (blue) */}
+            <div
+              className="absolute right-0 top-1/2 -translate-y-1/2 w-10 h-16 translate-x-2"
+              style={{
+                background: 'radial-gradient(ellipse at left center, rgba(59,130,246,0.4) 0%, transparent 70%)',
+              }}
+            />
             <motion.button
               onClick={onVoyoFeed}
               whileTap={{ scale: 0.9 }}
-              className="w-16 h-16 rounded-full bg-gradient-to-b from-[#1e1b4b] to-[#0f0f16] border border-indigo-500/30 flex flex-col items-center justify-center gap-0.5 group shadow-[0_0_25px_rgba(99,102,241,0.15)]"
+              className="relative w-14 h-14 rounded-full flex flex-col items-center justify-center gap-0.5 group"
+              style={{
+                background: 'linear-gradient(135deg, rgba(239,68,68,0.2) 0%, rgba(30,27,75,1) 50%, rgba(59,130,246,0.2) 100%)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                boxShadow: '-4px 0 15px rgba(239,68,68,0.3), 4px 0 15px rgba(59,130,246,0.3)',
+              }}
             >
-              <span className="text-[9px] font-bold text-indigo-400 tracking-widest">VOYO</span>
-              <span className="text-[7px] font-mono text-gray-500 tracking-widest">FEED</span>
+              <span className="text-[9px] font-bold text-white/90 tracking-widest">VOYO</span>
+              <span className="text-[6px] font-mono text-gray-400 tracking-widest">FEED</span>
             </motion.button>
           </div>
 
-          {/* RIGHT: DISCOVERY Portal Belt (blue glow, scrolls right) */}
+          {/* DISCOVERY Belt */}
           <PortalBelt
             tracks={discoverTracks.slice(0, 8)}
             onTap={setCurrentTrack}
@@ -1642,6 +1615,12 @@ export const VoyoPortraitPlayer = ({
             playedTrackIds={playedTrackIds}
             type="discovery"
           />
+
+          {/* RIGHT EDGE: Blue Portal Line (cards enter here) */}
+          <div className="absolute right-0 top-0 bottom-0 w-1 z-20">
+            <div className="h-full w-full bg-gradient-to-b from-transparent via-blue-500 to-transparent opacity-80" />
+            <div className="absolute inset-0 bg-blue-500 blur-md opacity-50" />
+          </div>
         </div>
 
         {/* PLAYLIST RECOMMENDATION BAR */}
