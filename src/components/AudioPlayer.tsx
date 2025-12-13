@@ -111,11 +111,11 @@ export const AudioPlayer = () => {
       },
       events: {
         onReady: (event: any) => {
-          event.target.setVolume(volume);
+          // FIX: Start at volume 0 to prevent click/pop, then fade in
+          event.target.setVolume(0);
           if (isPlaying) {
             event.target.playVideo();
           }
-          setBufferHealth(100, 'healthy');
         },
         onStateChange: (event: any) => {
           const state = event.data;
@@ -123,6 +123,23 @@ export const AudioPlayer = () => {
             nextTrack();
           } else if (state === 1) { // PLAYING
             setBufferHealth(100, 'healthy');
+            // FIX: Smooth volume fade-in to prevent click sound
+            const player = playerRef.current;
+            if (player) {
+              let currentVol = 0;
+              const targetVol = volume;
+              const fadeInterval = setInterval(() => {
+                currentVol = Math.min(currentVol + 10, targetVol);
+                try {
+                  player.setVolume(currentVol);
+                } catch (e) {
+                  clearInterval(fadeInterval);
+                }
+                if (currentVol >= targetVol) {
+                  clearInterval(fadeInterval);
+                }
+              }, 30); // 30ms intervals = ~300ms fade-in
+            }
           } else if (state === 3) { // BUFFERING
             setBufferHealth(50, 'warning');
           }
@@ -180,13 +197,28 @@ export const AudioPlayer = () => {
             }
             cachedUrlRef.current = cachedUrl;
 
+            // FIX: Start at volume 0 to prevent click/pop
+            audioRef.current.volume = 0;
             audioRef.current.src = cachedUrl;
             audioRef.current.load();
 
-            audioRef.current.oncanplay = () => {
-              if (isPlaying) {
-                audioRef.current?.play().catch(err => {
-                });
+            // FIX: Use oncanplaythrough for smoother start
+            audioRef.current.oncanplaythrough = () => {
+              if (isPlaying && audioRef.current) {
+                audioRef.current.play().then(() => {
+                  // Smooth volume fade-in
+                  let currentVol = 0;
+                  const targetVol = volume / 100;
+                  const fadeInterval = setInterval(() => {
+                    currentVol = Math.min(currentVol + 0.1, targetVol);
+                    if (audioRef.current) {
+                      audioRef.current.volume = currentVol;
+                    }
+                    if (currentVol >= targetVol) {
+                      clearInterval(fadeInterval);
+                    }
+                  }, 30);
+                }).catch(() => {});
               }
             };
           }
