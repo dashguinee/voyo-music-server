@@ -459,6 +459,7 @@ const DashPlaceholder = ({ onClick, label }: { onClick?: () => void; label: stri
 // ============================================
 // PORTAL BELT - Watch dial style infinite loop
 // Cards wrap around like snake game walls
+// Direction: INWARD toward VOYO (center)
 // ============================================
 interface PortalBeltProps {
   tracks: Track[];
@@ -466,30 +467,33 @@ interface PortalBeltProps {
   onTeaser?: (track: Track) => void;
   playedTrackIds: Set<string>;
   type: 'hot' | 'discovery';
+  isActive: boolean; // Controls if belt is scrolling
 }
 
-const PortalBelt = ({ tracks, onTap, onTeaser, playedTrackIds, type }: PortalBeltProps) => {
+const PortalBelt = ({ tracks, onTap, onTeaser, playedTrackIds, type, isActive }: PortalBeltProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [offset, setOffset] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
 
   const isHot = type === 'hot';
-  const speed = -0.4; // Both scroll left (right to left) - cards disappear into left portal
+  // INWARD direction: HOT scrolls RIGHT (+), DISCOVERY scrolls LEFT (-)
+  // Both flow toward center (VOYO button)
+  const speed = isHot ? 0.4 : -0.4;
 
   // Card dimensions
   const cardWidth = 72; // 64px + gap
   const totalWidth = tracks.length * cardWidth;
 
-  // Auto-scroll animation - FIX 1: Bulletproof cleanup
+  // Auto-scroll animation - Only when isActive AND not paused
   useEffect(() => {
-    if (tracks.length === 0) return;
+    if (tracks.length === 0 || !isActive) return;
 
     let animationId: number;
     let lastTime = 0;
-    let mounted = true; // Guard for unmount
+    let mounted = true;
 
     const animate = (time: number) => {
-      if (!mounted) return; // Early exit if unmounted
+      if (!mounted) return;
 
       if (!isPaused && lastTime) {
         const delta = time - lastTime;
@@ -508,10 +512,10 @@ const PortalBelt = ({ tracks, onTap, onTeaser, playedTrackIds, type }: PortalBel
     animationId = requestAnimationFrame(animate);
 
     return () => {
-      mounted = false; // Stop animation loop
+      mounted = false;
       cancelAnimationFrame(animationId);
     };
-  }, [tracks.length, isPaused, speed, totalWidth]);
+  }, [tracks.length, isPaused, speed, totalWidth, isActive]);
 
   // Render cards with wrap-around positioning
   const renderCards = () => {
@@ -1222,6 +1226,10 @@ export const VoyoPortraitPlayer = ({
   // State for boost settings panel
   const [isBoostSettingsOpen, setIsBoostSettingsOpen] = useState(false);
 
+  // PORTAL BELT toggle state - tap HOT/DISCOVERY to activate scrolling
+  const [isHotBeltActive, setIsHotBeltActive] = useState(false);
+  const [isDiscoveryBeltActive, setIsDiscoveryBeltActive] = useState(false);
+
   // SCRUB STATE - Hold prev/next to scrub time
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [scrubDirection, setScrubDirection] = useState<'forward' | 'backward' | null>(null);
@@ -1563,12 +1571,32 @@ export const VoyoPortraitPlayer = ({
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
 
-        {/* Stream Labels */}
+        {/* Stream Labels - Tap to toggle belt scroll */}
         <div className="flex justify-between px-6 mb-3">
-          <span className="text-[10px] font-bold tracking-[0.2em] text-rose-500 uppercase flex items-center gap-1">
+          <motion.button
+            onClick={() => setIsHotBeltActive(prev => !prev)}
+            className="text-[10px] font-bold tracking-[0.2em] text-rose-500 uppercase flex items-center gap-1"
+            animate={isHotBeltActive ? {
+              opacity: [1, 0.5, 1],
+              transition: { duration: 2, repeat: Infinity, ease: 'easeInOut' }
+            } : { opacity: 1 }}
+            whileTap={{ scale: 0.95 }}
+          >
             <Flame size={10} /> HOT
-          </span>
-          <span className="text-[10px] font-bold tracking-[0.2em] text-cyan-500 uppercase">DISCOVERY</span>
+            {isHotBeltActive && <span className="text-[6px] text-rose-400/60 ml-1">ON</span>}
+          </motion.button>
+          <motion.button
+            onClick={() => setIsDiscoveryBeltActive(prev => !prev)}
+            className="text-[10px] font-bold tracking-[0.2em] text-cyan-500 uppercase flex items-center gap-1"
+            animate={isDiscoveryBeltActive ? {
+              opacity: [1, 0.5, 1],
+              transition: { duration: 2, repeat: Infinity, ease: 'easeInOut' }
+            } : { opacity: 1 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            DISCOVERY
+            {isDiscoveryBeltActive && <span className="text-[6px] text-cyan-400/60 ml-1">ON</span>}
+          </motion.button>
         </div>
 
         {/* Horizontal Scroll Deck - Two Separate Zones */}
@@ -1589,6 +1617,7 @@ export const VoyoPortraitPlayer = ({
               onTeaser={handleTeaser}
               playedTrackIds={playedTrackIds}
               type="hot"
+              isActive={isHotBeltActive}
             />
           </div>
 
@@ -1627,6 +1656,7 @@ export const VoyoPortraitPlayer = ({
               onTeaser={handleTeaser}
               playedTrackIds={playedTrackIds}
               type="discovery"
+              isActive={isDiscoveryBeltActive}
             />
 
             {/* Blue Portal Line (right edge of DISCOVERY zone) */}
