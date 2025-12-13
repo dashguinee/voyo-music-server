@@ -580,6 +580,11 @@ const PortalBelt = ({ tracks, onTap, onTeaser, playedTrackIds, type, isActive }:
   const [offset, setOffset] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
 
+  // Manual scroll state
+  const isDragging = useRef(false);
+  const dragStartX = useRef(0);
+  const dragStartOffset = useRef(0);
+
   const isHot = type === 'hot';
   // INWARD direction: HOT scrolls RIGHT (+), DISCOVERY scrolls LEFT (-)
   // Both flow toward center (VOYO button)
@@ -676,7 +681,7 @@ const PortalBelt = ({ tracks, onTap, onTeaser, playedTrackIds, type, isActive }:
           cards.push(
             <motion.div
               key={`${track.id}-${loop}-${i}`}
-              className="absolute top-0 bottom-0 flex items-center"
+              className="absolute top-0 bottom-0 flex items-center pointer-events-auto"
               style={{
                 left: x,
                 width: cardWidth,
@@ -699,17 +704,77 @@ const PortalBelt = ({ tracks, onTap, onTeaser, playedTrackIds, type, isActive }:
     return cards;
   };
 
+  // Manual scroll handlers - works when auto-scroll is paused
+  const handleDragStart = (clientX: number) => {
+    isDragging.current = true;
+    dragStartX.current = clientX;
+    dragStartOffset.current = offset;
+    setIsPaused(true);
+  };
+
+  const handleDragMove = (clientX: number) => {
+    if (!isDragging.current) return;
+    const delta = clientX - dragStartX.current;
+    let newOffset = dragStartOffset.current + delta;
+
+    // Wrap around for infinite scroll feel
+    while (newOffset <= -totalWidth) newOffset += totalWidth;
+    while (newOffset >= totalWidth) newOffset -= totalWidth;
+
+    setOffset(newOffset);
+  };
+
+  const handleDragEnd = () => {
+    isDragging.current = false;
+    // Keep paused for 2 seconds after drag ends to let user see position
+    setTimeout(() => setIsPaused(false), 2000);
+  };
+
+  // Mouse handlers
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    handleDragStart(e.clientX);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    handleDragMove(e.clientX);
+  };
+
+  const handleMouseUp = () => {
+    handleDragEnd();
+  };
+
+  // Touch handlers
+  const handleTouchStart = (e: React.TouchEvent) => {
+    handleDragStart(e.touches[0].clientX);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    handleDragMove(e.touches[0].clientX);
+  };
+
+  const handleTouchEnd = () => {
+    handleDragEnd();
+  };
+
   return (
     <div
       ref={containerRef}
-      className="flex-1 relative h-20 overflow-hidden"
-      onMouseEnter={() => setIsPaused(true)}
-      onMouseLeave={() => setIsPaused(false)}
-      onTouchStart={() => setIsPaused(true)}
-      onTouchEnd={() => setTimeout(() => setIsPaused(false), 2000)}
+      className="flex-1 relative h-20 overflow-hidden cursor-grab active:cursor-grabbing"
+      onMouseEnter={() => !isDragging.current && setIsPaused(true)}
+      onMouseLeave={() => {
+        if (!isDragging.current) setIsPaused(false);
+        handleDragEnd();
+      }}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
     >
       {/* Cards container */}
-      <div className="absolute inset-0">
+      <div className="absolute inset-0 pointer-events-none">
         {renderCards()}
       </div>
     </div>
