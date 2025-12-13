@@ -457,6 +457,83 @@ const DashPlaceholder = ({ onClick, label }: { onClick?: () => void; label: stri
 );
 
 // ============================================
+// INFINITE HORIZONTAL WHEEL
+// Seamlessly loops tracks for HOT/DISCOVERY
+// ============================================
+interface InfiniteWheelProps {
+  tracks: Track[];
+  onTap: (track: Track) => void;
+  onTeaser?: (track: Track) => void;
+  playedTrackIds: Set<string>;
+  direction?: 'left' | 'right';
+}
+
+const InfiniteWheel = ({ tracks, onTap, onTeaser, playedTrackIds, direction = 'left' }: InfiniteWheelProps) => {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [isHovered, setIsHovered] = useState(false);
+
+  // Duplicate tracks for seamless loop (3x for smooth infinite scroll)
+  const loopedTracks = [...tracks, ...tracks, ...tracks];
+
+  // Auto-scroll animation
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || tracks.length === 0) return;
+
+    // Calculate single set width
+    const cardWidth = 76; // 64px card + 12px gap
+    const singleSetWidth = tracks.length * cardWidth;
+
+    // Start in the middle set
+    el.scrollLeft = singleSetWidth;
+
+    let animationId: number;
+    let lastTime = 0;
+    const speed = direction === 'left' ? 0.5 : -0.5; // pixels per frame
+
+    const animate = (time: number) => {
+      if (!isHovered && lastTime) {
+        const delta = time - lastTime;
+        el.scrollLeft += speed * (delta / 16); // normalize to ~60fps
+
+        // Reset position for seamless loop
+        if (el.scrollLeft >= singleSetWidth * 2) {
+          el.scrollLeft = singleSetWidth;
+        } else if (el.scrollLeft <= 0) {
+          el.scrollLeft = singleSetWidth;
+        }
+      }
+      lastTime = time;
+      animationId = requestAnimationFrame(animate);
+    };
+
+    animationId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationId);
+  }, [tracks.length, isHovered, direction]);
+
+  return (
+    <div
+      ref={scrollRef}
+      className="flex-1 overflow-x-auto no-scrollbar flex gap-3 px-2"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onTouchStart={() => setIsHovered(true)}
+      onTouchEnd={() => setTimeout(() => setIsHovered(false), 2000)}
+    >
+      {loopedTracks.map((track, index) => (
+        <StreamCard
+          key={`${track.id}-${index}`}
+          track={track}
+          onTap={() => onTap(track)}
+          onTeaser={onTeaser}
+          isPlayed={playedTrackIds.has(track.id)}
+        />
+      ))}
+    </div>
+  );
+};
+
+// ============================================
 // STREAM CARD (Horizontal scroll - HOT/DISCOVERY - with VOYO brand tint)
 // Now with MOBILE TAP-TO-TEASER (30s preview) + DRAG-TO-QUEUE
 // ============================================
@@ -1436,18 +1513,14 @@ export const VoyoPortraitPlayer = ({
         {/* Horizontal Scroll Deck */}
         <div className="flex items-center relative px-2">
 
-          {/* LEFT: HOT Stream (Horizontal Scroll) */}
-          <div className="flex-1 overflow-x-auto no-scrollbar pl-4 pr-2 flex gap-3">
-            {hotTracks.slice(0, 6).map(track => (
-              <StreamCard
-                key={track.id}
-                track={track}
-                onTap={() => setCurrentTrack(track)}
-                onTeaser={handleTeaser}
-                isPlayed={playedTrackIds.has(track.id)}
-              />
-            ))}
-          </div>
+          {/* LEFT: HOT Stream (Infinite Wheel) */}
+          <InfiniteWheel
+            tracks={hotTracks.slice(0, 8)}
+            onTap={setCurrentTrack}
+            onTeaser={handleTeaser}
+            playedTrackIds={playedTrackIds}
+            direction="left"
+          />
 
           {/* CENTER: VOYO FEED Button */}
           <div className="flex-shrink-0 px-3 relative">
@@ -1463,18 +1536,14 @@ export const VoyoPortraitPlayer = ({
             </motion.button>
           </div>
 
-          {/* RIGHT: DISCOVERY Stream (Horizontal Scroll) */}
-          <div className="flex-1 overflow-x-auto no-scrollbar pl-2 pr-4 flex gap-3">
-            {discoverTracks.slice(0, 6).map(track => (
-              <StreamCard
-                key={track.id}
-                track={track}
-                onTap={() => setCurrentTrack(track)}
-                onTeaser={handleTeaser}
-                isPlayed={playedTrackIds.has(track.id)}
-              />
-            ))}
-          </div>
+          {/* RIGHT: DISCOVERY Stream (Infinite Wheel - opposite direction) */}
+          <InfiniteWheel
+            tracks={discoverTracks.slice(0, 8)}
+            onTap={setCurrentTrack}
+            onTeaser={handleTeaser}
+            playedTrackIds={playedTrackIds}
+            direction="right"
+          />
         </div>
 
         {/* PLAYLIST RECOMMENDATION BAR */}

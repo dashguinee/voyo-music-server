@@ -545,7 +545,7 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
           >
             {/* Left Side - Search Results */}
             <motion.div
-              className="flex-1 flex flex-col p-4"
+              className="flex-1 min-w-0 flex flex-col p-4"
               initial={{ x: -20, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               transition={{ delay: 0.1 }}
@@ -647,9 +647,9 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
               </div>
             </motion.div>
 
-            {/* Right Side - LED Strip Portal Zones */}
+            {/* Right Side - LED Strip Portal Zones - ALWAYS VISIBLE */}
             <motion.div
-              className="w-24 flex flex-col relative"
+              className="w-24 flex-shrink-0 flex flex-col relative"
               initial={{ x: 20, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               transition={{ delay: 0.2 }}
