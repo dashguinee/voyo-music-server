@@ -401,9 +401,20 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
 
   const handleSearch = (value: string) => {
     setQuery(value);
+
+    // INSTANT: Show local seed results immediately (no debounce)
+    if (value.trim().length >= 2) {
+      const seedResults = searchSeedData(value);
+      if (seedResults.length > 0) {
+        setResults(seedResults);
+      }
+    } else {
+      setResults([]);
+    }
+
+    // DEBOUNCED: YouTube API search (200ms delay)
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    // 500ms debounce to avoid flooding server with requests
-    debounceRef.current = setTimeout(() => performSearch(value), 500);
+    debounceRef.current = setTimeout(() => performSearch(value), 200);
   };
 
   // Convert search result to track
