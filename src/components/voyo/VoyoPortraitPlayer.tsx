@@ -733,57 +733,94 @@ const StreamCard = ({ track, onTap, isPlayed, onTeaser }: { track: Track; onTap:
 };
 
 // ============================================
-// BIG CENTER CARD (NOW PLAYING - Large artwork with VOYO brand tint)
+// BIG CENTER CARD (NOW PLAYING - Canva-style purple fade with premium typography)
 // ============================================
 const BigCenterCard = ({ track, onExpandVideo }: { track: Track; onExpandVideo?: () => void }) => (
   <motion.div
-    className="relative w-52 h-52 md:w-60 md:h-60 rounded-[2rem] overflow-hidden border border-white/10 z-20 group bg-gradient-to-br from-purple-900/30 to-pink-900/20"
-    style={{ boxShadow: '0 20px 60px -15px rgba(0,0,0,0.8), 0 0 40px rgba(147,51,234,0.15)' }}
+    className="relative w-52 h-52 md:w-60 md:h-60 rounded-[2rem] overflow-hidden z-20 group"
+    style={{
+      boxShadow: '0 25px 60px -12px rgba(0,0,0,0.9), 0 0 50px rgba(139,92,246,0.2), 0 0 100px rgba(139,92,246,0.1)',
+    }}
     initial={{ scale: 0.9, opacity: 0 }}
     animate={{ scale: 1, opacity: 1 }}
     transition={springs.gentle}
     whileHover={{ scale: 1.02 }}
     key={track.id}
   >
+    {/* Original artwork - crisp and clean */}
     <SmartImage
       src={getTrackThumbnailUrl(track, 'high')}
       alt={track.title}
-      className="w-full h-full object-cover transition-all duration-500 group-hover:scale-105"
+      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
       trackId={track.trackId}
       lazy={false}
     />
-    {/* VOYO Brand Tint - subtle on main card, fades on hover */}
+
+    {/* CANVA-STYLE PURPLE FADE - Bottom to top gradient */}
     <div
-      className="absolute inset-0 pointer-events-none transition-opacity duration-500 opacity-30 group-hover:opacity-0"
+      className="absolute inset-0 pointer-events-none"
       style={{
-        background: 'linear-gradient(135deg, rgba(147, 51, 234, 0.3) 0%, rgba(219, 39, 119, 0.2) 100%)',
-        mixBlendMode: 'overlay',
+        background: `linear-gradient(
+          to top,
+          rgba(88, 28, 135, 0.95) 0%,
+          rgba(139, 92, 246, 0.7) 15%,
+          rgba(139, 92, 246, 0.4) 30%,
+          rgba(139, 92, 246, 0.1) 50%,
+          transparent 70%
+        )`,
       }}
     />
-    {/* Expand Video Button - shows on hover */}
+
+    {/* Subtle vignette for depth */}
+    <div
+      className="absolute inset-0 pointer-events-none opacity-40"
+      style={{
+        background: 'radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.6) 100%)',
+      }}
+    />
+
+    {/* Expand Video Button */}
     {onExpandVideo && (
       <ExpandVideoButton onClick={onExpandVideo} />
     )}
-    {/* Title overlay at bottom - IMPROVED with truncation and better font */}
-    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/80 to-transparent p-4 pt-20">
+
+    {/* PREMIUM TITLE SECTION */}
+    <div className="absolute bottom-0 left-0 right-0 p-5">
+      {/* Track Title - Bold and prominent */}
       <h1
-        className="text-lg font-extrabold text-white mb-1 line-clamp-2 leading-tight"
+        className="text-xl font-black text-white mb-1.5 line-clamp-2 leading-tight tracking-tight"
         style={{
           fontFamily: "'Plus Jakarta Sans', sans-serif",
-          textShadow: '0 2px 8px rgba(0,0,0,0.9), 0 0 20px rgba(0,0,0,0.5)'
+          textShadow: '0 2px 20px rgba(0,0,0,0.8)',
+          letterSpacing: '-0.02em',
         }}
       >
         {track.title}
       </h1>
-      <p
-        className="text-purple-200 text-xs font-semibold tracking-wider uppercase truncate"
-        style={{ textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}
-      >
-        {track.artist}
-      </p>
+
+      {/* Artist Name - Elegant and subtle */}
+      <div className="flex items-center gap-2">
+        <div className="w-1 h-1 rounded-full bg-purple-400" />
+        <p
+          className="text-purple-200/90 text-sm font-medium tracking-wide truncate"
+          style={{
+            fontFamily: "'Inter', sans-serif",
+            textShadow: '0 1px 10px rgba(0,0,0,0.6)',
+          }}
+        >
+          {track.artist}
+        </p>
+      </div>
     </div>
-    {/* Subtle glow border on hover */}
-    <div className="absolute inset-0 rounded-[2rem] border-2 border-purple-500/0 group-hover:border-purple-500/30 transition-colors duration-500 pointer-events-none" />
+
+    {/* Glowing border accent */}
+    <div
+      className="absolute inset-0 rounded-[2rem] pointer-events-none transition-all duration-500"
+      style={{
+        border: '1px solid rgba(139, 92, 246, 0.3)',
+        boxShadow: 'inset 0 0 30px rgba(139, 92, 246, 0.1)',
+      }}
+    />
   </motion.div>
 );
 
