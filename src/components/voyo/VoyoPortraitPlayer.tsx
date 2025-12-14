@@ -598,23 +598,49 @@ interface PortalBeltProps {
   playedTrackIds: Set<string>;
   type: 'hot' | 'discovery';
   isActive: boolean; // Controls if belt is scrolling
+  onScrollOutward?: () => void; // Callback when user wants to scroll outward (reverse)
+  scrollOutwardTrigger?: number; // Increment to trigger outward scroll
 }
 
-const PortalBelt = ({ tracks, onTap, onTeaser, playedTrackIds, type, isActive }: PortalBeltProps) => {
+const PortalBelt = ({ tracks, onTap, onTeaser, playedTrackIds, type, isActive, scrollOutwardTrigger = 0 }: PortalBeltProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [offset, setOffset] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const [isReversed, setIsReversed] = useState(false); // For outward scroll
 
   // Manual scroll state
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
   const dragStartOffset = useRef(0);
   const pauseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reverseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isHot = type === 'hot';
   // INWARD direction: HOT scrolls RIGHT (+), DISCOVERY scrolls LEFT (-)
-  // Both flow toward center (VOYO button)
-  const speed = isHot ? 0.4 : -0.4;
+  // When reversed: opposite direction (OUTWARD from center)
+  const baseSpeed = isHot ? 0.4 : -0.4;
+  const speed = isReversed ? -baseSpeed * 2 : baseSpeed; // Faster when reversed
+
+  // Handle scroll outward trigger from portal button
+  useEffect(() => {
+    if (scrollOutwardTrigger > 0) {
+      // Reverse direction temporarily
+      setIsReversed(true);
+      setIsPaused(false);
+
+      // Clear any existing timeout
+      if (reverseTimeoutRef.current) clearTimeout(reverseTimeoutRef.current);
+
+      // Return to normal after 1.5 seconds
+      reverseTimeoutRef.current = setTimeout(() => {
+        setIsReversed(false);
+      }, 1500);
+    }
+
+    return () => {
+      if (reverseTimeoutRef.current) clearTimeout(reverseTimeoutRef.current);
+    };
+  }, [scrollOutwardTrigger]);
 
   // Card dimensions
   const cardWidth = 72; // 64px + gap
@@ -1535,6 +1561,10 @@ export const VoyoPortraitPlayer = ({
   const [isHotBeltActive, setIsHotBeltActive] = useState(false);
   const [isDiscoveryBeltActive, setIsDiscoveryBeltActive] = useState(false);
 
+  // PORTAL SCROLL CONTROLS - tap red/blue portal to scroll outward (reverse direction)
+  const [hotScrollTrigger, setHotScrollTrigger] = useState(0);
+  const [discoveryScrollTrigger, setDiscoveryScrollTrigger] = useState(0);
+
   // SCRUB STATE - Hold prev/next to scrub time
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [scrubDirection, setScrubDirection] = useState<'forward' | 'backward' | null>(null);
@@ -1979,11 +2009,23 @@ export const VoyoPortraitPlayer = ({
 
           {/* ========== HOT ZONE (Left side) ========== */}
           <div className="flex-1 flex items-center relative h-full">
-            {/* Red Portal Line (left edge of HOT zone) */}
-            <div className="flex-shrink-0 w-1.5 h-16 relative z-20 ml-1">
-              <div className="h-full w-full rounded-full bg-gradient-to-b from-red-500/30 via-red-500 to-red-500/30" />
+            {/* Red Portal Line (left edge of HOT zone) - CLICKABLE SCROLL CONTROL */}
+            <motion.button
+              onClick={() => {
+                setHotScrollTrigger(prev => prev + 1);
+                setIsHotBeltActive(true); // Auto-activate belt on portal tap
+              }}
+              whileTap={{ scale: 1.3 }}
+              className="flex-shrink-0 w-4 h-20 relative z-20 ml-1 touch-manipulation"
+              aria-label="Scroll HOT belt outward"
+            >
+              <div className="h-full w-1.5 mx-auto rounded-full bg-gradient-to-b from-red-500/30 via-red-500 to-red-500/30" />
               <div className="absolute inset-0 bg-red-500 blur-lg opacity-60" />
-            </div>
+              {/* Arrow hint */}
+              <div className="absolute inset-0 flex items-center justify-center text-red-400/60 text-xs">
+                ‹
+              </div>
+            </motion.button>
 
             {/* HOT Cards Belt (loops within this zone) */}
             <PortalBelt
@@ -1993,6 +2035,7 @@ export const VoyoPortraitPlayer = ({
               playedTrackIds={playedTrackIds}
               type="hot"
               isActive={isHotBeltActive}
+              scrollOutwardTrigger={hotScrollTrigger}
             />
           </div>
 
@@ -2033,13 +2076,26 @@ export const VoyoPortraitPlayer = ({
               playedTrackIds={playedTrackIds}
               type="discovery"
               isActive={isDiscoveryBeltActive}
+              scrollOutwardTrigger={discoveryScrollTrigger}
             />
 
-            {/* Blue Portal Line (right edge of DISCOVERY zone) */}
-            <div className="flex-shrink-0 w-1.5 h-16 relative z-20 mr-1">
-              <div className="h-full w-full rounded-full bg-gradient-to-b from-blue-500/30 via-blue-500 to-blue-500/30" />
+            {/* Blue Portal Line (right edge of DISCOVERY zone) - CLICKABLE SCROLL CONTROL */}
+            <motion.button
+              onClick={() => {
+                setDiscoveryScrollTrigger(prev => prev + 1);
+                setIsDiscoveryBeltActive(true); // Auto-activate belt on portal tap
+              }}
+              whileTap={{ scale: 1.3 }}
+              className="flex-shrink-0 w-4 h-20 relative z-20 mr-1 touch-manipulation"
+              aria-label="Scroll DISCOVERY belt outward"
+            >
+              <div className="h-full w-1.5 mx-auto rounded-full bg-gradient-to-b from-blue-500/30 via-blue-500 to-blue-500/30" />
               <div className="absolute inset-0 bg-blue-500 blur-lg opacity-60" />
-            </div>
+              {/* Arrow hint */}
+              <div className="absolute inset-0 flex items-center justify-center text-blue-400/60 text-xs">
+                ›
+              </div>
+            </motion.button>
           </div>
 
         </div>
