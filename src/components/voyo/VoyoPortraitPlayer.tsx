@@ -2867,21 +2867,32 @@ export const VoyoPortraitPlayer = ({
               transition={isDiscoveryBeltActive ? { duration: 2, repeat: Infinity, ease: 'easeInOut' } : {}}
             />
 
-            {/* VOYO Portal Button - Premium at rest, elegant on interaction */}
+            {/* VOYO Portal Button - Premium at rest, breathing on interaction */}
             <motion.button
               onClick={onVoyoFeed}
               whileTap={{ scale: 0.92 }}
               whileHover={{ scale: 1.04 }}
-              transition={springs.snappy}
               className="relative w-12 h-12 rounded-full flex flex-col items-center justify-center"
               style={{
                 background: (isHotBeltActive || isDiscoveryBeltActive)
                   ? 'linear-gradient(135deg, rgba(168,85,247,0.25) 0%, #12121a 50%, rgba(236,72,153,0.25) 100%)'
                   : 'linear-gradient(135deg, #1a1a2e 0%, #0f0f16 100%)',
-                boxShadow: (isHotBeltActive || isDiscoveryBeltActive)
-                  ? '0 0 20px rgba(168,85,247,0.35), inset 0 0 12px rgba(168,85,247,0.15)'
-                  : '0 0 15px rgba(139,92,246,0.2), inset 0 0 8px rgba(139,92,246,0.08)',
               }}
+              animate={(isHotBeltActive || isDiscoveryBeltActive) ? {
+                scale: [1, 1.03, 1],
+                boxShadow: [
+                  '0 0 20px rgba(168,85,247,0.35), inset 0 0 12px rgba(168,85,247,0.15)',
+                  '0 0 28px rgba(168,85,247,0.5), inset 0 0 16px rgba(168,85,247,0.25)',
+                  '0 0 20px rgba(168,85,247,0.35), inset 0 0 12px rgba(168,85,247,0.15)',
+                ],
+              } : {
+                scale: 1,
+                boxShadow: '0 0 15px rgba(139,92,246,0.2), inset 0 0 8px rgba(139,92,246,0.08)',
+              }}
+              transition={(isHotBeltActive || isDiscoveryBeltActive) ? {
+                scale: { duration: 2.5, repeat: Infinity, ease: 'easeInOut' },
+                boxShadow: { duration: 2.5, repeat: Infinity, ease: 'easeInOut' },
+              } : { duration: 0.3 }}
             >
               {/* Stale state: Subtle VOYO-brand ring */}
               <motion.div
@@ -2906,18 +2917,18 @@ export const VoyoPortraitPlayer = ({
                       border: '1.5px solid transparent',
                     }}
                     initial={{ opacity: 0, rotate: 0 }}
-                    animate={{ opacity: 1, rotate: 360 }}
+                    animate={{ opacity: [0.7, 1, 0.7], rotate: 360 }}
                     exit={{ opacity: 0, scale: 0.95 }}
                     transition={{
                       rotate: { duration: 8, repeat: Infinity, ease: 'linear' },
-                      opacity: { duration: 0.4 },
+                      opacity: { duration: 2, repeat: Infinity, ease: 'easeInOut' },
                       scale: { duration: 0.3 }
                     }}
                   />
                 )}
               </AnimatePresence>
 
-              {/* VOYO text with subtle glow on active */}
+              {/* VOYO text with breathing glow on active */}
               <motion.span
                 className="text-[8px] font-bold tracking-widest relative z-10"
                 style={{
@@ -2925,12 +2936,18 @@ export const VoyoPortraitPlayer = ({
                   WebkitBackgroundClip: 'text',
                   WebkitTextFillColor: 'transparent',
                 }}
-                animate={{
-                  filter: (isHotBeltActive || isDiscoveryBeltActive)
-                    ? 'drop-shadow(0 0 4px rgba(168,85,247,0.6))'
-                    : 'drop-shadow(0 0 2px rgba(139,92,246,0.3))',
+                animate={(isHotBeltActive || isDiscoveryBeltActive) ? {
+                  filter: [
+                    'drop-shadow(0 0 4px rgba(168,85,247,0.5))',
+                    'drop-shadow(0 0 8px rgba(168,85,247,0.8))',
+                    'drop-shadow(0 0 4px rgba(168,85,247,0.5))',
+                  ],
+                } : {
+                  filter: 'drop-shadow(0 0 2px rgba(139,92,246,0.3))',
                 }}
-                transition={{ duration: 0.4 }}
+                transition={(isHotBeltActive || isDiscoveryBeltActive) ? {
+                  filter: { duration: 2.5, repeat: Infinity, ease: 'easeInOut' },
+                } : { duration: 0.3 }}
               >
                 VOYO
               </motion.span>
