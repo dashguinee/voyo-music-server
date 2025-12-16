@@ -696,8 +696,10 @@ const PortalBelt = ({ tracks, onTap, onTeaser, playedTrackIds, type, isActive, s
               key={`${track.id}-${loop}-${i}`}
               className="absolute top-0 bottom-0 flex items-center pointer-events-auto"
               style={{
-                left: x,
+                left: 0,
+                transform: `translateX(${x}px) translateZ(0)`, // GPU accelerated
                 width: cardWidth,
+                willChange: 'transform',
                 ...entranceStyle,
                 transition: 'opacity 0.3s ease, filter 0.3s ease',
               }}
@@ -2837,40 +2839,63 @@ export const VoyoPortraitPlayer = ({
             />
           </div>
 
-          {/* ========== VOYO FEED DIVIDER ========== */}
+          {/* ========== VOYO FEED DIVIDER - Enhanced Portal Effects ========== */}
           <div className="flex-shrink-0 px-1 relative z-30">
             {/* Left fade - covers track overflow with dark gradient */}
             <div
-              className="absolute left-0 top-1/2 -translate-y-1/2 w-12 h-24 -translate-x-10 pointer-events-none"
-              style={{ background: 'linear-gradient(to right, #08080a 0%, transparent 100%)' }}
+              className="absolute left-0 top-1/2 -translate-y-1/2 w-16 h-28 -translate-x-12 pointer-events-none"
+              style={{ background: 'linear-gradient(to right, #08080a 0%, #08080a 30%, transparent 100%)' }}
             />
-            {/* Left glow (red) - subtle */}
-            <div
-              className="absolute left-0 top-1/2 -translate-y-1/2 w-10 h-16 -translate-x-6 pointer-events-none"
-              style={{ background: 'radial-gradient(ellipse at right, rgba(239,68,68,0.35) 0%, transparent 80%)' }}
+            {/* Left glow (red) - enhanced with animation */}
+            <motion.div
+              className="absolute left-0 top-1/2 -translate-y-1/2 w-12 h-20 -translate-x-8 pointer-events-none"
+              style={{ background: 'radial-gradient(ellipse at right, rgba(239,68,68,0.5) 0%, transparent 70%)' }}
+              animate={{ opacity: [0.6, 0.9, 0.6] }}
+              transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
             />
             {/* Right fade - covers track overflow with dark gradient */}
             <div
-              className="absolute right-0 top-1/2 -translate-y-1/2 w-12 h-24 translate-x-10 pointer-events-none"
-              style={{ background: 'linear-gradient(to left, #08080a 0%, transparent 100%)' }}
+              className="absolute right-0 top-1/2 -translate-y-1/2 w-16 h-28 translate-x-12 pointer-events-none"
+              style={{ background: 'linear-gradient(to left, #08080a 0%, #08080a 30%, transparent 100%)' }}
             />
-            {/* Right glow (blue) - subtle */}
-            <div
-              className="absolute right-0 top-1/2 -translate-y-1/2 w-10 h-16 translate-x-6 pointer-events-none"
-              style={{ background: 'radial-gradient(ellipse at left, rgba(59,130,246,0.35) 0%, transparent 80%)' }}
+            {/* Right glow (blue) - enhanced with animation */}
+            <motion.div
+              className="absolute right-0 top-1/2 -translate-y-1/2 w-12 h-20 translate-x-8 pointer-events-none"
+              style={{ background: 'radial-gradient(ellipse at left, rgba(59,130,246,0.5) 0%, transparent 70%)' }}
+              animate={{ opacity: [0.6, 0.9, 0.6] }}
+              transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
             />
+
+            {/* VOYO Portal Button with enhanced effects */}
             <motion.button
               onClick={onVoyoFeed}
-              whileTap={{ scale: 0.93 }}
+              whileTap={{ scale: 0.9 }}
+              whileHover={{ scale: 1.05 }}
               transition={springs.snappy}
-              className="relative w-12 h-12 rounded-full flex flex-col items-center justify-center"
+              className="relative w-14 h-14 rounded-full flex flex-col items-center justify-center"
               style={{
-                background: 'linear-gradient(90deg, rgba(239,68,68,0.3) 0%, #1a1a2e 50%, rgba(59,130,246,0.3) 100%)',
-                border: '2px solid rgba(255,255,255,0.15)',
-                boxShadow: '-6px 0 20px rgba(239,68,68,0.4), 6px 0 20px rgba(59,130,246,0.4)',
+                background: 'radial-gradient(circle at center, #1a1a2e 0%, #0f0f16 100%)',
+                border: '2px solid rgba(255,255,255,0.2)',
+                boxShadow: '-8px 0 25px rgba(239,68,68,0.5), 8px 0 25px rgba(59,130,246,0.5), 0 0 20px rgba(147,51,234,0.3)',
               }}
             >
-              <span className="text-[8px] font-bold text-white tracking-widest">VOYO</span>
+              {/* Outer rotating ring */}
+              <motion.div
+                className="absolute inset-[-4px] rounded-full border-2 border-transparent pointer-events-none"
+                style={{
+                  background: 'linear-gradient(90deg, rgba(239,68,68,0.6), transparent, rgba(59,130,246,0.6)) padding-box, linear-gradient(90deg, #ef4444, #8b5cf6, #3b82f6) border-box',
+                }}
+                animate={{ rotate: 360 }}
+                transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}
+              />
+              {/* Inner pulsing glow */}
+              <motion.div
+                className="absolute inset-0 rounded-full pointer-events-none"
+                style={{ background: 'radial-gradient(circle at center, rgba(147,51,234,0.3) 0%, transparent 70%)' }}
+                animate={{ scale: [1, 1.1, 1], opacity: [0.5, 0.8, 0.5] }}
+                transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+              />
+              <span className="text-[9px] font-bold text-white tracking-widest relative z-10">VOYO</span>
             </motion.button>
           </div>
 
