@@ -340,7 +340,7 @@ function App() {
                     VOYO
                   </p>
                   <p className="text-[10px] text-gray-500 mt-1">The African Music Experience</p>
-                  <p className="text-[10px] text-gray-600">v1.0.0 • Made with ❤️</p>
+                  <p className="text-[10px] text-gray-600">v1.0.1 • Made with ❤️</p>
                 </div>
               </div>
             </motion.div>
