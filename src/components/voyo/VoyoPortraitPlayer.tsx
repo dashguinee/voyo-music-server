@@ -2867,32 +2867,24 @@ export const VoyoPortraitPlayer = ({
               transition={isDiscoveryBeltActive ? { duration: 2, repeat: Infinity, ease: 'easeInOut' } : {}}
             />
 
-            {/* VOYO Portal Button - Premium at rest, breathing on interaction */}
+            {/* VOYO Portal Button - Premium stale, smooth rotating on active */}
             <motion.button
               onClick={onVoyoFeed}
-              whileTap={{ scale: 0.92 }}
-              whileHover={{ scale: 1.04 }}
-              className="relative w-12 h-12 rounded-full flex flex-col items-center justify-center"
+              whileTap={{ scale: 0.9 }}
+              whileHover={{ scale: 1.05 }}
+              transition={springs.snappy}
+              className="relative w-12 h-12 rounded-full flex flex-col items-center justify-center overflow-visible"
               style={{
                 background: (isHotBeltActive || isDiscoveryBeltActive)
-                  ? 'linear-gradient(135deg, rgba(168,85,247,0.25) 0%, #12121a 50%, rgba(236,72,153,0.25) 100%)'
+                  ? 'linear-gradient(90deg, rgba(239,68,68,0.3) 0%, #1a1a2e 50%, rgba(59,130,246,0.3) 100%)'
                   : 'linear-gradient(135deg, #1a1a2e 0%, #0f0f16 100%)',
+                border: (isHotBeltActive || isDiscoveryBeltActive)
+                  ? '2px solid rgba(255,255,255,0.15)'
+                  : 'none',
+                boxShadow: (isHotBeltActive || isDiscoveryBeltActive)
+                  ? '-6px 0 20px rgba(239,68,68,0.4), 6px 0 20px rgba(59,130,246,0.4)'
+                  : '0 0 15px rgba(139,92,246,0.2), inset 0 0 8px rgba(139,92,246,0.08)',
               }}
-              animate={(isHotBeltActive || isDiscoveryBeltActive) ? {
-                scale: [1, 1.03, 1],
-                boxShadow: [
-                  '0 0 20px rgba(168,85,247,0.35), inset 0 0 12px rgba(168,85,247,0.15)',
-                  '0 0 28px rgba(168,85,247,0.5), inset 0 0 16px rgba(168,85,247,0.25)',
-                  '0 0 20px rgba(168,85,247,0.35), inset 0 0 12px rgba(168,85,247,0.15)',
-                ],
-              } : {
-                scale: 1,
-                boxShadow: '0 0 15px rgba(139,92,246,0.2), inset 0 0 8px rgba(139,92,246,0.08)',
-              }}
-              transition={(isHotBeltActive || isDiscoveryBeltActive) ? {
-                scale: { duration: 2.5, repeat: Infinity, ease: 'easeInOut' },
-                boxShadow: { duration: 2.5, repeat: Infinity, ease: 'easeInOut' },
-              } : { duration: 0.3 }}
             >
               {/* Stale state: Subtle VOYO-brand ring */}
               <motion.div
@@ -2907,50 +2899,42 @@ export const VoyoPortraitPlayer = ({
                 transition={{ duration: 0.3 }}
               />
 
-              {/* Active state: Elegant rotating gradient ring */}
+              {/* Active state: Smooth rotating gradient ring (red/purple/blue) */}
               <AnimatePresence>
                 {(isHotBeltActive || isDiscoveryBeltActive) && (
                   <motion.div
-                    className="absolute inset-[-2px] rounded-full pointer-events-none"
+                    className="absolute inset-[-3px] rounded-full pointer-events-none"
                     style={{
-                      background: 'linear-gradient(#0a0a0f, #0a0a0f) padding-box, conic-gradient(from 0deg, rgba(139,92,246,0.8), rgba(236,72,153,0.6), rgba(168,85,247,0.8), rgba(139,92,246,0.8)) border-box',
-                      border: '1.5px solid transparent',
+                      background: 'linear-gradient(90deg, transparent, transparent) padding-box, linear-gradient(90deg, #ef4444, #8b5cf6, #3b82f6) border-box',
+                      border: '2px solid transparent',
                     }}
                     initial={{ opacity: 0, rotate: 0 }}
-                    animate={{ opacity: [0.7, 1, 0.7], rotate: 360 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, rotate: 360 }}
+                    exit={{ opacity: 0 }}
                     transition={{
-                      rotate: { duration: 8, repeat: Infinity, ease: 'linear' },
-                      opacity: { duration: 2, repeat: Infinity, ease: 'easeInOut' },
-                      scale: { duration: 0.3 }
+                      rotate: { duration: 6, repeat: Infinity, ease: 'linear' },
+                      opacity: { duration: 0.3 }
                     }}
                   />
                 )}
               </AnimatePresence>
 
-              {/* VOYO text with breathing glow on active */}
-              <motion.span
-                className="text-[8px] font-bold tracking-widest relative z-10"
-                style={{
-                  background: 'linear-gradient(to right, #a855f7, #ec4899, #a855f7)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                }}
-                animate={(isHotBeltActive || isDiscoveryBeltActive) ? {
-                  filter: [
-                    'drop-shadow(0 0 4px rgba(168,85,247,0.5))',
-                    'drop-shadow(0 0 8px rgba(168,85,247,0.8))',
-                    'drop-shadow(0 0 4px rgba(168,85,247,0.5))',
-                  ],
-                } : {
-                  filter: 'drop-shadow(0 0 2px rgba(139,92,246,0.3))',
-                }}
-                transition={(isHotBeltActive || isDiscoveryBeltActive) ? {
-                  filter: { duration: 2.5, repeat: Infinity, ease: 'easeInOut' },
-                } : { duration: 0.3 }}
-              >
-                VOYO
-              </motion.span>
+              {/* VOYO text - white on active, gradient on stale */}
+              {(isHotBeltActive || isDiscoveryBeltActive) ? (
+                <span className="text-[8px] font-bold text-white tracking-widest relative z-10">VOYO</span>
+              ) : (
+                <span
+                  className="text-[8px] font-bold tracking-widest relative z-10"
+                  style={{
+                    background: 'linear-gradient(to right, #a855f7, #ec4899, #a855f7)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    filter: 'drop-shadow(0 0 2px rgba(139,92,246,0.3))',
+                  }}
+                >
+                  VOYO
+                </span>
+              )}
             </motion.button>
           </div>
 
