@@ -210,3 +210,96 @@ export interface FeedItem {
 
 // DJ Mode States
 export type DJMode = 'idle' | 'listening' | 'thinking' | 'responding';
+
+// =============================================
+// VOYO ACCOUNTS - WhatsApp Auth System
+// voyomusic.com/username
+// =============================================
+
+// Subscription Status
+export type SubscriptionStatus =
+  | 'active'      // Paid up, full access
+  | 'trial'       // New user, 7 day trial
+  | 'overdue'     // Payment pending, grace period
+  | 'banned'      // Blocked for non-payment (friends see this!)
+  | 'vip';        // Lifetime/special access
+
+// Account Verification State
+export type VerificationState =
+  | 'idle'
+  | 'sending_pin'
+  | 'waiting_pin'
+  | 'verifying'
+  | 'verified'
+  | 'error';
+
+// VOYO Account (the user profile page)
+export interface VOYOAccount {
+  id: string;
+  username: string;           // voyomusic.com/[username]
+  whatsapp: string;           // +224XXXXXXXXX
+  pin: string;                // 6-digit PIN (hashed in production)
+  displayName: string;
+  avatarUrl?: string;
+  bio?: string;
+  subscription: SubscriptionStatus;
+  banReason?: string;         // "Payment overdue since Dec 1"
+  subscriptionEnds?: string;  // ISO date
+
+  // Social
+  friendIds: string[];
+  friendRequestIds: string[];
+
+  // Music Stats
+  nowPlaying?: {
+    trackId: string;
+    title: string;
+    artist: string;
+    thumbnail: string;
+    startedAt: string;
+  };
+  totalListeningHours: number;
+  totalOyeGiven: number;
+  totalOyeReceived: number;
+
+  // Stories
+  stories: VOYOStory[];
+
+  createdAt: string;
+  lastSeenAt: string;
+}
+
+// VOYO Story (friend stories in DAHUB)
+export interface VOYOStory {
+  id: string;
+  userId: string;
+  type: 'now_playing' | 'image' | 'video' | 'text';
+  content: {
+    // For now_playing
+    trackId?: string;
+    title?: string;
+    artist?: string;
+    thumbnail?: string;
+    // For media
+    url?: string;
+    // For text
+    text?: string;
+    backgroundColor?: string;
+  };
+  viewerIds: string[];
+  reactions: {
+    emoji: string;
+    userId: string;
+    timestamp: string;
+  }[];
+  expiresAt: string;  // 24h from creation
+  createdAt: string;
+}
+
+// Friend with story status (for DAHUB)
+export interface FriendWithStory {
+  account: VOYOAccount;
+  hasUnviewedStory: boolean;
+  latestStoryTime?: string;
+  unreadMessageCount: number;
+}
