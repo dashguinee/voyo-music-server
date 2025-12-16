@@ -9,13 +9,14 @@
  * 5. BOTTOM: 3-column vertical grid (HOT | VOYO FEED | DISCOVERY)
  */
 
-import { useState, useEffect, useRef, useCallback, memo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useEffect, useRef, useCallback, memo, useMemo } from 'react';
+import { motion, AnimatePresence, useInView, TargetAndTransition } from 'framer-motion';
 import {
   Play, Pause, SkipForward, SkipBack, Zap, Flame, Plus, Maximize2, Film, Settings, Heart,
   Shuffle, Repeat, Repeat1, Share2
 } from 'lucide-react';
 import { usePlayerStore } from '../../store/playerStore';
+import { useIntentStore, VibeMode } from '../../store/intentStore';
 import { getThumbnailUrl, getTrackThumbnailUrl } from '../../utils/imageHelpers';
 import { Track, ReactionType } from '../../types';
 import { SmartImage } from '../ui/SmartImage';
@@ -27,91 +28,401 @@ import { BoostSettings } from '../ui/BoostSettings';
 import { haptics, getReactionHaptic } from '../../utils/haptics';
 
 // ============================================
-// NEON BILLBOARD CARD - Animated taglines like radio commercials
-// "Hits on Hits!", "From Lagos to Accra", "Another One!"
+// MIX BOARD SYSTEM - Discovery Machine Patent 🎛️
+// Presets that FEED the HOT/DISCOVERY streams
+// User taps = more of that flavor flows through
+// Cards get color-coded neon borders from their source mode
 // ============================================
+
+// Mix Mode Definition - Each preset on the mixing board
+export interface MixMode {
+  id: string;
+  title: string;
+  neon: string;      // Primary neon color
+  glow: string;      // Glow rgba color
+  taglines: string[];
+  mood: PlaylistMood;
+  textAnimation: TextAnimation;
+  keywords: string[]; // Keywords to match tracks to this mode
+}
+
+// Mood-based timing configurations (research: Z4)
+type PlaylistMood = 'energetic' | 'chill' | 'intense' | 'mysterious' | 'hype';
+const moodTimings: Record<PlaylistMood, { taglineDwell: number; glowPulse: number; textTransition: number }> = {
+  energetic: { taglineDwell: 2000, glowPulse: 1.5, textTransition: 0.2 },  // Fast, punchy
+  chill: { taglineDwell: 4000, glowPulse: 3, textTransition: 0.8 },       // Slow, smooth
+  intense: { taglineDwell: 2500, glowPulse: 1.8, textTransition: 0.35 },  // Powerful
+  mysterious: { taglineDwell: 3500, glowPulse: 2.5, textTransition: 0.6 }, // Atmospheric
+  hype: { taglineDwell: 1800, glowPulse: 1.2, textTransition: 0.15 },     // DJ Khaled energy!
+};
+
+// Text animation variants - Canva-inspired (research: Z1)
+type TextAnimation = 'slideUp' | 'scaleIn' | 'bounce' | 'rotateIn' | 'typewriter';
+const textAnimationVariants: Record<TextAnimation, { initial: TargetAndTransition; animate: TargetAndTransition; exit: TargetAndTransition }> = {
+  slideUp: {
+    initial: { y: 20, opacity: 0 },
+    animate: { y: 0, opacity: 1 },
+    exit: { y: -20, opacity: 0 },
+  },
+  scaleIn: {
+    initial: { scale: 0.5, opacity: 0 },
+    animate: { scale: 1, opacity: 1 },
+    exit: { scale: 1.2, opacity: 0 },
+  },
+  bounce: {
+    initial: { y: 30, opacity: 0, scale: 0.8 },
+    animate: { y: 0, opacity: 1, scale: 1 },
+    exit: { y: -15, opacity: 0, scale: 0.9 },
+  },
+  rotateIn: {
+    initial: { rotateX: 90, opacity: 0 },
+    animate: { rotateX: 0, opacity: 1 },
+    exit: { rotateX: -90, opacity: 0 },
+  },
+  typewriter: {
+    initial: { opacity: 0, x: -10 },
+    animate: { opacity: 1, x: 0 },
+    exit: { opacity: 0, x: 10 },
+  },
+};
+
+// DEFAULT MIX MODES - The preset mixing board
+const DEFAULT_MIX_MODES: MixMode[] = [
+  {
+    id: 'afro-heat',
+    title: 'Afro Heat',
+    neon: '#ef4444',
+    glow: 'rgba(239,68,68,0.5)',
+    taglines: ["Asambe! 🔥", "Lagos to Accra!", "E Choke! 💥", "Fire on Fire!", "No Wahala!"],
+    mood: 'energetic',
+    textAnimation: 'bounce',
+    keywords: ['afrobeat', 'afro', 'lagos', 'naija', 'amapiano', 'burna', 'davido', 'wizkid'],
+  },
+  {
+    id: 'chill-vibes',
+    title: 'Chill Vibes',
+    neon: '#3b82f6',
+    glow: 'rgba(59,130,246,0.5)',
+    taglines: ["It's Your Eazi...", "Slow Wine Time", "Easy Does It", "Float Away~", "Pon Di Ting"],
+    mood: 'chill',
+    textAnimation: 'slideUp',
+    keywords: ['chill', 'slow', 'r&b', 'soul', 'acoustic', 'mellow', 'relax', 'smooth'],
+  },
+  {
+    id: 'party-mode',
+    title: 'Party Mode',
+    neon: '#ec4899',
+    glow: 'rgba(236,72,153,0.5)',
+    taglines: ["Another One! 🎉", "We The Best!", "Ku Lo Sa!", "Turn Up! 🔊", "Major Vibes Only"],
+    mood: 'hype',
+    textAnimation: 'scaleIn',
+    keywords: ['party', 'dance', 'club', 'edm', 'dj', 'hype', 'turn up', 'banger'],
+  },
+  {
+    id: 'late-night',
+    title: 'Late Night',
+    neon: '#8b5cf6',
+    glow: 'rgba(139,92,246,0.5)',
+    taglines: ["Midnight Moods", "After Hours...", "Vibes & Chill", "3AM Sessions", "Lost in Sound"],
+    mood: 'mysterious',
+    textAnimation: 'rotateIn',
+    keywords: ['night', 'dark', 'moody', 'ambient', 'deep', 'late', 'vibe'],
+  },
+  {
+    id: 'workout',
+    title: 'Workout',
+    neon: '#f97316',
+    glow: 'rgba(249,115,22,0.5)',
+    taglines: ["Beast Mode! 💪", "Pump It Up!", "No Pain No Gain", "Go Harder!", "Maximum Effort!"],
+    mood: 'intense',
+    textAnimation: 'bounce',
+    keywords: ['workout', 'gym', 'fitness', 'pump', 'energy', 'power', 'beast', 'intense'],
+  },
+];
+
+// Get mode color for a track (used to color-code stream cards)
+// Returns color + intensity based on bar count (0-6 bars system)
+const getTrackModeColor = (
+  trackTitle: string,
+  trackArtist: string,
+  modes: MixMode[],
+  modeBoosts?: Record<string, number>
+): { neon: string; glow: string; intensity: number } | null => {
+  const searchText = `${trackTitle} ${trackArtist}`.toLowerCase();
+  for (const mode of modes) {
+    for (const keyword of mode.keywords) {
+      if (searchText.includes(keyword.toLowerCase())) {
+        // Get bar count for this mode (default 1 if no boosts provided)
+        const bars = modeBoosts ? (modeBoosts[mode.id] || 0) : 1;
+        const intensity = bars / 6; // 0-1 scale (6 bars = max)
+
+        // If mode has 0 bars, it's "starved" - no color coding
+        if (bars < 1) return null;
+
+        return {
+          neon: mode.neon,
+          glow: mode.glow,
+          intensity
+        };
+      }
+    }
+  }
+  return null; // No mode match - no color coding
+};
+
 const NeonBillboardCard = memo(({
   title,
   taglines,
   neon,
   glow,
   delay = 0,
+  mood = 'energetic',
+  textAnimation = 'bounce',
+  onClick,
+  onDragToQueue, // Callback when card is dragged up to queue
+  isActive = false,
+  boostLevel = 0, // 0-6 bars - manual preference
+  queueMultiplier = 1, // x1-x5 - queue behavior multiplier
 }: {
   title: string;
   taglines: string[];
   neon: string;
   glow: string;
   delay?: number;
+  mood?: PlaylistMood;
+  textAnimation?: TextAnimation;
+  onClick?: () => void;
+  onDragToQueue?: () => void; // "Give me this vibe NOW" - drag to add matching tracks
+  isActive?: boolean;
+  boostLevel?: number;
+  queueMultiplier?: number; // x1-x5 based on queue dominance
 }) => {
   const [currentTagline, setCurrentTagline] = useState(0);
+  const [showTapBurst, setShowTapBurst] = useState(false);
+  const [isDraggingToQueue, setIsDraggingToQueue] = useState(false);
+  const [showQueuedFeedback, setShowQueuedFeedback] = useState(false);
+  const cardRef = useRef<HTMLButtonElement>(null);
+  const isInView = useInView(cardRef, { once: false, margin: "-10%" });
 
-  // Cycle through taglines every 2.5s
+  // STARVING LOGIC: 0 bars = dying, 6 bars = BLAZING
+  const isStarving = boostLevel === 0;
+  const barRatio = boostLevel / 6; // 0-1 scale
+
+  // Adjust timing based on energy level - starving = slow, boosted = fast
+  const baseTiming = moodTimings[mood];
+  const timing = {
+    ...baseTiming,
+    taglineDwell: isStarving ? 8000 : baseTiming.taglineDwell / (0.5 + barRatio), // Slower when starving
+    glowPulse: isStarving ? 6 : baseTiming.glowPulse / (0.5 + barRatio * 0.5), // Slower pulse
+    textTransition: isStarving ? 0.8 : baseTiming.textTransition,
+  };
+
+  const animVariant = textAnimationVariants[textAnimation];
+
+  // Calculate glow intensity - starving = dim, boosted = BRIGHT
+  const glowIntensity = isStarving ? 0.2 : (0.4 + barRatio * 0.8); // 0.2 when dead, up to 1.2 when maxed
+
+  // Smart visibility: Only animate when in view (research: Z5)
   useEffect(() => {
+    if (!isInView) return;
+
     const timer = setTimeout(() => {
       const interval = setInterval(() => {
         setCurrentTagline(prev => (prev + 1) % taglines.length);
-      }, 2500);
+      }, timing.taglineDwell);
       return () => clearInterval(interval);
     }, delay * 1000);
     return () => clearTimeout(timer);
-  }, [taglines.length, delay]);
+  }, [taglines.length, delay, timing.taglineDwell, isInView]);
+
+  // 5-Layer Neon Glow System (research: Z2, Z10)
+  // Layer 1: White-hot core (tight)
+  // Layer 2: Inner bloom (color)
+  // Layer 3: Mid bloom (softer color)
+  // Layer 4: Outer bloom (ambient)
+  // Layer 5: Inward glow (inset)
+  const createNeonGlow = (intensity: number) => {
+    const i = intensity;
+    return `
+      inset 0 0 ${4 * i}px ${glow},
+      inset 0 0 0 ${1.5 * i}px ${neon},
+      0 0 ${5 * i}px rgba(255,255,255,0.3),
+      0 0 ${10 * i}px ${glow},
+      0 0 ${20 * i}px ${glow},
+      0 0 ${35 * i}px ${glow}
+    `.trim();
+  };
+
+  // Startup flicker effect (research: NEON_RESEARCH.md)
+  const [hasStartupFlicker, setHasStartupFlicker] = useState(true);
+  useEffect(() => {
+    const timer = setTimeout(() => setHasStartupFlicker(false), 1500);
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
     <motion.button
+      ref={cardRef}
       className="flex-shrink-0 w-32 h-16 rounded-lg relative overflow-hidden group"
-      whileHover={{ scale: 1.05 }}
-      whileTap={{ scale: 0.95 }}
+      onClick={() => {
+        if (isDraggingToQueue) return; // Don't trigger tap if we just dragged
+        setShowTapBurst(true);
+        setTimeout(() => setShowTapBurst(false), 400);
+        onClick?.();
+      }}
+      drag
+      dragConstraints={{ left: 0, right: 0, top: -100, bottom: 0 }}
+      dragElastic={{ left: 0, right: 0, top: 0.3, bottom: 0 }}
+      dragSnapToOrigin
+      onDragStart={() => setIsDraggingToQueue(true)}
+      onDragEnd={(_, info) => {
+        // Drag UP to queue - "Give me this vibe NOW!"
+        if (info.offset.y < -40) {
+          haptics?.success?.();
+          onDragToQueue?.();
+          setShowQueuedFeedback(true);
+          setTimeout(() => setShowQueuedFeedback(false), 2000);
+        }
+        setTimeout(() => setIsDraggingToQueue(false), 100);
+      }}
+      whileHover={{ scale: isStarving ? 1.02 : 1.04 }}
+      whileTap={{ scale: 0.96 }}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{
+        opacity: isInView ? (hasStartupFlicker ? [0, 0.3, 0, 0.5, 0, 0.7, 1] : (isStarving ? 0.5 : 1)) : 0.3,
+        y: 0,
+        filter: isStarving ? 'grayscale(60%) brightness(0.6)' : 'grayscale(0%) brightness(1)',
+      }}
+      transition={{
+        duration: hasStartupFlicker ? 1.2 : 0.4,
+        delay: delay * 0.04, // 40ms stagger (research: Z9)
+        ease: hasStartupFlicker ? 'linear' : [0.34, 1.56, 0.64, 1],
+        filter: { duration: 0.5 }
+      }}
       style={{
-        background: 'linear-gradient(135deg, rgba(10,10,15,0.98) 0%, rgba(5,5,8,0.99) 100%)',
+        background: 'linear-gradient(135deg, rgba(8,8,12,0.98) 0%, rgba(3,3,5,0.99) 100%)',
       }}
     >
-      {/* Neon border glow - pulses subtly */}
+      {/* 5-Layer Neon Glow - Intensity based on bars (research: Z2, Z10) */}
       <motion.div
-        className="absolute inset-0 rounded-lg"
-        animate={{
+        className="absolute inset-0 rounded-lg pointer-events-none"
+        animate={isInView && !isStarving ? {
           boxShadow: [
-            `inset 0 0 0 1.5px ${neon}, 0 0 15px ${glow}, 0 0 5px ${glow}`,
-            `inset 0 0 0 2px ${neon}, 0 0 20px ${glow}, 0 0 8px ${glow}`,
-            `inset 0 0 0 1.5px ${neon}, 0 0 15px ${glow}, 0 0 5px ${glow}`,
+            createNeonGlow(glowIntensity),
+            createNeonGlow(glowIntensity * 1.3),
+            createNeonGlow(glowIntensity),
           ],
+        } : {
+          boxShadow: createNeonGlow(glowIntensity * 0.3), // Static dim glow when starving
         }}
-        transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+        transition={isStarving ? { duration: 0.5 } : {
+          duration: timing.glowPulse,
+          repeat: Infinity,
+          ease: 'easeInOut',
+          repeatType: 'reverse'
+        }}
       />
 
-      {/* Scanline effect */}
+      {/* Scanline effect - subtle CRT feel */}
       <div
-        className="absolute inset-0 opacity-15 pointer-events-none"
+        className="absolute inset-0 opacity-10 pointer-events-none"
         style={{
-          background: `repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.02) 2px, rgba(255,255,255,0.02) 4px)`,
+          background: `repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.015) 2px, rgba(255,255,255,0.015) 4px)`,
+        }}
+      />
+
+      {/* TAP BURST - Flash effect on boost tap */}
+      <AnimatePresence>
+        {showTapBurst && (
+          <motion.div
+            className="absolute inset-0 pointer-events-none z-20 rounded-lg"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: [0, 0.8, 0], scale: [0.8, 1.2, 1.3] }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.35, ease: 'easeOut' }}
+            style={{
+              background: `radial-gradient(circle at center, ${neon}40 0%, transparent 70%)`,
+              boxShadow: `0 0 30px ${glow}, 0 0 60px ${glow}`,
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* QUEUED FEEDBACK - Shows after drag-to-queue */}
+      <AnimatePresence>
+        {showQueuedFeedback && (
+          <motion.div
+            className="absolute -top-8 left-1/2 -translate-x-1/2 z-50"
+            initial={{ opacity: 0, y: 10, scale: 0.8 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10, scale: 0.8 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+          >
+            <div
+              className="text-[9px] font-bold px-3 py-1.5 rounded-full shadow-lg whitespace-nowrap flex items-center gap-1"
+              style={{
+                background: `linear-gradient(135deg, ${neon}, ${glow})`,
+                color: '#000',
+                boxShadow: `0 0 12px ${glow}, 0 0 24px ${glow}`,
+              }}
+            >
+              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+              Vibe Queued!
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Subtle inner reflection - glass feel */}
+      <div
+        className="absolute inset-x-0 top-0 h-1/3 pointer-events-none rounded-t-lg"
+        style={{
+          background: `linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 100%)`,
         }}
       />
 
       {/* Content */}
       <div className="relative z-10 h-full flex flex-col items-center justify-center px-2">
-        {/* Title - Static */}
-        <div
+        {/* Title - with enhanced neon text glow */}
+        <motion.div
           className="text-[11px] font-black tracking-wider uppercase"
-          style={{ color: neon, textShadow: `0 0 10px ${glow}, 0 0 20px ${glow}` }}
+          style={{
+            color: neon,
+            textShadow: `
+              0 0 5px ${neon},
+              0 0 10px ${glow},
+              0 0 20px ${glow},
+              0 0 30px ${glow}
+            `
+          }}
         >
           {title}
-        </div>
+        </motion.div>
 
-        {/* Animated Tagline - Billboard style */}
-        <div className="h-4 relative overflow-hidden w-full mt-1">
+        {/* Animated Tagline - Canva-style with mood timing */}
+        <div className="h-4 relative overflow-hidden w-full mt-1" style={{ perspective: '100px' }}>
           <AnimatePresence mode="wait">
             <motion.div
               key={currentTagline}
               className="absolute inset-0 flex items-center justify-center"
-              initial={{ y: 15, opacity: 0, scale: 0.8 }}
-              animate={{ y: 0, opacity: 1, scale: 1 }}
-              exit={{ y: -15, opacity: 0, scale: 0.8 }}
-              transition={{ duration: 0.3, ease: 'easeOut' }}
+              initial={animVariant.initial}
+              animate={animVariant.animate}
+              exit={animVariant.exit}
+              transition={{
+                duration: timing.textTransition,
+                ease: [0.34, 1.56, 0.64, 1] // Bouncy spring
+              }}
             >
               <span
                 className="text-[8px] font-bold tracking-wide whitespace-nowrap"
                 style={{
-                  color: 'rgba(255,255,255,0.7)',
-                  textShadow: `0 0 4px ${glow}`,
+                  color: 'rgba(255,255,255,0.85)',
+                  textShadow: `
+                    0 0 4px ${glow},
+                    0 0 8px ${glow}
+                  `,
                 }}
               >
                 {taglines[currentTagline]}
@@ -121,39 +432,104 @@ const NeonBillboardCard = memo(({
         </div>
       </div>
 
-      {/* Corner accents - double corner */}
-      <div
-        className="absolute top-0 left-0 w-2 h-2"
-        style={{
-          borderTop: `2px solid ${neon}`,
-          borderLeft: `2px solid ${neon}`,
-          opacity: 0.8,
-        }}
-      />
-      <div
-        className="absolute top-0 right-0 w-2 h-2"
-        style={{
-          borderTop: `2px solid ${neon}`,
-          borderRight: `2px solid ${neon}`,
-          opacity: 0.8,
-        }}
-      />
-      <div
-        className="absolute bottom-0 left-0 w-2 h-2"
-        style={{
-          borderBottom: `2px solid ${neon}`,
-          borderLeft: `2px solid ${neon}`,
-          opacity: 0.8,
-        }}
-      />
-      <div
-        className="absolute bottom-0 right-0 w-2 h-2"
-        style={{
-          borderBottom: `2px solid ${neon}`,
-          borderRight: `2px solid ${neon}`,
-          opacity: 0.8,
-        }}
-      />
+      {/* Corner brackets - Enhanced cyberpunk style (research: Z6) */}
+      {[
+        { pos: 'top-0 left-0', border: 'borderTop borderLeft' },
+        { pos: 'top-0 right-0', border: 'borderTop borderRight' },
+        { pos: 'bottom-0 left-0', border: 'borderBottom borderLeft' },
+        { pos: 'bottom-0 right-0', border: 'borderBottom borderRight' },
+      ].map((corner, idx) => (
+        <motion.div
+          key={idx}
+          className={`absolute ${corner.pos} w-2.5 h-2.5`}
+          animate={isInView && !isStarving ? {
+            opacity: [0.6 * glowIntensity, 1 * glowIntensity, 0.6 * glowIntensity],
+            scale: [1, 1.1, 1]
+          } : {
+            opacity: isStarving ? 0.2 : 0.5, // Dim when starving
+            scale: 1
+          }}
+          transition={isStarving ? { duration: 0.5 } : {
+            duration: timing.glowPulse * 1.5,
+            repeat: Infinity,
+            delay: idx * 0.2
+          }}
+          style={{
+            borderTop: corner.border.includes('borderTop') ? `2px solid ${neon}` : 'none',
+            borderBottom: corner.border.includes('borderBottom') ? `2px solid ${neon}` : 'none',
+            borderLeft: corner.border.includes('borderLeft') ? `2px solid ${neon}` : 'none',
+            borderRight: corner.border.includes('borderRight') ? `2px solid ${neon}` : 'none',
+            filter: isStarving ? 'none' : `drop-shadow(0 0 ${3 * glowIntensity}px ${glow})`,
+          }}
+        />
+      ))}
+
+      {/* BOOST LEVEL INDICATOR - Volume Icon (0-6 bars) */}
+      <div className="absolute bottom-1 right-1 flex items-end gap-[1px]">
+        {[1, 2, 3, 4, 5, 6].map((barNum) => {
+          const isActive = boostLevel >= barNum; // Direct bar count comparison
+          return (
+            <motion.div
+              key={barNum}
+              className="rounded-[1px]"
+              style={{
+                width: '2px',
+                height: `${2 + barNum * 1.5}px`, // 3.5, 5, 6.5, 8, 9.5, 11px - ascending
+                background: isActive ? neon : 'rgba(255,255,255,0.12)',
+                boxShadow: isActive ? `0 0 3px ${glow}` : 'none',
+              }}
+              animate={isActive ? {
+                opacity: [0.85, 1, 0.85],
+              } : { opacity: 0.2 }}
+              transition={isActive ? {
+                duration: 1.2,
+                repeat: Infinity,
+                delay: barNum * 0.06,
+              } : {}}
+            />
+          );
+        })}
+      </div>
+
+      {/* QUEUE MULTIPLIER BADGE - x2, x3, x4, x5 when queue is dominated by this mode */}
+      {queueMultiplier > 1 && (
+        <motion.div
+          className="absolute top-1 left-1 px-1 py-0.5 rounded text-[7px] font-black"
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{
+            scale: [1, 1.1, 1],
+            opacity: 1,
+          }}
+          transition={{
+            scale: { duration: 0.8, repeat: Infinity },
+            opacity: { duration: 0.3 }
+          }}
+          style={{
+            background: `linear-gradient(135deg, ${neon}, ${glow})`,
+            color: '#000',
+            textShadow: '0 0 2px rgba(255,255,255,0.5)',
+            boxShadow: `0 0 6px ${glow}, 0 0 12px ${glow}`,
+          }}
+        >
+          x{queueMultiplier}
+        </motion.div>
+      )}
+
+      {/* ACTIVE INDICATOR - Pulsing dot when mode is feeding the streams */}
+      {isActive && (
+        <motion.div
+          className="absolute top-1 right-1 w-2 h-2 rounded-full"
+          animate={{
+            scale: [1, 1.3, 1],
+            opacity: [0.8, 1, 0.8],
+          }}
+          transition={{ duration: 1, repeat: Infinity }}
+          style={{
+            background: neon,
+            boxShadow: `0 0 6px ${neon}, 0 0 10px ${glow}`,
+          }}
+        />
+      )}
     </motion.button>
   );
 });
@@ -685,14 +1061,17 @@ interface PortalBeltProps {
   tracks: Track[];
   onTap: (track: Track) => void;
   onTeaser?: (track: Track) => void;
+  onQueueAdd?: (track: Track) => void; // Track queue additions for MixBoard
   playedTrackIds: Set<string>;
   type: 'hot' | 'discovery';
+  mixModes?: MixMode[]; // For color-coding cards by mode
+  modeBoosts?: Record<string, number>; // Boost levels for intensity calculation
   isActive: boolean; // Controls if belt is scrolling
   onScrollOutward?: () => void; // Callback when user wants to scroll outward (reverse)
   scrollOutwardTrigger?: number; // Increment to trigger outward scroll
 }
 
-const PortalBelt = ({ tracks, onTap, onTeaser, playedTrackIds, type, isActive, scrollOutwardTrigger = 0 }: PortalBeltProps) => {
+const PortalBelt = ({ tracks, onTap, onTeaser, onQueueAdd, playedTrackIds, type, mixModes, modeBoosts, isActive, scrollOutwardTrigger = 0 }: PortalBeltProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [offset, setOffset] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
@@ -840,7 +1219,9 @@ const PortalBelt = ({ tracks, onTap, onTeaser, playedTrackIds, type, isActive, s
                 track={track}
                 onTap={() => onTap(track)}
                 onTeaser={onTeaser}
+                onQueueAdd={onQueueAdd}
                 isPlayed={playedTrackIds.has(track.id)}
+                modeColor={mixModes ? getTrackModeColor(track.title, track.artist, mixModes, modeBoosts) : null}
               />
             </motion.div>
           );
@@ -963,7 +1344,14 @@ const PortalBelt = ({ tracks, onTap, onTeaser, playedTrackIds, type, isActive, s
 // STREAM CARD (Horizontal scroll - HOT/DISCOVERY - with VOYO brand tint)
 // Now with MOBILE TAP-TO-TEASER (30s preview) + DRAG-TO-QUEUE
 // ============================================
-const StreamCard = memo(({ track, onTap, isPlayed, onTeaser }: { track: Track; onTap: () => void; isPlayed?: boolean; onTeaser?: (track: Track) => void }) => {
+const StreamCard = memo(({ track, onTap, isPlayed, onTeaser, modeColor, onQueueAdd }: {
+  track: Track;
+  onTap: () => void;
+  isPlayed?: boolean;
+  onTeaser?: (track: Track) => void;
+  modeColor?: { neon: string; glow: string; intensity: number } | null; // From MixBoard mode matching
+  onQueueAdd?: (track: Track) => void; // Callback when track is added to queue (for MixBoard tracking)
+}) => {
   const addToQueue = usePlayerStore(state => state.addToQueue);
   const [showQueueFeedback, setShowQueueFeedback] = useState(false);
   const [showTeaserFeedback, setShowTeaserFeedback] = useState(false);
@@ -1045,6 +1433,7 @@ const StreamCard = memo(({ track, onTap, isPlayed, onTeaser }: { track: Track; o
           if (flyTimeoutRef.current) clearTimeout(flyTimeoutRef.current);
           flyTimeoutRef.current = setTimeout(() => {
             addToQueue(track);
+            onQueueAdd?.(track); // Track for MixBoard bar calculation
             setShowQueueFeedback(true);
           }, 200);
 
@@ -1132,7 +1521,15 @@ const StreamCard = memo(({ track, onTap, isPlayed, onTeaser }: { track: Track; o
           ease: [0.4, 0, 0.2, 1], // ease-out-cubic
         } : springs.smooth}
       >
-        <div className="w-14 h-14 rounded-xl overflow-hidden mb-1.5 relative border border-white/5 shadow-md bg-gradient-to-br from-purple-900/30 to-pink-900/20">
+        <div
+          className="w-14 h-14 rounded-xl overflow-hidden mb-1.5 relative shadow-md bg-gradient-to-br from-purple-900/30 to-pink-900/20"
+          style={{
+            border: modeColor ? `${1 + modeColor.intensity}px solid ${modeColor.neon}` : '1px solid rgba(255,255,255,0.05)',
+            boxShadow: modeColor
+              ? `0 0 ${4 + modeColor.intensity * 12}px ${modeColor.glow}, 0 0 ${8 + modeColor.intensity * 16}px ${modeColor.glow}, inset 0 0 ${3 + modeColor.intensity * 6}px ${modeColor.glow}`
+              : '0 2px 8px rgba(0,0,0,0.3)',
+          }}
+        >
           <SmartImage
             src={getTrackThumbnailUrl(track, 'medium')}
             alt={track.title}
@@ -1144,6 +1541,18 @@ const StreamCard = memo(({ track, onTap, isPlayed, onTeaser }: { track: Track; o
           />
           {/* VOYO Brand Tint - fades on hover */}
           <VoyoBrandTint isPlayed={isPlayed} />
+          {/* Mode Color Indicator - subtle corner accent */}
+          {modeColor && (
+            <div
+              className="absolute top-0 left-0 w-2 h-2"
+              style={{
+                borderTop: `2px solid ${modeColor.neon}`,
+                borderLeft: `2px solid ${modeColor.neon}`,
+                borderRadius: '6px 0 0 0',
+                filter: `drop-shadow(0 0 3px ${modeColor.glow})`,
+              }}
+            />
+          )}
           {/* Played checkmark overlay */}
           {isPlayed && (
             <div className="absolute inset-0 flex items-center justify-center">
@@ -2090,6 +2499,7 @@ export const VoyoPortraitPlayer = ({
     history,
     hotTracks,
     discoverTracks,
+    refreshRecommendations, // For intent-triggered refresh
     nextTrack,
     prevTrack,
     setCurrentTrack,
@@ -2122,6 +2532,280 @@ export const VoyoPortraitPlayer = ({
   // PORTAL BELT toggle state - tap HOT/DISCOVERY to activate scrolling
   const [isHotBeltActive, setIsHotBeltActive] = useState(false);
   const [isDiscoveryBeltActive, setIsDiscoveryBeltActive] = useState(false);
+
+  // ====== MIX BOARD STATE - Discovery Machine Patent 🎛️ ======
+  // DUAL BAR SYSTEM:
+  // 1. Manual bars = what you tap (baseline, protected)
+  // 2. Queue bonus = based on what you're actually adding to queue (up to 5 extra)
+  // Display = manual + queue_bonus (capped at 6)
+  const MAX_BARS = 6;      // Max any single mode can display
+  const QUEUE_BONUS = 5;   // Max bonus bars from queue behavior
+
+  // Manual bars - user taps to set preferences (zero-sum)
+  const [manualBars, setManualBars] = useState<Record<string, number>>({
+    'afro-heat': 1,      // Start equal - everyone gets 1 bar
+    'chill-vibes': 1,
+    'party-mode': 1,
+    'late-night': 1,
+    'workout': 1,
+    'random-mixer': 1,
+  });
+
+  // Queue composition - tracks how many tracks from each mode are in queue
+  const [queueComposition, setQueueComposition] = useState<Record<string, number>>({
+    'afro-heat': 0,
+    'chill-vibes': 0,
+    'party-mode': 0,
+    'late-night': 0,
+    'workout': 0,
+    'random-mixer': 0,
+  });
+
+  // modeBoosts = manual bars (for display)
+  // queueMultiplier = x2, x3, x4, x5 badge based on queue proportion
+  const modeBoosts = manualBars; // Bars show manual preference directly
+
+  // Calculate queue multiplier per mode (x2-x5 based on queue dominance)
+  const queueMultipliers = useMemo(() => {
+    const totalQueued = Object.values(queueComposition).reduce((sum, n) => sum + n, 0);
+    const multipliers: Record<string, number> = {};
+
+    Object.keys(manualBars).forEach(modeId => {
+      if (totalQueued === 0) {
+        multipliers[modeId] = 1; // No queue yet
+        return;
+      }
+      const queueProportion = (queueComposition[modeId] || 0) / totalQueued;
+      // 0-20% = x1 (no badge), 20-40% = x2, 40-60% = x3, 60-80% = x4, 80-100% = x5
+      if (queueProportion >= 0.8) multipliers[modeId] = 5;
+      else if (queueProportion >= 0.6) multipliers[modeId] = 4;
+      else if (queueProportion >= 0.4) multipliers[modeId] = 3;
+      else if (queueProportion >= 0.2) multipliers[modeId] = 2;
+      else multipliers[modeId] = 1;
+    });
+
+    return multipliers;
+  }, [manualBars, queueComposition]);
+
+  // Detect which mode a track belongs to (returns mode id or 'random-mixer' as fallback)
+  const detectTrackMode = useCallback((track: Track): string => {
+    const searchText = `${track.title} ${track.artist}`.toLowerCase();
+    for (const mode of DEFAULT_MIX_MODES) {
+      for (const keyword of mode.keywords) {
+        if (searchText.includes(keyword.toLowerCase())) {
+          return mode.id;
+        }
+      }
+    }
+    return 'random-mixer'; // Fallback - unmatched tracks go to random
+  }, []);
+
+  // Track when something is added to queue
+  const trackQueueAddition = useCallback((track: Track) => {
+    const modeId = detectTrackMode(track);
+    setQueueComposition(prev => ({
+      ...prev,
+      [modeId]: (prev[modeId] || 0) + 1
+    }));
+  }, [detectTrackMode]);
+
+  // Access queue actions from player store
+  const addToQueue = usePlayerStore(state => state.addToQueue);
+
+  // Handle mode tap - adds 1 manual bar to tapped mode, steals from others
+  // Zero-sum: total MANUAL bars always = 6
+  const TOTAL_MANUAL_BARS = 6;
+  const handleModeBoost = useCallback((modeId: string) => {
+    setManualBars(prev => {
+      const currentBars = prev[modeId] || 0;
+
+      // Already maxed manual? Can't add more manually
+      if (currentBars >= MAX_BARS) {
+        haptics?.impact?.();
+        return prev;
+      }
+
+      const newBars: Record<string, number> = { ...prev };
+
+      // Add 1 manual bar to tapped mode
+      newBars[modeId] = currentBars + 1;
+
+      // Find modes that have manual bars to steal from (excluding tapped mode)
+      const otherModes = Object.keys(prev).filter(k => k !== modeId && prev[k] > 0);
+
+      if (otherModes.length > 0) {
+        // Steal 1 bar from the mode with the MOST manual bars (take from the rich)
+        const richestMode = otherModes.reduce((richest, mode) =>
+          (prev[mode] > prev[richest]) ? mode : richest
+        , otherModes[0]);
+
+        newBars[richestMode] = Math.max(0, prev[richestMode] - 1);
+      }
+
+      // Haptic feedback based on dominance
+      haptics?.impact?.();
+
+      return newBars;
+    });
+  }, []);
+
+  // Handle MixBoard card drag-to-queue - "Give me this vibe NOW!"
+  // Finds up to 3 matching tracks from HOT/DISCOVERY and adds them to queue
+  const handleModeToQueue = useCallback((modeId: string) => {
+    const mode = DEFAULT_MIX_MODES.find(m => m.id === modeId);
+    if (!mode) return;
+
+    // Combine hot and discovery tracks
+    const allTracks = [...hotTracks, ...discoverTracks];
+
+    // Find tracks matching this mode's keywords
+    const matchingTracks = allTracks.filter(track => {
+      const searchText = `${track.title} ${track.artist}`.toLowerCase();
+      return mode.keywords.some(keyword => searchText.includes(keyword.toLowerCase()));
+    });
+
+    // Add up to 3 matching tracks to queue (or random if no matches)
+    const tracksToAdd = matchingTracks.length > 0
+      ? matchingTracks.slice(0, 3)
+      : allTracks.slice(0, 3); // Fallback to first 3 if no keyword matches
+
+    tracksToAdd.forEach(track => {
+      addToQueue(track);
+      trackQueueAddition(track);
+    });
+
+    // Also boost this mode manually (user explicitly wants this vibe)
+    handleModeBoost(modeId);
+  }, [hotTracks, discoverTracks, addToQueue, trackQueueAddition, handleModeBoost]);
+
+  // Random Mixer spin animation state
+  const [xRandomizerSpin, setXRandomizerSpin] = useState(false);
+
+  // ============================================
+  // INTENT ENGINE SYNC - Wire MixBoard to HOT/DISCOVERY
+  // ============================================
+
+  // Get Intent Store actions
+  const intentSetManualBars = useIntentStore(state => state.setManualBars);
+  const intentRecordDragToQueue = useIntentStore(state => state.recordDragToQueue);
+  const intentRecordTrackQueued = useIntentStore(state => state.recordTrackQueued);
+  const intentStartSession = useIntentStore(state => state.startSession);
+
+  // Start intent session on mount
+  useEffect(() => {
+    intentStartSession();
+  }, [intentStartSession]);
+
+  // Sync manual bars to Intent Store when they change
+  useEffect(() => {
+    Object.entries(manualBars).forEach(([modeId, bars]) => {
+      intentSetManualBars(modeId as VibeMode, bars);
+    });
+  }, [manualBars, intentSetManualBars]);
+
+  // INTENT → REFRESH TRIGGER
+  // When MixBoard changes significantly, refresh HOT/DISCOVERY recommendations
+  // Debounced to avoid excessive refreshes during rapid tapping
+  const lastRefreshRef = useRef<number>(0);
+  const prevBarsRef = useRef<Record<string, number>>(manualBars);
+
+  useEffect(() => {
+    // Check if bars changed significantly (any mode changed by 2+ bars)
+    const prevBars = prevBarsRef.current;
+    let significantChange = false;
+
+    Object.keys(manualBars).forEach((modeId) => {
+      const diff = Math.abs((manualBars[modeId] || 0) - (prevBars[modeId] || 0));
+      if (diff >= 2) {
+        significantChange = true;
+      }
+    });
+
+    // Also trigger on first significant boost (any mode going from 1 to 3+)
+    const anyHighBoost = Object.values(manualBars).some((bars) => bars >= 3);
+    const wasLowBoost = Object.values(prevBars).every((bars) => bars <= 2);
+    if (anyHighBoost && wasLowBoost) {
+      significantChange = true;
+    }
+
+    // Debounce: only refresh every 2 seconds max
+    const now = Date.now();
+    const timeSinceLastRefresh = now - lastRefreshRef.current;
+
+    if (significantChange && timeSinceLastRefresh > 2000) {
+      console.log('[VOYO Intent] Significant MixBoard change detected, refreshing recommendations...');
+      refreshRecommendations();
+      lastRefreshRef.current = now;
+    }
+
+    prevBarsRef.current = { ...manualBars };
+  }, [manualBars, refreshRecommendations]);
+
+  // Enhanced drag-to-queue that also records intent
+  const handleModeToQueueWithIntent = useCallback((modeId: string) => {
+    // Record drag-to-queue intent (strongest signal!)
+    intentRecordDragToQueue(modeId as VibeMode);
+
+    // Call existing handler
+    handleModeToQueue(modeId);
+
+    // Drag-to-queue is the STRONGEST intent signal - trigger immediate refresh
+    // (User explicitly said "give me this vibe NOW")
+    setTimeout(() => {
+      console.log('[VOYO Intent] Drag-to-queue detected, refreshing recommendations...');
+      refreshRecommendations();
+    }, 500); // Small delay to let queue update first
+  }, [handleModeToQueue, intentRecordDragToQueue, refreshRecommendations]);
+
+  // Enhanced queue addition that also records intent
+  const trackQueueAdditionWithIntent = useCallback((track: Track) => {
+    const modeId = detectTrackMode(track);
+    intentRecordTrackQueued(modeId as VibeMode);
+    trackQueueAddition(track);
+  }, [detectTrackMode, trackQueueAddition, intentRecordTrackQueued]);
+
+  // Check if a mode is "active" (has at least 1 bar)
+  const isModeActive = useCallback((modeId: string) => {
+    return (modeBoosts[modeId] || 0) >= 1;
+  }, [modeBoosts]);
+
+  // Calculate "Your Vibes" color - weighted average of boosted mode colors
+  const getVibesColor = useCallback(() => {
+    const modeColors: Record<string, { r: number; g: number; b: number }> = {
+      'afro-heat': { r: 239, g: 68, b: 68 },      // Red
+      'chill-vibes': { r: 59, g: 130, b: 246 },   // Blue
+      'party-mode': { r: 236, g: 72, b: 153 },    // Pink
+      'late-night': { r: 139, g: 92, b: 246 },    // Purple
+      'workout': { r: 249, g: 115, b: 22 },       // Orange
+      'random-mixer': { r: 168, g: 85, b: 247 },  // Gradient purple (mix of all)
+    };
+
+    let totalWeight = 0;
+    let r = 0, g = 0, b = 0;
+
+    Object.entries(modeBoosts).forEach(([modeId, boost]) => {
+      const color = modeColors[modeId];
+      if (color && boost > 0) {
+        r += color.r * boost;
+        g += color.g * boost;
+        b += color.b * boost;
+        totalWeight += boost;
+      }
+    });
+
+    if (totalWeight === 0) return { color: '#a855f7', glow: 'rgba(168,85,247,0.5)' };
+
+    const avgR = Math.round(r / totalWeight);
+    const avgG = Math.round(g / totalWeight);
+    const avgB = Math.round(b / totalWeight);
+
+    return {
+      color: `rgb(${avgR},${avgG},${avgB})`,
+      glow: `rgba(${avgR},${avgG},${avgB},0.5)`
+    };
+  }, [modeBoosts]);
+
+  const vibesColor = getVibesColor();
 
   // CLEAN STATE: Two levels of reveal
   // TAP: Quick controls only (shuffle, repeat, share)
@@ -2876,33 +3560,88 @@ export const VoyoPortraitPlayer = ({
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
 
-        {/* Stream Labels - Tap to toggle belt scroll */}
+        {/* Stream Labels - Enhanced Neon Style with Glow */}
         <div className="flex justify-between px-6 mb-3">
+          {/* HOT Label - Red Neon */}
           <motion.button
             onClick={() => setIsHotBeltActive(prev => !prev)}
-            className="text-[10px] font-bold tracking-[0.2em] text-rose-500 uppercase flex items-center gap-1"
+            className="flex items-center gap-1.5 px-2 py-1 rounded relative overflow-hidden"
             animate={isHotBeltActive ? {
-              opacity: [1, 0.5, 1],
-              transition: { duration: 2, repeat: Infinity, ease: 'easeInOut' }
-            } : { opacity: 1 }}
-            whileTap={{ scale: 0.96 }}
-            transition={springs.snappy}
+              scale: [1, 1.02, 1],
+              transition: { duration: 1.5, repeat: Infinity, ease: 'easeInOut' }
+            } : { scale: 1 }}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            style={{
+              background: 'rgba(239,68,68,0.1)',
+              boxShadow: isHotBeltActive
+                ? '0 0 15px rgba(239,68,68,0.4), inset 0 0 10px rgba(239,68,68,0.2)'
+                : '0 0 8px rgba(239,68,68,0.2)'
+            }}
           >
-            <Flame size={10} /> HOT
-            {isHotBeltActive && <span className="text-[6px] text-rose-400/60 ml-1">ON</span>}
+            <motion.div
+              animate={isHotBeltActive ? { rotate: [0, 10, -10, 0] } : {}}
+              transition={{ duration: 0.5, repeat: Infinity }}
+            >
+              <Flame size={12} className="text-rose-500" style={{ filter: 'drop-shadow(0 0 4px rgba(239,68,68,0.8))' }} />
+            </motion.div>
+            <span
+              className="text-[11px] font-black tracking-[0.15em] uppercase"
+              style={{
+                color: '#ef4444',
+                textShadow: '0 0 8px rgba(239,68,68,0.8), 0 0 16px rgba(239,68,68,0.5)'
+              }}
+            >
+              HOT
+            </span>
+            {isHotBeltActive && (
+              <motion.span
+                className="text-[6px] font-bold ml-0.5"
+                initial={{ opacity: 0, scale: 0 }}
+                animate={{ opacity: 1, scale: 1 }}
+                style={{ color: '#fca5a5' }}
+              >
+                ●
+              </motion.span>
+            )}
           </motion.button>
+
+          {/* DISCOVERY Label - Cyan Neon */}
           <motion.button
             onClick={() => setIsDiscoveryBeltActive(prev => !prev)}
-            className="text-[10px] font-bold tracking-[0.2em] text-cyan-500 uppercase flex items-center gap-1"
+            className="flex items-center gap-1.5 px-2 py-1 rounded relative overflow-hidden"
             animate={isDiscoveryBeltActive ? {
-              opacity: [1, 0.5, 1],
-              transition: { duration: 2, repeat: Infinity, ease: 'easeInOut' }
-            } : { opacity: 1 }}
-            whileTap={{ scale: 0.96 }}
-            transition={springs.snappy}
+              scale: [1, 1.02, 1],
+              transition: { duration: 1.5, repeat: Infinity, ease: 'easeInOut' }
+            } : { scale: 1 }}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            style={{
+              background: 'rgba(6,182,212,0.1)',
+              boxShadow: isDiscoveryBeltActive
+                ? '0 0 15px rgba(6,182,212,0.4), inset 0 0 10px rgba(6,182,212,0.2)'
+                : '0 0 8px rgba(6,182,212,0.2)'
+            }}
           >
-            DISCOVERY
-            {isDiscoveryBeltActive && <span className="text-[6px] text-cyan-400/60 ml-1">ON</span>}
+            <span
+              className="text-[11px] font-black tracking-[0.15em] uppercase"
+              style={{
+                color: '#06b6d4',
+                textShadow: '0 0 8px rgba(6,182,212,0.8), 0 0 16px rgba(6,182,212,0.5)'
+              }}
+            >
+              DISCOVER
+            </span>
+            {isDiscoveryBeltActive && (
+              <motion.span
+                className="text-[6px] font-bold ml-0.5"
+                initial={{ opacity: 0, scale: 0 }}
+                animate={{ opacity: 1, scale: 1 }}
+                style={{ color: '#67e8f9' }}
+              >
+                ●
+              </motion.span>
+            )}
           </motion.button>
         </div>
 
@@ -2965,8 +3704,11 @@ export const VoyoPortraitPlayer = ({
               tracks={hotTracks.slice(0, 8)}
               onTap={setCurrentTrack}
               onTeaser={handleTeaser}
+              onQueueAdd={trackQueueAddition}
               playedTrackIds={playedTrackIds}
               type="hot"
+              mixModes={DEFAULT_MIX_MODES}
+              modeBoosts={modeBoosts}
               isActive={isHotBeltActive}
               scrollOutwardTrigger={hotScrollTrigger}
             />
@@ -3081,8 +3823,11 @@ export const VoyoPortraitPlayer = ({
               tracks={discoverTracks.slice(0, 8)}
               onTap={setCurrentTrack}
               onTeaser={handleTeaser}
+              onQueueAdd={trackQueueAddition}
               playedTrackIds={playedTrackIds}
               type="discovery"
+              mixModes={DEFAULT_MIX_MODES}
+              modeBoosts={modeBoosts}
               isActive={isDiscoveryBeltActive}
               scrollOutwardTrigger={discoveryScrollTrigger}
             />
@@ -3141,63 +3886,197 @@ export const VoyoPortraitPlayer = ({
 
         {/* PLAYLIST RECOMMENDATION BAR - NEON BILLBOARD 2050 */}
         <div className="mt-4 px-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[9px] font-bold tracking-[0.15em] text-purple-400 uppercase">Your Playlists</span>
-            <span className="text-[8px] text-gray-500">See all</span>
+          <div className="flex items-center justify-between mb-3">
+            {/* Section Title - MIX BOARD + Your Vibes */}
+            <motion.div
+              className="flex items-center gap-2"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }}
+            >
+              <span
+                className="text-[10px] font-black tracking-[0.15em] uppercase text-white/60"
+              >
+                MIX BOARD
+              </span>
+              <span className="text-white/30">•</span>
+              {/* "Your Vibes" - Italic, dynamic color from boosted modes with pulse */}
+              <motion.span
+                className="text-[11px] font-medium italic"
+                animate={{
+                  color: vibesColor.color,
+                  textShadow: `0 0 8px ${vibesColor.glow}, 0 0 16px ${vibesColor.glow}`,
+                  scale: [1, 1.02, 1],
+                }}
+                transition={{
+                  color: { duration: 0.8, ease: 'easeOut' },
+                  textShadow: { duration: 0.8, ease: 'easeOut' },
+                  scale: { duration: 2, repeat: Infinity, ease: 'easeInOut' },
+                }}
+              >
+                Your Vibes
+              </motion.span>
+            </motion.div>
+            {/* "See All" with hover effect */}
+            <motion.button
+              className="text-[8px] text-gray-500 hover:text-purple-400 transition-colors"
+              whileHover={{ x: 3 }}
+            >
+              See all →
+            </motion.button>
           </div>
-          <div className="overflow-x-auto no-scrollbar flex gap-3 pb-3">
-            {/* Neon Billboard Cards */}
+          <div className="overflow-x-auto no-scrollbar flex gap-3 pb-1 -mb-2">
+            {/* ====== MIX BOARD PRESETS - Tap to boost influence on HOT/DISCOVERY ====== */}
+            {/* Afro Heat - ENERGETIC mood */}
             <NeonBillboardCard
               title="Afro Heat"
-              taglines={["Hits on Hits!", "Lagos to Accra", "Pump It Up!", "Fire Fire!"]}
+              taglines={["Asambe! 🔥", "Lagos to Accra!", "E Choke! 💥", "Fire on Fire!", "No Wahala!"]}
               neon="#ef4444"
-              glow="rgba(239,68,68,0.4)"
+              glow="rgba(239,68,68,0.5)"
               delay={0}
+              mood="energetic"
+              textAnimation="bounce"
+              onClick={() => handleModeBoost('afro-heat')}
+              onDragToQueue={() => handleModeToQueueWithIntent('afro-heat')}
+              isActive={isModeActive('afro-heat')}
+              boostLevel={modeBoosts['afro-heat'] || 0}
+              queueMultiplier={queueMultipliers['afro-heat'] || 1}
             />
+            {/* Chill Vibes - CHILL mood */}
             <NeonBillboardCard
               title="Chill Vibes"
-              taglines={["Easy Does It", "Smooth & Soft", "Relax Mode", "Float Away"]}
+              taglines={["It's Your Eazi...", "Slow Wine Time", "Easy Does It", "Float Away~", "Pon Di Ting"]}
               neon="#3b82f6"
-              glow="rgba(59,130,246,0.4)"
-              delay={0.5}
+              glow="rgba(59,130,246,0.5)"
+              delay={1}
+              mood="chill"
+              textAnimation="slideUp"
+              onClick={() => handleModeBoost('chill-vibes')}
+              onDragToQueue={() => handleModeToQueueWithIntent('chill-vibes')}
+              isActive={isModeActive('chill-vibes')}
+              boostLevel={modeBoosts['chill-vibes'] || 0}
+              queueMultiplier={queueMultipliers['chill-vibes'] || 1}
             />
+            {/* Party Mode - HYPE mood */}
             <NeonBillboardCard
               title="Party Mode"
-              taglines={["Another One!", "Turn It Up!", "Let's Gooo!", "DJ Khaled!"]}
+              taglines={["Another One! 🎉", "We The Best!", "Ku Lo Sa!", "Turn Up! 🔊", "Major Vibes Only"]}
               neon="#ec4899"
-              glow="rgba(236,72,153,0.4)"
-              delay={1}
+              glow="rgba(236,72,153,0.5)"
+              delay={2}
+              mood="hype"
+              textAnimation="scaleIn"
+              onClick={() => handleModeBoost('party-mode')}
+              onDragToQueue={() => handleModeToQueueWithIntent('party-mode')}
+              isActive={isModeActive('party-mode')}
+              boostLevel={modeBoosts['party-mode'] || 0}
+              queueMultiplier={queueMultipliers['party-mode'] || 1}
             />
+            {/* Late Night - MYSTERIOUS mood */}
+            <NeonBillboardCard
+              title="Late Night"
+              taglines={["Midnight Moods", "After Hours...", "Vibes & Chill", "3AM Sessions", "Lost in Sound"]}
+              neon="#8b5cf6"
+              glow="rgba(139,92,246,0.5)"
+              delay={3}
+              mood="mysterious"
+              textAnimation="rotateIn"
+              onClick={() => handleModeBoost('late-night')}
+              onDragToQueue={() => handleModeToQueueWithIntent('late-night')}
+              isActive={isModeActive('late-night')}
+              boostLevel={modeBoosts['late-night'] || 0}
+              queueMultiplier={queueMultipliers['late-night'] || 1}
+            />
+            {/* Workout - INTENSE mood */}
             <NeonBillboardCard
               title="Workout"
-              taglines={["Mega Pumps!", "Beats 4 Beats", "Ouuh Yeahhh!", "Go Harder!"]}
-              neon="#8b5cf6"
-              glow="rgba(139,92,246,0.4)"
-              delay={1.5}
+              taglines={["Beast Mode! 💪", "Pump It Up!", "No Pain No Gain", "Go Harder!", "Maximum Effort!"]}
+              neon="#f97316"
+              glow="rgba(249,115,22,0.5)"
+              delay={4}
+              mood="intense"
+              textAnimation="bounce"
+              onClick={() => handleModeBoost('workout')}
+              onDragToQueue={() => handleModeToQueueWithIntent('workout')}
+              isActive={isModeActive('workout')}
+              boostLevel={modeBoosts['workout'] || 0}
+              queueMultiplier={queueMultipliers['workout'] || 1}
             />
-            {/* Add New - Neon style */}
+
+            {/* RANDOM MIXER - Spotify-style discovery recommendations */}
+            <NeonBillboardCard
+              title="Random Mix"
+              taglines={["Surprise Me! 🎲", "Discovery Mode", "Mix It Up!", "Fresh Finds 🔮", "Vibe Check!"]}
+              neon="#a855f7"
+              glow="rgba(168,85,247,0.5)"
+              delay={5}
+              mood="mysterious"
+              textAnimation="scaleIn"
+              onClick={() => handleModeBoost('random-mixer')}
+              onDragToQueue={() => handleModeToQueueWithIntent('random-mixer')}
+              isActive={isModeActive('random-mixer')}
+              boostLevel={modeBoosts['random-mixer'] || 0}
+              queueMultiplier={queueMultipliers['random-mixer'] || 1}
+            />
+
+            {/* Add New - Enhanced neon style with pulsing border */}
             <motion.button
               onClick={onSearch}
               className="flex-shrink-0 w-28 h-16 rounded-lg relative overflow-hidden group"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.96 }}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2, duration: 0.4, ease: [0.34, 1.56, 0.64, 1] }}
               style={{
-                background: 'linear-gradient(135deg, rgba(15,15,22,0.9) 0%, rgba(10,10,15,0.95) 100%)',
+                background: 'linear-gradient(135deg, rgba(8,8,12,0.98) 0%, rgba(3,3,5,0.99) 100%)',
               }}
             >
-              <div
-                className="absolute inset-0 rounded-lg opacity-30 group-hover:opacity-60 transition-opacity duration-300"
-                style={{
-                  boxShadow: 'inset 0 0 0 1px rgba(139,92,246,0.5)',
+              {/* Pulsing dashed border */}
+              <motion.div
+                className="absolute inset-0 rounded-lg"
+                animate={{
+                  boxShadow: [
+                    'inset 0 0 0 1px rgba(139,92,246,0.3)',
+                    'inset 0 0 0 1.5px rgba(139,92,246,0.5), 0 0 10px rgba(139,92,246,0.2)',
+                    'inset 0 0 0 1px rgba(139,92,246,0.3)',
+                  ],
                 }}
+                transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
               />
               <div
-                className="absolute inset-0 rounded-lg border border-dashed border-purple-500/30 group-hover:border-purple-500/50 transition-colors"
+                className="absolute inset-0 rounded-lg border border-dashed border-purple-500/40 group-hover:border-purple-500/60 transition-colors"
               />
-              <div className="relative z-10 h-full flex items-center justify-center gap-1.5">
-                <Plus size={12} className="text-purple-400/70 group-hover:text-purple-400 transition-colors" />
-                <span className="text-[9px] text-purple-400/70 group-hover:text-purple-400 font-bold transition-colors">New</span>
+              <div className="relative z-10 h-full flex flex-col items-center justify-center gap-1">
+                <motion.div
+                  animate={{ rotate: [0, 90, 90, 0] }}
+                  transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                >
+                  <Plus size={14} className="text-purple-400/80 group-hover:text-purple-400 transition-colors" />
+                </motion.div>
+                <span
+                  className="text-[9px] font-bold tracking-wide"
+                  style={{
+                    color: 'rgba(168,85,247,0.8)',
+                    textShadow: '0 0 8px rgba(168,85,247,0.4)',
+                  }}
+                >
+                  Create
+                </span>
               </div>
+              {/* Corner accents - matching style */}
+              {['top-0 left-0', 'top-0 right-0', 'bottom-0 left-0', 'bottom-0 right-0'].map((pos, i) => (
+                <div
+                  key={i}
+                  className={`absolute ${pos} w-2 h-2 opacity-50`}
+                  style={{
+                    borderTop: pos.includes('top') ? '1px dashed rgba(168,85,247,0.5)' : 'none',
+                    borderBottom: pos.includes('bottom') ? '1px dashed rgba(168,85,247,0.5)' : 'none',
+                    borderLeft: pos.includes('left') ? '1px dashed rgba(168,85,247,0.5)' : 'none',
+                    borderRight: pos.includes('right') ? '1px dashed rgba(168,85,247,0.5)' : 'none',
+                  }}
+                />
+              ))}
             </motion.button>
           </div>
         </div>

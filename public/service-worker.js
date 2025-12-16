@@ -3,7 +3,7 @@
  * Handles caching and offline functionality
  */
 
-const CACHE_NAME = 'voyo-v1';
+const CACHE_NAME = 'voyo-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -43,19 +43,32 @@ self.addEventListener('fetch', (event) => {
   // Skip cross-origin requests (YouTube, API calls)
   if (!event.request.url.startsWith(self.location.origin)) return;
 
+  // Skip Vite dev server resources (HMR, react-refresh, etc.)
+  if (event.request.url.includes('@vite') ||
+      event.request.url.includes('@react-refresh') ||
+      event.request.url.includes('node_modules') ||
+      event.request.url.includes('.hot-update')) {
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then((cached) => {
       // Return cached version or fetch from network
-      return cached || fetch(event.request).then((response) => {
-        // Cache successful responses for static assets
-        if (response.status === 200 && event.request.url.match(/\.(js|css|svg|png|jpg|webp)$/)) {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseClone);
-          });
-        }
-        return response;
-      });
+      return cached || fetch(event.request)
+        .then((response) => {
+          // Cache successful responses for static assets
+          if (response.status === 200 && event.request.url.match(/\.(js|css|svg|png|jpg|webp)$/)) {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseClone);
+            });
+          }
+          return response;
+        })
+        .catch(() => {
+          // Network error - return cached if available, otherwise fail silently
+          return cached || new Response('', { status: 408, statusText: 'Request timeout' });
+        });
     })
   );
 });

@@ -1,17 +1,26 @@
 /**
- * VOYO Music - Personalization Service
- * Smart scoring algorithm for HOT and DISCOVERY zones
+ * VOYO Music - Personalization Service v2.0
+ * INTENT-FIRST RECOMMENDATION ENGINE
  *
- * Uses user preferences to rank tracks based on:
- * - Listen history (completion rate, skips)
- * - Reactions (OYÉ score)
- * - Explicit likes/dislikes
- * - Artist/tag/mood affinity
+ * HOT ENGINE: What's trending + what you WANT
+ * DISCOVERY ENGINE: What's similar + what you WANT
+ *
+ * Key Innovation: INTENT > BEHAVIOR
+ * - MixBoard bars = explicit user intent (what they WANT)
+ * - Drag-to-queue = strongest intent signal
+ * - Listen history = passive behavior (what they DID)
+ *
+ * Final Score = Behavior (40%) + Intent (60%)
+ *
+ * When user sets Party Mode to 5 bars but history is all chill,
+ * we prioritize Party Mode because that's their CURRENT intent.
  */
 
 import { Track } from '../types';
 import { TrackPreference, usePreferenceStore } from '../store/preferenceStore';
 import { TRACKS } from '../data/tracks';
+import { useIntentStore, matchTrackToMode, VibeMode, MODE_KEYWORDS } from '../store/intentStore';
+import { useTrackPoolStore, PooledTrack } from '../store/trackPoolStore';
 
 // ============================================
 // SCORING WEIGHTS
@@ -32,6 +41,11 @@ const WEIGHTS = {
 
   // Popularity boost
   OYE_SCORE_BOOST: 0.00001, // Small boost for popular tracks
+
+  // INTENT WEIGHTING (new!)
+  INTENT_WEIGHT: 0.6,    // Intent = 60% of final score
+  BEHAVIOR_WEIGHT: 0.4,  // Behavior = 40% of final score
+  MODE_MATCH_BONUS: 80,  // Bonus for matching dominant mode
 };
 
 // ============================================
@@ -39,10 +53,10 @@ const WEIGHTS = {
 // ============================================
 
 /**
- * Calculate track score based on user preferences
- * Higher score = more personalized to user
+ * Calculate BEHAVIOR score based on listen history
+ * What the user DID (passive signals)
  */
-export function calculateTrackScore(track: Track, preferences: Record<string, TrackPreference>): number {
+export function calculateBehaviorScore(track: Track, preferences: Record<string, TrackPreference>): number {
   const pref = preferences[track.id];
   let score = 0;
 
@@ -69,7 +83,7 @@ export function calculateTrackScore(track: Track, preferences: Record<string, Tr
     score += skipScore;
   }
 
-  // 6. POPULARITY BOOST (small)
+  // 3. POPULARITY BOOST (small)
   const popularityBoost = track.oyeScore * WEIGHTS.OYE_SCORE_BOOST;
   score += popularityBoost;
 
@@ -77,28 +91,151 @@ export function calculateTrackScore(track: Track, preferences: Record<string, Tr
 }
 
 /**
- * Get personalized HOT tracks (trending + personalized)
- * Blends global popularity with user preferences
+ * Calculate INTENT score based on MixBoard settings
+ * What the user WANTS (active signals)
+ *
+ * This is the secret sauce!
+ * - Match track to vibe mode (afro-heat, party-mode, etc.)
+ * - Multiply by that mode's intent weight
+ * - Dominant modes get bonus points
+ */
+export function calculateIntentScore(track: Track): number {
+  const intentStore = useIntentStore.getState();
+  const intentWeights = intentStore.getIntentWeights();
+  const dominantModes = intentStore.getDominantModes(2);
+
+  // Match track to its best vibe mode
+  const trackMode = matchTrackToMode({
+    title: track.title,
+    artist: track.artist,
+    tags: track.tags,
+    mood: track.mood,
+  });
+
+  let score = 0;
+
+  // 1. Base intent score from matching mode's weight
+  // If track matches 'party-mode' and party-mode has 40% intent weight → base score
+  const modeWeight = intentWeights[trackMode] || 0;
+  score += modeWeight * 100; // Scale to 0-100
+
+  // 2. BONUS if track matches a dominant mode
+  if (dominantModes.includes(trackMode)) {
+    const dominanceRank = dominantModes.indexOf(trackMode);
+    if (dominanceRank === 0) {
+      // Top dominant mode = full bonus
+      score += WEIGHTS.MODE_MATCH_BONUS;
+    } else if (dominanceRank === 1) {
+      // Second dominant = half bonus
+      score += WEIGHTS.MODE_MATCH_BONUS * 0.5;
+    }
+  }
+
+  // 3. Keyword match bonus (finer granularity)
+  const keywords = MODE_KEYWORDS[trackMode] || [];
+  const searchText = `${track.title} ${track.artist} ${track.tags?.join(' ') || ''}`.toLowerCase();
+  let keywordMatches = 0;
+  keywords.forEach((kw) => {
+    if (searchText.includes(kw.toLowerCase())) {
+      keywordMatches++;
+    }
+  });
+  // Each keyword match = +5 points (max 25 for 5+ matches)
+  score += Math.min(keywordMatches * 5, 25);
+
+  return score;
+}
+
+/**
+ * Calculate COMBINED score (Behavior + Intent)
+ * INTENT > BEHAVIOR (60/40 split)
+ */
+export function calculateTrackScore(track: Track, preferences: Record<string, TrackPreference>): number {
+  const behaviorScore = calculateBehaviorScore(track, preferences);
+  const intentScore = calculateIntentScore(track);
+
+  // Weighted combination: Intent wins!
+  const combinedScore = (behaviorScore * WEIGHTS.BEHAVIOR_WEIGHT) + (intentScore * WEIGHTS.INTENT_WEIGHT);
+
+  return combinedScore;
+}
+
+/**
+ * HOT ENGINE v2.0 - Intent-First Recommendations
+ *
+ * Strategy:
+ * 1. Get dominant modes from MixBoard (what user WANTS)
+ * 2. Pull tracks matching those modes
+ * 3. Score by combined (behavior + intent)
+ * 4. Ensure diversity (don't just play one mode)
+ *
+ * This is the "What's Hot FOR YOU" belt
  */
 export function getPersonalizedHotTracks(limit: number = 5): Track[] {
   const preferences = usePreferenceStore.getState().trackPreferences;
+  const intentStore = useIntentStore.getState();
+  const dominantModes = intentStore.getDominantModes(3); // Top 3 modes
 
-  // Score all tracks
-  const scored = TRACKS.map((track) => ({
-    track,
-    score: calculateTrackScore(track, preferences),
-  }));
+  // Score all tracks with combined scoring
+  const scored = TRACKS.map((track) => {
+    const trackMode = matchTrackToMode({
+      title: track.title,
+      artist: track.artist,
+      tags: track.tags,
+      mood: track.mood,
+    });
+
+    return {
+      track,
+      mode: trackMode,
+      score: calculateTrackScore(track, preferences),
+    };
+  });
 
   // Sort by score descending
   scored.sort((a, b) => b.score - a.score);
 
-  // Return top N
-  return scored.slice(0, limit).map((s) => s.track);
+  // DIVERSITY PASS: Ensure we don't just return all one mode
+  // Take top scorer from each dominant mode, then fill with highest overall
+  const result: Track[] = [];
+  const usedIds = new Set<string>();
+
+  // First: Grab top track from each dominant mode
+  for (const mode of dominantModes) {
+    const topFromMode = scored.find(
+      (s) => s.mode === mode && !usedIds.has(s.track.id)
+    );
+    if (topFromMode) {
+      result.push(topFromMode.track);
+      usedIds.add(topFromMode.track.id);
+    }
+    if (result.length >= limit) break;
+  }
+
+  // Second: Fill remaining slots with highest scoring tracks
+  for (const { track } of scored) {
+    if (result.length >= limit) break;
+    if (!usedIds.has(track.id)) {
+      result.push(track);
+      usedIds.add(track.id);
+    }
+  }
+
+  return result;
 }
 
 /**
- * Get personalized DISCOVERY tracks (similar to current track + preferences)
- * Combines track similarity with user preferences
+ * DISCOVERY ENGINE v2.0 - Intent-Influenced Discovery
+ *
+ * Strategy:
+ * 1. Start with similarity to current track (classic approach)
+ * 2. BOOST tracks that match dominant MixBoard modes
+ * 3. Balance discovery (new) vs. familiarity (similar)
+ *
+ * The magic: If user is playing a chill track but MixBoard says they want party,
+ * Discovery will surface party tracks that are SOMEWHAT similar to current track
+ *
+ * This is the "Based on what you're playing + what you WANT" belt
  */
 export function getPersonalizedDiscoveryTracks(
   currentTrack: Track,
@@ -106,6 +243,9 @@ export function getPersonalizedDiscoveryTracks(
   excludeIds: string[] = []
 ): Track[] {
   const preferences = usePreferenceStore.getState().trackPreferences;
+  const intentStore = useIntentStore.getState();
+  const dominantModes = intentStore.getDominantModes(2);
+  const intentWeights = intentStore.getIntentWeights();
 
   // Filter out excluded tracks
   const candidates = TRACKS.filter(
@@ -116,43 +256,111 @@ export function getPersonalizedDiscoveryTracks(
   const scored = candidates.map((track) => {
     let score = 0;
 
-    // 1. SIMILARITY TO CURRENT TRACK (baseline)
-    // Same artist (strongest)
+    // Get track's mode
+    const trackMode = matchTrackToMode({
+      title: track.title,
+      artist: track.artist,
+      tags: track.tags,
+      mood: track.mood,
+    });
+
+    // =====================================
+    // SIMILARITY SCORE (40% of total)
+    // =====================================
+    let similarityScore = 0;
+
+    // Same artist (strongest similarity signal)
     if (track.artist.toLowerCase() === currentTrack.artist.toLowerCase()) {
-      score += 50;
+      similarityScore += 50;
     }
 
     // Same mood
     if (track.mood && currentTrack.mood && track.mood === currentTrack.mood) {
-      score += 30;
+      similarityScore += 30;
     }
 
     // Matching tags
     const matchingTags = track.tags.filter((tag) =>
       currentTrack.tags.map((t) => t.toLowerCase()).includes(tag.toLowerCase())
     );
-    score += matchingTags.length * 10;
+    similarityScore += matchingTags.length * 10;
 
     // Same region
     if (track.region && currentTrack.region && track.region === currentTrack.region) {
-      score += 5;
+      similarityScore += 5;
     }
 
-    // 2. USER PREFERENCES (personalization)
-    const personalScore = calculateTrackScore(track, preferences);
-    score += personalScore * 0.5; // 50% weight on personal prefs
+    // =====================================
+    // INTENT SCORE (40% of total)
+    // =====================================
+    let intentScore = 0;
 
-    // 3. POPULARITY (small boost)
-    score += track.oyeScore / 1000000;
+    // Mode weight (how much user wants this vibe)
+    const modeWeight = intentWeights[trackMode] || 0;
+    intentScore += modeWeight * 80;
 
-    return { track, score };
+    // Dominant mode bonus
+    if (dominantModes.includes(trackMode)) {
+      const rank = dominantModes.indexOf(trackMode);
+      intentScore += rank === 0 ? 40 : 20;
+    }
+
+    // =====================================
+    // BEHAVIOR SCORE (20% of total)
+    // =====================================
+    const behaviorScore = calculateBehaviorScore(track, preferences);
+
+    // =====================================
+    // COMBINED SCORE
+    // =====================================
+    score = (similarityScore * 0.4) + (intentScore * 0.4) + (behaviorScore * 0.2);
+
+    // Small popularity boost
+    score += track.oyeScore / 10000000;
+
+    return {
+      track,
+      mode: trackMode,
+      score,
+      similarity: similarityScore,
+      intent: intentScore,
+    };
   });
 
   // Sort by score descending
   scored.sort((a, b) => b.score - a.score);
 
-  // Return top N
-  return scored.slice(0, limit).map((s) => s.track);
+  // DIVERSITY: Don't return all from same mode
+  const result: Track[] = [];
+  const usedIds = new Set<string>();
+  const modeCount: Record<string, number> = {};
+
+  for (const item of scored) {
+    if (result.length >= limit) break;
+
+    // Limit max 2 tracks per mode for diversity
+    const currentModeCount = modeCount[item.mode] || 0;
+    if (currentModeCount >= 2 && Object.keys(modeCount).length < 3) {
+      continue; // Skip if we already have 2 from this mode and haven't seen 3 modes
+    }
+
+    if (!usedIds.has(item.track.id)) {
+      result.push(item.track);
+      usedIds.add(item.track.id);
+      modeCount[item.mode] = currentModeCount + 1;
+    }
+  }
+
+  // Fill any remaining slots
+  for (const { track } of scored) {
+    if (result.length >= limit) break;
+    if (!usedIds.has(track.id)) {
+      result.push(track);
+      usedIds.add(track.id);
+    }
+  }
+
+  return result;
 }
 
 /**
@@ -206,6 +414,107 @@ export function getUserTopTracks(limit: number = 10): Track[] {
 }
 
 /**
+ * Get tracks for a specific vibe mode
+ * Used by MixBoard drag-to-queue to find matching tracks
+ */
+export function getTracksByMode(modeId: VibeMode, limit: number = 5): Track[] {
+  const keywords = MODE_KEYWORDS[modeId] || [];
+
+  if (keywords.length === 0) {
+    // Random mixer = random tracks
+    return [...TRACKS].sort(() => Math.random() - 0.5).slice(0, limit);
+  }
+
+  // Score tracks by keyword matches
+  const scored = TRACKS.map((track) => {
+    const searchText = `${track.title} ${track.artist} ${track.tags?.join(' ') || ''} ${track.mood || ''}`.toLowerCase();
+
+    let matches = 0;
+    keywords.forEach((kw) => {
+      if (searchText.includes(kw.toLowerCase())) {
+        matches++;
+      }
+    });
+
+    return { track, matches };
+  });
+
+  // Sort by matches descending
+  scored.sort((a, b) => b.matches - a.matches);
+
+  // Filter to tracks with at least 1 match, or return random if none match
+  const matching = scored.filter((s) => s.matches > 0);
+
+  if (matching.length >= limit) {
+    return matching.slice(0, limit).map((s) => s.track);
+  }
+
+  // Fill with random tracks if not enough matches
+  const usedIds = new Set(matching.map((s) => s.track.id));
+  const filler = TRACKS.filter((t) => !usedIds.has(t.id))
+    .sort(() => Math.random() - 0.5)
+    .slice(0, limit - matching.length);
+
+  return [...matching.map((s) => s.track), ...filler];
+}
+
+/**
+ * Get mixed tracks based on current MixBoard distribution
+ * Returns tracks proportional to mode weights
+ *
+ * Example: If MixBoard is 50% party, 30% chill, 20% workout
+ * Returns: 2-3 party, 1-2 chill, 1 workout tracks
+ */
+export function getMixedTracks(limit: number = 10): Track[] {
+  const intentStore = useIntentStore.getState();
+  const intentWeights = intentStore.getIntentWeights();
+
+  const result: Track[] = [];
+  const usedIds = new Set<string>();
+
+  // Calculate how many tracks per mode
+  const modeAllocation: { modeId: VibeMode; count: number }[] = [];
+  let allocated = 0;
+
+  Object.entries(intentWeights).forEach(([modeId, weight]) => {
+    const count = Math.round(weight * limit);
+    if (count > 0) {
+      modeAllocation.push({ modeId: modeId as VibeMode, count });
+      allocated += count;
+    }
+  });
+
+  // Adjust for rounding (add/remove from largest allocation)
+  if (allocated !== limit && modeAllocation.length > 0) {
+    modeAllocation[0].count += (limit - allocated);
+  }
+
+  // Get tracks for each mode
+  for (const { modeId, count } of modeAllocation) {
+    const modeTracks = getTracksByMode(modeId, count * 2); // Get extra for filtering
+
+    for (const track of modeTracks) {
+      if (result.length >= limit) break;
+      if (!usedIds.has(track.id)) {
+        result.push(track);
+        usedIds.add(track.id);
+      }
+    }
+  }
+
+  // Fill any remaining with random
+  if (result.length < limit) {
+    const filler = TRACKS.filter((t) => !usedIds.has(t.id))
+      .sort(() => Math.random() - 0.5)
+      .slice(0, limit - result.length);
+    result.push(...filler);
+  }
+
+  // Shuffle to mix modes together
+  return result.sort(() => Math.random() - 0.5);
+}
+
+/**
  * Debug: Print preference stats
  */
 export function debugPreferences(): void {
@@ -215,4 +524,257 @@ export function debugPreferences(): void {
   if (prefs.length === 0) {
     return;
   }
+}
+
+/**
+ * Debug: Print intent stats
+ */
+export function debugIntent(): void {
+  const intentStore = useIntentStore.getState();
+  const dominantModes = intentStore.getDominantModes(3);
+  const weights = intentStore.getIntentWeights();
+
+  console.log('[VOYO Intent Engine]');
+  console.log('Dominant Modes:', dominantModes);
+  console.log('Mode Weights:', weights);
+}
+
+// ============================================
+// POOL-AWARE ENGINES (v3.0)
+// Uses dynamic Track Pool instead of static TRACKS
+// ============================================
+
+/**
+ * HOT ENGINE v3.0 - Pool-Aware, Intent-First
+ *
+ * Uses Track Pool Store for dynamic track management.
+ * Falls back to static TRACKS if pool is empty.
+ *
+ * Key difference from v2.0:
+ * - Pulls from growing pool (not static 11 tracks)
+ * - Uses pool scores (engagement + recency + intent)
+ * - Blends new tracks smoothly (no jarring refresh)
+ */
+export function getPoolAwareHotTracks(limit: number = 5): Track[] {
+  const poolStore = useTrackPoolStore.getState();
+  const hotPool = poolStore.hotPool;
+
+  // Fallback to static if pool empty
+  if (hotPool.length === 0) {
+    console.log('[VOYO] Pool empty, falling back to static tracks');
+    return getPersonalizedHotTracks(limit);
+  }
+
+  const intentStore = useIntentStore.getState();
+  const dominantModes = intentStore.getDominantModes(3);
+  const intentWeights = intentStore.getIntentWeights();
+
+  // Score pool tracks with fresh intent weighting
+  const scored = hotPool.map((pooledTrack) => {
+    // Base pool score (engagement + recency)
+    let score = pooledTrack.poolScore;
+
+    // Intent boost (current session)
+    const modeWeight = intentWeights[pooledTrack.detectedMode] || 0.1;
+    score += modeWeight * 30; // Up to +30 for matching intent
+
+    // Dominant mode bonus
+    if (dominantModes.includes(pooledTrack.detectedMode)) {
+      const rank = dominantModes.indexOf(pooledTrack.detectedMode);
+      score += rank === 0 ? 20 : rank === 1 ? 10 : 5;
+    }
+
+    return { track: pooledTrack as Track, mode: pooledTrack.detectedMode, score };
+  });
+
+  // Sort by score
+  scored.sort((a, b) => b.score - a.score);
+
+  // Diversity pass (same as v2.0)
+  const result: Track[] = [];
+  const usedIds = new Set<string>();
+
+  // First: Top from each dominant mode
+  for (const mode of dominantModes) {
+    const topFromMode = scored.find(
+      (s) => s.mode === mode && !usedIds.has(s.track.id)
+    );
+    if (topFromMode) {
+      result.push(topFromMode.track);
+      usedIds.add(topFromMode.track.id);
+    }
+    if (result.length >= limit) break;
+  }
+
+  // Fill remaining
+  for (const { track } of scored) {
+    if (result.length >= limit) break;
+    if (!usedIds.has(track.id)) {
+      result.push(track);
+      usedIds.add(track.id);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * DISCOVERY ENGINE v3.0 - Pool-Aware, Intent-Influenced
+ *
+ * Uses Track Pool Store for dynamic discovery.
+ * Blends similarity + intent + pool engagement.
+ */
+export function getPoolAwareDiscoveryTracks(
+  currentTrack: Track,
+  limit: number = 5,
+  excludeIds: string[] = []
+): Track[] {
+  const poolStore = useTrackPoolStore.getState();
+  const hotPool = poolStore.hotPool;
+
+  // Fallback to static if pool empty
+  if (hotPool.length === 0) {
+    return getPersonalizedDiscoveryTracks(currentTrack, limit, excludeIds);
+  }
+
+  const intentStore = useIntentStore.getState();
+  const dominantModes = intentStore.getDominantModes(2);
+  const intentWeights = intentStore.getIntentWeights();
+
+  // Get current track's mode
+  const currentMode = matchTrackToMode({
+    title: currentTrack.title,
+    artist: currentTrack.artist,
+    tags: currentTrack.tags,
+    mood: currentTrack.mood,
+  });
+
+  // Filter and score
+  const candidates = hotPool.filter(
+    (t) => t.id !== currentTrack.id && !excludeIds.includes(t.id)
+  );
+
+  const scored = candidates.map((pooledTrack) => {
+    let score = 0;
+
+    // 1. POOL SCORE (30%) - engagement + recency
+    score += pooledTrack.poolScore * 0.3;
+
+    // 2. SIMILARITY (30%)
+    if (pooledTrack.detectedMode === currentMode) score += 15;
+    if (pooledTrack.artist.toLowerCase() === currentTrack.artist.toLowerCase()) score += 20;
+    // Tag matching
+    const matchingTags = pooledTrack.tags?.filter((tag) =>
+      currentTrack.tags?.map((t) => t.toLowerCase()).includes(tag.toLowerCase())
+    ) || [];
+    score += matchingTags.length * 3;
+
+    // 3. INTENT (40%)
+    const modeWeight = intentWeights[pooledTrack.detectedMode] || 0.1;
+    score += modeWeight * 40;
+
+    // Dominant mode bonus
+    if (dominantModes.includes(pooledTrack.detectedMode)) {
+      score += 10;
+    }
+
+    return { track: pooledTrack as Track, mode: pooledTrack.detectedMode, score };
+  });
+
+  // Sort and apply diversity
+  scored.sort((a, b) => b.score - a.score);
+
+  const result: Track[] = [];
+  const usedIds = new Set<string>();
+  const modeCount: Record<string, number> = {};
+
+  for (const item of scored) {
+    if (result.length >= limit) break;
+
+    // Limit 2 per mode for diversity
+    const currentModeCount = modeCount[item.mode] || 0;
+    if (currentModeCount >= 2 && Object.keys(modeCount).length < 3) {
+      continue;
+    }
+
+    if (!usedIds.has(item.track.id)) {
+      result.push(item.track);
+      usedIds.add(item.track.id);
+      modeCount[item.mode] = currentModeCount + 1;
+    }
+  }
+
+  // Fill remaining
+  for (const { track } of scored) {
+    if (result.length >= limit) break;
+    if (!usedIds.has(track.id)) {
+      result.push(track);
+      usedIds.add(track.id);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Add tracks to pool from search results
+ * Call this when user searches and plays a track
+ */
+export function addSearchResultsToPool(tracks: Track[]): void {
+  const poolStore = useTrackPoolStore.getState();
+  poolStore.addManyToPool(tracks, 'search');
+  console.log(`[VOYO Pool] Added ${tracks.length} search results to pool`);
+}
+
+/**
+ * Record track engagement (wire to player events)
+ */
+export function recordPoolEngagement(
+  trackId: string,
+  event: 'play' | 'skip' | 'complete' | 'react' | 'queue',
+  data?: { completionRate?: number }
+): void {
+  const poolStore = useTrackPoolStore.getState();
+
+  switch (event) {
+    case 'play':
+      poolStore.recordPlay(trackId);
+      break;
+    case 'skip':
+      poolStore.recordSkip(trackId);
+      break;
+    case 'complete':
+      poolStore.recordCompletion(trackId, data?.completionRate || 100);
+      break;
+    case 'react':
+      poolStore.recordReaction(trackId);
+      break;
+    case 'queue':
+      poolStore.recordQueue(trackId);
+      break;
+  }
+}
+
+/**
+ * Get pool statistics for debugging
+ */
+export function getPoolStats(): { hot: number; cold: number; total: number; byMode: Record<VibeMode, number> } {
+  const poolStore = useTrackPoolStore.getState();
+  const stats = poolStore.getPoolStats();
+
+  // Count by mode
+  const byMode: Record<VibeMode, number> = {
+    'afro-heat': 0,
+    'chill-vibes': 0,
+    'party-mode': 0,
+    'late-night': 0,
+    'workout': 0,
+    'random-mixer': 0,
+  };
+
+  poolStore.hotPool.forEach((t) => {
+    byMode[t.detectedMode] = (byMode[t.detectedMode] || 0) + 1;
+  });
+
+  return { ...stats, byMode };
 }

@@ -25,6 +25,12 @@ import { setupMobileAudioUnlock } from './utils/mobileAudioUnlock';
 import { InstallButton } from './components/ui/InstallButton';
 import { OfflineIndicator } from './components/ui/OfflineIndicator';
 
+// DEBUG: Load intent engine verification tools (available in browser console)
+import './utils/debugIntent';
+
+// TRACK POOL: Start pool maintenance for dynamic track management
+import { startPoolMaintenance } from './store/trackPoolStore';
+
 // App modes
 type AppMode = 'classic' | 'voyo' | 'video';
 
@@ -70,6 +76,13 @@ function App() {
   useEffect(() => {
     const { detectNetworkQuality } = usePlayerStore.getState();
     detectNetworkQuality();
+  }, []);
+
+  // TRACK POOL MAINTENANCE: Start automatic pool management (rescoring every 5 mins)
+  useEffect(() => {
+    startPoolMaintenance();
+    console.log('[VOYO] Track pool maintenance started');
+    // No cleanup needed - maintenance runs in background
   }, []);
 
   // Get background image URL with fallback
@@ -340,7 +353,7 @@ function App() {
                     VOYO
                   </p>
                   <p className="text-[10px] text-gray-500 mt-1">The African Music Experience</p>
-                  <p className="text-[10px] text-gray-600">v1.0.1 • Made with ❤️</p>
+                  <p className="text-[10px] text-gray-600">v1.1.0 • Neon Billboard 2050</p>
                 </div>
               </div>
             </motion.div>

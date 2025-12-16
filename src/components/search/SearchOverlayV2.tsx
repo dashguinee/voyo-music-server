@@ -13,6 +13,7 @@ import { searchMusic, SearchResult } from '../../services/api';
 import { getThumb } from '../../utils/thumbnail';
 import { TRACKS } from '../../data/tracks';
 import { searchCache } from '../../utils/searchCache';
+import { addSearchResultsToPool } from '../../services/personalization';
 
 interface SearchOverlayProps {
   isOpen: boolean;
@@ -454,7 +455,10 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
   }), []);
 
   const handleSelectTrack = useCallback((result: SearchResult) => {
-    setCurrentTrack(resultToTrack(result));
+    const track = resultToTrack(result);
+    // POOL INTEGRATION: Add played search result to track pool for recommendations
+    addSearchResultsToPool([track]);
+    setCurrentTrack(track);
     onClose();
   }, [resultToTrack, setCurrentTrack, onClose]);
 
@@ -475,6 +479,8 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
     // Add to discovery items (for now just show similar tracks)
     const track = resultToTrack(result);
     setDiscoveryItems(prev => [track, ...prev].slice(0, 5));
+    // POOL INTEGRATION: Add to track pool for recommendations
+    addSearchResultsToPool([track]);
     // FIX 1: Wire to player store to update recommendations!
     updateDiscoveryForTrack(track);
   }, [resultToTrack, updateDiscoveryForTrack]);
@@ -485,7 +491,10 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
         // Find the result and add to queue
         const result = results.find(r => r.thumbnail === flyingCD.thumbnail);
         if (result) {
-          addToQueue(resultToTrack(result));
+          const track = resultToTrack(result);
+          // POOL INTEGRATION: Add to track pool when queued from search
+          addSearchResultsToPool([track]);
+          addToQueue(track);
         }
         setShowQueuePreview(true);
         setTimeout(() => setShowQueuePreview(false), 2000);
@@ -521,6 +530,8 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
         if (zone === 'discovery') {
           const track = resultToTrack(result);
           setDiscoveryItems(prev => [track, ...prev].slice(0, 5));
+          // POOL INTEGRATION: Add to track pool when dragged to discovery
+          addSearchResultsToPool([track]);
           // FIX 1: Wire drag-and-drop to player store too!
           updateDiscoveryForTrack(track);
         }

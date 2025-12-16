@@ -8,6 +8,9 @@ import {
 import {
   getPersonalizedHotTracks,
   getPersonalizedDiscoveryTracks,
+  getPoolAwareHotTracks,
+  getPoolAwareDiscoveryTracks,
+  recordPoolEngagement,
 } from '../services/personalization';
 import { BitrateLevel, BufferStatus } from '../services/audioEngine';
 import { prefetchTrack } from '../services/api';
@@ -178,7 +181,8 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   })),
   history: [],
 
-  // PERSONALIZED BELTS: Use smart scoring from day 1
+  // PERSONALIZED BELTS: Start with static tracks, then upgrade to pool-aware on first refresh
+  // (Lazy init to avoid circular dependency during store creation)
   hotTracks: getPersonalizedHotTracks(5),
   aiPicks: getRandomTracks(5),
   discoverTracks: getPersonalizedDiscoveryTracks(TRACKS[0], 5, []),
@@ -202,6 +206,12 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     // Add current track to history before switching (only if played > 5 seconds)
     if (state.currentTrack && state.currentTime > 5) {
       get().addToHistory(state.currentTrack, state.currentTime);
+
+      // POOL ENGAGEMENT: Record completion if played significantly
+      const completionRate = state.duration > 0 ? (state.currentTime / state.duration) * 100 : 0;
+      if (completionRate > 30) {
+        recordPoolEngagement(state.currentTrack.id, 'complete', { completionRate });
+      }
     }
     set({
       currentTrack: track,
@@ -210,6 +220,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       currentTime: 0,
       seekPosition: null // Clear seek position on track change
     });
+
+    // POOL ENGAGEMENT: Record play
+    recordPoolEngagement(track.id, 'play');
 
     // AUTO-TRIGGER: Update smart discovery for this track
     get().updateDiscoveryForTrack(track);
@@ -245,12 +258,26 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       return;
     }
 
+    // POOL ENGAGEMENT: Detect skip vs completion for current track
+    if (state.currentTrack && state.duration > 0) {
+      const completionRate = (state.currentTime / state.duration) * 100;
+      if (completionRate < 30) {
+        // User skipped (less than 30% played)
+        recordPoolEngagement(state.currentTrack.id, 'skip');
+      } else {
+        // User completed (at least 30% played)
+        recordPoolEngagement(state.currentTrack.id, 'complete', { completionRate });
+      }
+    }
+
     // Check queue first
     if (state.queue.length > 0) {
       const [next, ...rest] = state.queue;
       if (state.currentTrack && state.currentTime > 5) {
         get().addToHistory(state.currentTrack, state.currentTime);
       }
+      // POOL ENGAGEMENT: Record play for next track
+      recordPoolEngagement(next.track.id, 'play');
       set({
         currentTrack: next.track,
         queue: rest,
@@ -301,6 +328,8 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       if (state.currentTrack && state.currentTime > 5) {
         get().addToHistory(state.currentTrack, state.currentTime);
       }
+      // POOL ENGAGEMENT: Record play for next track
+      recordPoolEngagement(nextTrack.id, 'play');
       set({
         currentTrack: nextTrack,
         isPlaying: true,
@@ -359,6 +388,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         prefetchTrack(track.trackId);
       }
 
+      // POOL ENGAGEMENT: Record queue action (strong intent signal)
+      recordPoolEngagement(track.id, 'queue');
+
       if (position !== undefined) {
         const newQueue = [...state.queue];
         newQueue.splice(position, 0, newItem);
@@ -409,11 +441,11 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       ...state.history.slice(-5).map((h) => h.track.id),
     ].filter(Boolean) as string[];
 
-    // ALWAYS use personalized recommendations (VOYO intelligence)
-    const hotTracks = getPersonalizedHotTracks(5);
+    // POOL-AWARE v3.0: Pull from dynamic track pool (falls back to v2.0 if empty)
+    const hotTracks = getPoolAwareHotTracks(5);
     const discoverTracks = state.currentTrack
-      ? getPersonalizedDiscoveryTracks(state.currentTrack, 5, excludeIds)
-      : getPersonalizedDiscoveryTracks(TRACKS[0], 5, excludeIds);
+      ? getPoolAwareDiscoveryTracks(state.currentTrack, 5, excludeIds)
+      : getPoolAwareDiscoveryTracks(TRACKS[0], 5, excludeIds);
 
     set({
       hotTracks,
@@ -434,8 +466,8 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       ...state.queue.map((q) => q.track.id),
     ].filter(Boolean) as string[];
 
-    // ALWAYS use personalized discovery (VOYO intelligence learns from user)
-    const relatedTracks = getPersonalizedDiscoveryTracks(track, 5, excludeIds);
+    // POOL-AWARE v3.0: Pull from dynamic pool (VOYO intelligence learns from user)
+    const relatedTracks = getPoolAwareDiscoveryTracks(track, 5, excludeIds);
 
     set({ discoverTracks: relatedTracks });
   },
@@ -470,6 +502,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       import('./preferenceStore').then(({ usePreferenceStore }) => {
         usePreferenceStore.getState().recordReaction(currentTrack.id);
       });
+
+      // POOL ENGAGEMENT: Record reaction (strong positive signal)
+      recordPoolEngagement(currentTrack.id, 'react');
     }
 
     // Auto-remove after animation (2s)
