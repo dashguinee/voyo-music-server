@@ -196,9 +196,9 @@ export const AudioPlayer = () => {
 
   // Generate harmonic exciter curve (soft saturation for warmth + psychoacoustic enhancement)
   // Based on research: adds 2nd/3rd harmonics for perceived bass depth
-  const makeHarmonicExciterCurve = (amount: number): Float32Array => {
+  const makeHarmonicExciterCurve = (amount: number): Float32Array<ArrayBuffer> => {
     const samples = 44100;
-    const curve = new Float32Array(samples);
+    const curve = new Float32Array(samples) as Float32Array<ArrayBuffer>;
     const deg = Math.PI / 180;
 
     for (let i = 0; i < samples; i++) {
