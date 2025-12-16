@@ -2846,11 +2846,11 @@ export const VoyoPortraitPlayer = ({
               className="absolute left-0 top-1/2 -translate-y-1/2 w-16 h-28 -translate-x-12 pointer-events-none"
               style={{ background: 'linear-gradient(to right, #08080a 0%, #08080a 30%, transparent 100%)' }}
             />
-            {/* Left glow (red) - enhanced with animation when active */}
+            {/* Left glow (red) - only visible and breathing when active */}
             <motion.div
               className="absolute left-0 top-1/2 -translate-y-1/2 w-12 h-20 -translate-x-8 pointer-events-none"
               style={{ background: 'radial-gradient(ellipse at right, rgba(239,68,68,0.5) 0%, transparent 70%)' }}
-              animate={(isHotBeltActive || isDiscoveryBeltActive) ? { opacity: [0.6, 0.9, 0.6] } : { opacity: 0.4 }}
+              animate={(isHotBeltActive || isDiscoveryBeltActive) ? { opacity: [0.6, 0.9, 0.6] } : { opacity: 0 }}
               transition={(isHotBeltActive || isDiscoveryBeltActive) ? { duration: 2, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.3 }}
             />
             {/* Right fade - covers track overflow with dark gradient */}
@@ -2858,11 +2858,11 @@ export const VoyoPortraitPlayer = ({
               className="absolute right-0 top-1/2 -translate-y-1/2 w-16 h-28 translate-x-12 pointer-events-none"
               style={{ background: 'linear-gradient(to left, #08080a 0%, #08080a 30%, transparent 100%)' }}
             />
-            {/* Right glow (blue) - enhanced with animation when active */}
+            {/* Right glow (blue) - only visible and breathing when active */}
             <motion.div
               className="absolute right-0 top-1/2 -translate-y-1/2 w-12 h-20 translate-x-8 pointer-events-none"
               style={{ background: 'radial-gradient(ellipse at left, rgba(59,130,246,0.5) 0%, transparent 70%)' }}
-              animate={(isHotBeltActive || isDiscoveryBeltActive) ? { opacity: [0.6, 0.9, 0.6] } : { opacity: 0.4 }}
+              animate={(isHotBeltActive || isDiscoveryBeltActive) ? { opacity: [0.6, 0.9, 0.6] } : { opacity: 0 }}
               transition={(isHotBeltActive || isDiscoveryBeltActive) ? { duration: 2, repeat: Infinity, ease: 'easeInOut', delay: 1 } : { duration: 0.3 }}
             />
 
