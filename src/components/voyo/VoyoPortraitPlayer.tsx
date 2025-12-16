@@ -2846,24 +2846,24 @@ export const VoyoPortraitPlayer = ({
               className="absolute left-0 top-1/2 -translate-y-1/2 w-16 h-28 -translate-x-12 pointer-events-none"
               style={{ background: 'linear-gradient(to right, #08080a 0%, #08080a 30%, transparent 100%)' }}
             />
-            {/* Left glow (red) - only visible and breathing when active */}
+            {/* Left glow (red) - always visible, breathing when active */}
             <motion.div
               className="absolute left-0 top-1/2 -translate-y-1/2 w-12 h-20 -translate-x-8 pointer-events-none"
               style={{ background: 'radial-gradient(ellipse at right, rgba(239,68,68,0.5) 0%, transparent 70%)' }}
-              animate={(isHotBeltActive || isDiscoveryBeltActive) ? { opacity: [0.6, 0.9, 0.6] } : { opacity: 0 }}
-              transition={(isHotBeltActive || isDiscoveryBeltActive) ? { duration: 2, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.3 }}
+              animate={(isHotBeltActive || isDiscoveryBeltActive) ? { opacity: [0.5, 0.8, 0.5] } : { opacity: 0.35 }}
+              transition={(isHotBeltActive || isDiscoveryBeltActive) ? { duration: 2.5, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.3 }}
             />
             {/* Right fade - covers track overflow with dark gradient */}
             <div
               className="absolute right-0 top-1/2 -translate-y-1/2 w-16 h-28 translate-x-12 pointer-events-none"
               style={{ background: 'linear-gradient(to left, #08080a 0%, #08080a 30%, transparent 100%)' }}
             />
-            {/* Right glow (blue) - only visible and breathing when active */}
+            {/* Right glow (blue) - always visible, breathing when active */}
             <motion.div
               className="absolute right-0 top-1/2 -translate-y-1/2 w-12 h-20 translate-x-8 pointer-events-none"
               style={{ background: 'radial-gradient(ellipse at left, rgba(59,130,246,0.5) 0%, transparent 70%)' }}
-              animate={(isHotBeltActive || isDiscoveryBeltActive) ? { opacity: [0.6, 0.9, 0.6] } : { opacity: 0 }}
-              transition={(isHotBeltActive || isDiscoveryBeltActive) ? { duration: 2, repeat: Infinity, ease: 'easeInOut', delay: 1 } : { duration: 0.3 }}
+              animate={(isHotBeltActive || isDiscoveryBeltActive) ? { opacity: [0.5, 0.8, 0.5] } : { opacity: 0.35 }}
+              transition={(isHotBeltActive || isDiscoveryBeltActive) ? { duration: 2.5, repeat: Infinity, ease: 'easeInOut', delay: 1.25 } : { duration: 0.3 }}
             />
 
             {/* VOYO Portal Button - Simple stale, enhanced active */}
@@ -2879,7 +2879,7 @@ export const VoyoPortraitPlayer = ({
                 boxShadow: '-8px 0 25px rgba(239,68,68,0.5), 8px 0 25px rgba(59,130,246,0.5), 0 0 20px rgba(147,51,234,0.3)',
               } : {
                 background: '#1a1a2e',
-                border: '1px solid rgba(255,255,255,0.1)',
+                border: '1px solid rgba(255,255,255,0.15)',
               }}
             >
               {/* Active: Outer rotating ring */}
@@ -2897,20 +2897,20 @@ export const VoyoPortraitPlayer = ({
                   />
                 )}
               </AnimatePresence>
-              {/* Active: Inner pulsing glow */}
+              {/* Active: Inner glow - very smooth and subtle */}
               <AnimatePresence>
                 {(isHotBeltActive || isDiscoveryBeltActive) && (
                   <motion.div
                     className="absolute inset-0 rounded-full pointer-events-none"
-                    style={{ background: 'radial-gradient(circle at center, rgba(147,51,234,0.3) 0%, transparent 70%)' }}
+                    style={{ background: 'radial-gradient(circle at center, rgba(147,51,234,0.2) 0%, transparent 70%)' }}
                     initial={{ scale: 1, opacity: 0 }}
-                    animate={{ scale: [1, 1.1, 1], opacity: [0.5, 0.8, 0.5] }}
+                    animate={{ scale: [1, 1.05, 1], opacity: [0.3, 0.5, 0.3] }}
                     exit={{ opacity: 0 }}
-                    transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                    transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
                   />
                 )}
               </AnimatePresence>
-              <span className={`font-bold tracking-widest relative z-10 ${(isHotBeltActive || isDiscoveryBeltActive) ? 'text-[9px] text-white' : 'text-[8px] text-white/60'}`}>VOYO</span>
+              <span className={`font-bold tracking-widest relative z-10 ${(isHotBeltActive || isDiscoveryBeltActive) ? 'text-[9px] text-white' : 'text-[8px] text-white/70'}`}>VOYO</span>
             </motion.button>
           </div>
 
