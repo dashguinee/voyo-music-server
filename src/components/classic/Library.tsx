@@ -9,11 +9,12 @@
  * - Tap to play, opens Classic Now Playing
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Heart, Music, Clock, MoreVertical, Play, ListPlus, Zap } from 'lucide-react';
 import { usePlayerStore } from '../../store/playerStore';
 import { useDownloadStore } from '../../store/downloadStore';
+import { usePreferenceStore } from '../../store/preferenceStore';
 import { getYouTubeThumbnail, TRACKS } from '../../data/tracks';
 import { Track } from '../../types';
 import { getAudioStream } from '../../services/api';
@@ -268,8 +269,21 @@ interface LibraryProps {
 export const Library = ({ onTrackClick }: LibraryProps) => {
   const [activeFilter, setActiveFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [likedTracks, setLikedTracks] = useState<Set<string>>(new Set());
   const { setCurrentTrack, addToQueue } = usePlayerStore();
+
+  // Get liked tracks from preference store (persisted to localStorage)
+  const { trackPreferences, setExplicitLike } = usePreferenceStore();
+
+  // Compute liked tracks set from preferences
+  const likedTracks = useMemo(() => {
+    const liked = new Set<string>();
+    Object.entries(trackPreferences).forEach(([trackId, pref]) => {
+      if (pref.explicitLike === true) {
+        liked.add(trackId);
+      }
+    });
+    return liked;
+  }, [trackPreferences]);
 
   // Get boosted tracks from download store
   const { cachedTracks, initialize: initDownloads, isInitialized } = useDownloadStore();
@@ -337,15 +351,9 @@ export const Library = ({ onTrackClick }: LibraryProps) => {
   };
 
   const handleLike = (trackId: string) => {
-    setLikedTracks(prev => {
-      const next = new Set(prev);
-      if (next.has(trackId)) {
-        next.delete(trackId);
-      } else {
-        next.add(trackId);
-      }
-      return next;
-    });
+    // Toggle like - persisted to localStorage via preferenceStore
+    const currentlyLiked = likedTracks.has(trackId);
+    setExplicitLike(trackId, !currentlyLiked);
   };
 
   return (

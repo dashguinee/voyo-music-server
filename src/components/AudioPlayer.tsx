@@ -155,6 +155,7 @@ export const AudioPlayer = () => {
     seekPosition,
     playbackRate,
     boostProfile,
+    currentTime: savedCurrentTime,
     setCurrentTime,
     setDuration,
     setProgress,
@@ -173,11 +174,13 @@ export const AudioPlayer = () => {
     initialize: initDownloads,
     checkCache,
     cacheTrack,
+    lastBoostCompletion,
   } = useDownloadStore();
 
   const lastTrackId = useRef<string | null>(null);
   const hasPrefetchedRef = useRef<boolean>(false); // Track if we've prefetched next track
   const hasAutoCachedRef = useRef<boolean>(false); // Track if we've auto-cached this track
+  const isInitialLoadRef = useRef<boolean>(true); // Track first load for resume position
 
   // Initialize download system (IndexedDB)
   useEffect(() => {
@@ -427,6 +430,13 @@ export const AudioPlayer = () => {
         onReady: (event: any) => {
           // FIX: Start at volume 0 to prevent click/pop, then fade in
           event.target.setVolume(0);
+
+          // RESUME POSITION: On initial load, seek to saved position
+          if (isInitialLoadRef.current && savedCurrentTime > 5) {
+            event.target.seekTo(savedCurrentTime, true);
+            isInitialLoadRef.current = false;
+          }
+
           if (isPlaying) {
             event.target.playVideo();
           }
@@ -469,7 +479,7 @@ export const AudioPlayer = () => {
         },
       },
     });
-  }, [isPlaying, volume, nextTrack, setBufferHealth]);
+  }, [isPlaying, volume, nextTrack, setBufferHealth, savedCurrentTime]);
 
   // Load track when it changes
   useEffect(() => {
@@ -540,18 +550,26 @@ export const AudioPlayer = () => {
 
             // FIX: Use oncanplaythrough for smoother start
             audioRef.current.oncanplaythrough = () => {
-              if (isPlaying && audioRef.current) {
-                // Resume AudioContext if suspended (browser policy)
-                if (audioContextRef.current?.state === 'suspended') {
-                  audioContextRef.current.resume();
+              if (audioRef.current) {
+                // RESUME POSITION: On initial load, seek to saved position
+                if (isInitialLoadRef.current && savedCurrentTime > 5) {
+                  audioRef.current.currentTime = savedCurrentTime;
+                  isInitialLoadRef.current = false;
                 }
-                audioRef.current.play().then(() => {
-                  // With Web Audio enhancement, volume is controlled by gain node
-                  // Set audio element to 100% and let gain node handle boost
-                  audioRef.current!.volume = 1.0;
-                }).catch(err => {
-                  console.warn('[VOYO] Cached playback failed:', err.message);
-                });
+
+                if (isPlaying) {
+                  // Resume AudioContext if suspended (browser policy)
+                  if (audioContextRef.current?.state === 'suspended') {
+                    audioContextRef.current.resume();
+                  }
+                  audioRef.current.play().then(() => {
+                    // With Web Audio enhancement, volume is controlled by gain node
+                    // Set audio element to 100% and let gain node handle boost
+                    audioRef.current!.volume = 1.0;
+                  }).catch(err => {
+                    console.warn('[VOYO] Cached playback failed:', err.message);
+                  });
+                }
               }
             };
           }
@@ -600,6 +618,119 @@ export const AudioPlayer = () => {
       }
     };
   }, [currentTrack?.trackId, initIframePlayer, isPlaying, startListenSession, endListenSession, checkCache, setPlaybackSource, setupAudioEnhancement]);
+
+  // ⚡ HOT-SWAP: When boost completes mid-song, swap to boosted audio with DJ rewind
+  useEffect(() => {
+    if (!lastBoostCompletion || !currentTrack?.trackId) return;
+
+    // Check if this completion is for the current track
+    // Also check originalTrackId for VOYO encoded IDs
+    const isCurrentTrack =
+      lastBoostCompletion.trackId === currentTrack.trackId ||
+      lastBoostCompletion.trackId === currentTrack.trackId.replace('VOYO_', '');
+
+    if (!isCurrentTrack) return;
+
+    // Only hot-swap if we're currently playing via iframe (not already cached)
+    if (playbackMode !== 'iframe') return;
+
+    console.log(`🎵 HOT-SWAP: Boost completed for current track! Fast: ${lastBoostCompletion.isFast}`);
+
+    const performHotSwap = async () => {
+      // Save current position
+      const currentPosition = playerRef.current?.getCurrentTime?.() || 0;
+
+      // Play DJ rewind sound for fast boosts
+      if (lastBoostCompletion.isFast && audioContextRef.current) {
+        try {
+          const ctx = audioContextRef.current;
+          // Create a quick "pullback" sound - descending tone
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(800, ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(200, ctx.currentTime + 0.15);
+          gain.gain.setValueAtTime(0.3, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+
+          osc.start(ctx.currentTime);
+          osc.stop(ctx.currentTime + 0.2);
+
+          // Wait for sound to finish
+          await new Promise(resolve => setTimeout(resolve, 200));
+        } catch (e) {
+          // Audio context not available, continue anyway
+        }
+      }
+
+      // Get the cached URL
+      const cachedUrl = await checkCache(currentTrack.trackId);
+      if (!cachedUrl) {
+        console.warn('🎵 HOT-SWAP: Cache check failed, staying on iframe');
+        return;
+      }
+
+      console.log('🎵 HOT-SWAP: Switching to boosted audio...');
+
+      // Stop iframe player
+      if (playerRef.current) {
+        try {
+          playerRef.current.stopVideo();
+          playerRef.current.destroy();
+          playerRef.current = null;
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+      }
+
+      // Switch to cached mode
+      setPlaybackMode('cached');
+      setPlaybackSource('cached');
+
+      if (audioRef.current) {
+        // Revoke previous blob URL if any
+        if (cachedUrlRef.current) {
+          URL.revokeObjectURL(cachedUrlRef.current);
+        }
+        cachedUrlRef.current = cachedUrl;
+
+        // Setup audio enhancement
+        const { boostProfile: currentProfile } = usePlayerStore.getState();
+        setupAudioEnhancement(currentProfile);
+
+        // Start at volume 0 to prevent click
+        audioRef.current.volume = 0;
+        audioRef.current.src = cachedUrl;
+        audioRef.current.load();
+
+        audioRef.current.oncanplaythrough = () => {
+          if (audioRef.current) {
+            // Resume from previous position (or start fresh for fast boosts)
+            if (!lastBoostCompletion.isFast && currentPosition > 2) {
+              audioRef.current.currentTime = currentPosition;
+            }
+
+            if (isPlaying) {
+              if (audioContextRef.current?.state === 'suspended') {
+                audioContextRef.current.resume();
+              }
+              audioRef.current.play().then(() => {
+                audioRef.current!.volume = 1.0;
+                console.log('🎵 HOT-SWAP: ✅ Now playing boosted audio!');
+              }).catch(err => {
+                console.warn('🎵 HOT-SWAP: Playback failed:', err.message);
+              });
+            }
+          }
+        };
+      }
+    };
+
+    performHotSwap();
+  }, [lastBoostCompletion, currentTrack?.trackId, playbackMode, checkCache, isPlaying, setPlaybackSource, setupAudioEnhancement]);
 
   // Handle play/pause
   useEffect(() => {

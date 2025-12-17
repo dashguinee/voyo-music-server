@@ -306,6 +306,7 @@ export const BoostButton = ({ variant = 'toolbar', className = '' }: BoostButton
     getDownloadStatus,
     downloads,
     isTrackBoosted,
+    lastBoostCompletion,
   } = useDownloadStore();
 
   const [isBoosted, setIsBoosted] = useState(false);
@@ -330,6 +331,26 @@ export const BoostButton = ({ variant = 'toolbar', className = '' }: BoostButton
 
     checkBoosted();
   }, [currentTrack?.trackId, isTrackBoosted]);
+
+  // React to boost completion immediately
+  useEffect(() => {
+    if (!lastBoostCompletion || !currentTrack?.trackId) return;
+
+    // Check if completion is for current track
+    const isMatch =
+      lastBoostCompletion.trackId === currentTrack.trackId ||
+      lastBoostCompletion.trackId === currentTrack.trackId.replace('VOYO_', '');
+
+    if (isMatch) {
+      console.log('🎵 BoostButton: Detected boost completion, updating UI');
+      setShowBurst(true);
+      setShowSparks(true);
+      setTimeout(() => {
+        setIsBoosted(true);
+        setShowSparks(false);
+      }, 800);
+    }
+  }, [lastBoostCompletion, currentTrack?.trackId]);
 
   // Update when downloads complete
   useEffect(() => {

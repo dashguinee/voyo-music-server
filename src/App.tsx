@@ -9,9 +9,9 @@
  * 4. Video Mode - Full immersion with floating reactions
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, User, Home, Radio, Sparkles, X, Zap } from 'lucide-react';
+import { Home, Radio, X, Zap, User, Search } from 'lucide-react';
 import { PortraitVOYO } from './components/voyo/PortraitVOYO';
 import { LandscapeVOYO } from './components/voyo/LandscapeVOYO';
 import { VideoMode } from './components/voyo/VideoMode';
@@ -24,6 +24,7 @@ import { getYouTubeThumbnail } from './data/tracks';
 import { setupMobileAudioUnlock } from './utils/mobileAudioUnlock';
 import { InstallButton } from './components/ui/InstallButton';
 import { OfflineIndicator } from './components/ui/OfflineIndicator';
+import { VoyoSplash } from './components/voyo/VoyoSplash';
 
 // DEBUG: Load intent engine verification tools (available in browser console)
 import './utils/debugIntent';
@@ -57,15 +58,851 @@ const useOrientation = () => {
   return isLandscape;
 };
 
+// Dynamic Island - iPhone-style notification pill
+interface Notification {
+  id: string;
+  type: 'music' | 'message' | 'system';
+  title: string;
+  subtitle: string;
+  read?: boolean;
+  color?: string; // Custom color for friends
+}
+
+const DynamicIsland = () => {
+  // Demo notifications - in production from backend
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
+  const [isFading, setIsFading] = useState(false);
+  const [phase, setPhase] = useState<'wave' | 'dark' | 'idle'>('idle');
+  const [isReplying, setIsReplying] = useState(false);
+  const [replyText, setReplyText] = useState('');
+  const [isNewNotification, setIsNewNotification] = useState(false); // Wave only for new
+  const [showTapFeedback, setShowTapFeedback] = useState(false); // Tap-to-resurface animation
+  const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const replyInputRef = useRef<HTMLInputElement>(null);
+
+  const currentNotification = notifications[currentIndex];
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  // Expose function to add notifications globally
+  useEffect(() => {
+    (window as any).pushNotification = (notif: Notification) => {
+      setNotifications(prev => [...prev, notif]);
+      setCurrentIndex(prev => prev === 0 && notifications.length === 0 ? 0 : notifications.length);
+      triggerNewNotification(); // Wave for new notifications
+    };
+
+    // Demo: Auto-trigger notifications to show the full flow
+    const demo1 = setTimeout(() => {
+      (window as any).pushNotification({
+        id: '1',
+        type: 'music',  // Purple dot
+        title: 'Burna Boy',
+        subtitle: 'Higher just dropped'
+      });
+    }, 1000);
+
+    // Friend message after 8s (custom blue color)
+    const demo2 = setTimeout(() => {
+      (window as any).pushNotification({
+        id: '2',
+        type: 'message',  // Blue dot
+        title: 'Aziz',
+        subtitle: 'yo come check this out'
+      });
+    }, 8000);
+
+    // System notification after 15s
+    const demo3 = setTimeout(() => {
+      (window as any).pushNotification({
+        id: '3',
+        type: 'system',  // Red dot
+        title: 'VOYO',
+        subtitle: 'notification system ready'
+      });
+    }, 15000);
+
+    return () => {
+      clearTimeout(demo1);
+      clearTimeout(demo2);
+      clearTimeout(demo3);
+    };
+  }, []);
+
+  // NEW NOTIFICATION: wave → dark → fade
+  const triggerNewNotification = () => {
+    if (phaseTimerRef.current) clearTimeout(phaseTimerRef.current);
+    if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+
+    // Reset everything first, then start wave
+    setIsFading(false);
+    setIsExpanded(false);
+    setIsNewNotification(true);
+    setPhase('wave');
+
+    // Small delay to ensure clean state before showing
+    requestAnimationFrame(() => {
+      setIsVisible(true);
+    });
+
+    // Wave (3s) → Dark (3s) → Fade
+    phaseTimerRef.current = setTimeout(() => {
+      setIsNewNotification(false);
+      setPhase('dark');
+
+      phaseTimerRef.current = setTimeout(() => {
+        setIsFading(true);
+        phaseTimerRef.current = setTimeout(() => {
+          setIsVisible(false);
+          setPhase('idle');
+          setIsFading(false);
+        }, 600);
+      }, 3000);
+    }, 3000);
+  };
+
+  // MANUAL RESURFACE: just dark (no wave)
+  const triggerManualResurface = () => {
+    if (phaseTimerRef.current) clearTimeout(phaseTimerRef.current);
+    if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+
+    setIsVisible(true);
+    setIsExpanded(false);
+    setIsFading(false);
+    setIsNewNotification(false);
+    setPhase('dark');
+
+    // Dark (3s) → Fade
+    phaseTimerRef.current = setTimeout(() => {
+      setIsFading(true);
+      phaseTimerRef.current = setTimeout(() => {
+        setIsVisible(false);
+        setPhase('idle');
+        setIsFading(false);
+      }, 600);
+    }, 3000);
+  };
+
+  // When expanded - NO auto-dismiss. User must take action.
+  // Only clear any pending fade timers
+  useEffect(() => {
+    if (isExpanded) {
+      // Cancel any auto-fade - expanded stays until user acts
+      if (phaseTimerRef.current) clearTimeout(phaseTimerRef.current);
+      if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+      setIsFading(false);
+    }
+  }, [isExpanded]);
+
+  // Dismiss current notification
+  const dismissCurrent = () => {
+    const remaining = notifications.filter((_, i) => i !== currentIndex);
+    setNotifications(remaining);
+
+    // Always fade out gracefully
+    setIsFading(true);
+    setTimeout(() => {
+      setIsVisible(false);
+      setIsExpanded(false);
+      setIsReplying(false);
+      setIsFading(false);
+      setPhase('idle');
+
+      if (remaining.length > 0) {
+        setCurrentIndex(Math.min(currentIndex, remaining.length - 1));
+        // Don't auto-show next - user can tap to resurface
+      }
+    }, 400);
+  };
+
+  // Navigate notifications (collapsed: swipe left/right, swipe up to dismiss)
+  const handleCollapsedDrag = (_: any, info: { offset: { x: number; y: number } }) => {
+    if (info.offset.y < -40) {
+      // Swipe up - dismiss
+      dismissCurrent();
+    } else if (Math.abs(info.offset.x) > 40) {
+      // Swipe left/right - navigate (no wave, just change)
+      if (info.offset.x > 0 && currentIndex > 0) {
+        setCurrentIndex(currentIndex - 1);
+      } else if (info.offset.x < 0 && currentIndex < notifications.length - 1) {
+        setCurrentIndex(currentIndex + 1);
+      }
+    }
+  };
+
+  // Expanded: swipe up to dismiss, left/right to navigate with wave transition
+  const [isTransitioning, setIsTransitioning] = useState(false);
+
+  const handleExpandedDrag = (_: any, info: { offset: { x: number; y: number } }) => {
+    if (info.offset.y < -50) {
+      // Swipe up - dismiss
+      dismissCurrent();
+    } else if (Math.abs(info.offset.x) > 50 && !isTransitioning) {
+      const newIndex = info.offset.x > 0
+        ? Math.max(0, currentIndex - 1)
+        : Math.min(notifications.length - 1, currentIndex + 1);
+
+      if (newIndex !== currentIndex) {
+        // Wave transition between notifications
+        setIsTransitioning(true);
+
+        // Wave washes out current
+        setTimeout(() => {
+          setCurrentIndex(newIndex);
+          // Wave washes in new
+          setTimeout(() => {
+            setIsTransitioning(false);
+          }, 300);
+        }, 300);
+      }
+    }
+  };
+
+  const handleTap = () => {
+    // Cancel any pending fade
+    if (phaseTimerRef.current) clearTimeout(phaseTimerRef.current);
+    if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+    setIsFading(false);
+
+    if (!isExpanded) {
+      // Collapsed → Expand (stays until user acts)
+      setPhase('idle');
+      setIsExpanded(true);
+    } else {
+      // Expanded → Collapse back to dark (with timer)
+      setIsExpanded(false);
+      setPhase('dark');
+      phaseTimerRef.current = setTimeout(() => {
+        setIsFading(true);
+        setTimeout(() => {
+          setIsVisible(false);
+          setPhase('idle');
+          setIsFading(false);
+        }, 600);
+      }, 3000);
+    }
+  };
+
+  // Manual resurface - tap header when notifications exist but not visible
+  const handleResurface = () => {
+    if (notifications.length > 0 && !isVisible) {
+      triggerManualResurface();
+    }
+  };
+
+  const handleAction = (action: string) => {
+    console.log(`Action: ${action} for ${currentNotification?.title}`);
+
+    // Action taken - remove from queue and next wave
+    const remaining = notifications.filter((_, i) => i !== currentIndex);
+    setNotifications(remaining);
+
+    if (remaining.length > 0) {
+      setIsExpanded(false);
+      setIsVisible(false);
+      setCurrentIndex(Math.min(currentIndex, remaining.length - 1));
+      setTimeout(() => triggerManualResurface(), 400);
+    } else {
+      setIsExpanded(false);
+      setIsVisible(false);
+      setPhase('idle');
+    }
+  };
+
+  const handleReplyMode = () => {
+    setIsReplying(true);
+    // Wave washes in via AnimatePresence, then focus input
+    setTimeout(() => {
+      replyInputRef.current?.focus();
+    }, 500);
+  };
+
+  const [isSending, setIsSending] = useState(false);
+  const [isVoiceMode, setIsVoiceMode] = useState(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [waveformLevels, setWaveformLevels] = useState<number[]>([0.3, 0.3, 0.3, 0.3, 0.3]);
+  const [transcript, setTranscript] = useState('');
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animationRef = useRef<number | null>(null);
+  const recognitionRef = useRef<any>(null);
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      // Setup audio context for waveform
+      audioContextRef.current = new AudioContext();
+      analyserRef.current = audioContextRef.current.createAnalyser();
+      const source = audioContextRef.current.createMediaStreamSource(stream);
+      source.connect(analyserRef.current);
+      analyserRef.current.fftSize = 32;
+
+      // Animate waveform
+      const updateWaveform = () => {
+        if (analyserRef.current) {
+          const data = new Uint8Array(analyserRef.current.frequencyBinCount);
+          analyserRef.current.getByteFrequencyData(data);
+          const levels = Array.from(data.slice(0, 5)).map(v => Math.max(0.2, v / 255));
+          setWaveformLevels(levels);
+        }
+        animationRef.current = requestAnimationFrame(updateWaveform);
+      };
+      updateWaveform();
+
+      // Setup speech recognition for transcript
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        recognitionRef.current = new SpeechRecognition();
+        recognitionRef.current.continuous = true;
+        recognitionRef.current.interimResults = true;
+        recognitionRef.current.onresult = (event: any) => {
+          const result = Array.from(event.results)
+            .map((r: any) => r[0].transcript)
+            .join('');
+          setTranscript(result);
+        };
+        recognitionRef.current.start();
+      }
+
+      // Setup media recorder
+      mediaRecorderRef.current = new MediaRecorder(stream);
+      mediaRecorderRef.current.start();
+
+      setIsRecording(true);
+    } catch (err) {
+      console.error('Mic access denied:', err);
+      setIsVoiceMode(false);
+      setCountdown(null);
+    }
+  };
+
+  const stopRecording = () => {
+    if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    if (audioContextRef.current) audioContextRef.current.close();
+    if (recognitionRef.current) recognitionRef.current.stop();
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
+    }
+    setWaveformLevels([0.3, 0.3, 0.3, 0.3, 0.3]);
+  };
+
+  const handleVoiceTap = () => {
+    // Tap on wavy box triggers voice mode
+    if (!isVoiceMode && !isRecording && countdown === null) {
+      setIsVoiceMode(true);
+      setTranscript('');
+      setCountdown(3);
+      setTimeout(() => setCountdown(2), 1000);
+      setTimeout(() => setCountdown(1), 2000);
+      setTimeout(() => {
+        setCountdown(null);
+        startRecording();
+      }, 3000);
+    }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setReplyText(e.target.value);
+    // Typing cancels voice mode
+    if (isVoiceMode || isRecording || countdown !== null) {
+      stopRecording();
+      setIsVoiceMode(false);
+      setIsRecording(false);
+      setCountdown(null);
+    }
+  };
+
+  const handleSendReply = () => {
+    if (replyText.trim() || isRecording) {
+      const replyData = {
+        type: isRecording ? 'voice' : 'text',
+        content: replyText || '[voice note]',
+        transcript: isRecording ? transcript : null, // Include transcript for voice
+      };
+      console.log(`Reply to ${currentNotification?.title}:`, replyData);
+
+      stopRecording();
+      setIsSending(true);
+
+      // Wave carries message away (0.8s recede animation)
+      setTimeout(() => {
+        setReplyText('');
+        setTranscript('');
+        setIsReplying(false);
+        setIsSending(false);
+        setIsVoiceMode(false);
+        setIsRecording(false);
+        setCountdown(null);
+
+        // Mark as read and move to next
+        const remaining = notifications.filter((_, i) => i !== currentIndex);
+        setNotifications(remaining);
+
+        if (remaining.length > 0) {
+          // Next wave arrives
+          setIsExpanded(false);
+          setIsVisible(false);
+          setCurrentIndex(Math.min(currentIndex, remaining.length - 1));
+          setTimeout(() => triggerManualResurface(), 400);
+        } else {
+          // All done - clean exit
+          setIsExpanded(false);
+          setIsVisible(false);
+          setPhase('idle');
+        }
+      }, 800);
+    }
+  };
+
+  // When not visible but has notifications
+  // Tap banner → dot appears pulsing → click dot to open → no click = fades
+  const fadeTimerForDot = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleBannerTap = () => {
+    if (!showTapFeedback) {
+      // First tap: show the pulsing dot
+      setShowTapFeedback(true);
+      // Auto-fade after 3 seconds if not clicked
+      if (fadeTimerForDot.current) clearTimeout(fadeTimerForDot.current);
+      fadeTimerForDot.current = setTimeout(() => {
+        setShowTapFeedback(false);
+      }, 3000);
+    }
+  };
+
+  const handleDotClick = () => {
+    if (fadeTimerForDot.current) clearTimeout(fadeTimerForDot.current);
+    setShowTapFeedback(false);
+    handleResurface();
+  };
+
+  if (!isVisible && notifications.length > 0) {
+    // Two states: no dot visible (tap to show), dot visible (tap dot to open)
+    if (!showTapFeedback) {
+      // Empty banner - tap anywhere to show dot
+      return (
+        <motion.div
+          className="cursor-pointer flex-1 h-8 flex items-center justify-center"
+          onClick={handleBannerTap}
+          style={{ minWidth: 120 }}
+        />
+      );
+    } else {
+      // Dot visible - tap dot to open notification
+      return (
+        <motion.div
+          className="cursor-pointer flex-1 h-8 flex items-center justify-center"
+          style={{ minWidth: 120 }}
+          onClick={handleDotClick}
+        >
+          <motion.div
+            className="w-3 h-3 rounded-full"
+            style={{
+              backgroundColor: notifications[0]?.type === 'music' ? '#a855f7' :
+                notifications[0]?.type === 'message' ? '#3b82f6' : '#ef4444'
+            }}
+            initial={{ opacity: 0, scale: 0 }}
+            animate={{
+              opacity: [0.6, 1, 0.6],
+              scale: [1, 1.3, 1]
+            }}
+            transition={{
+              duration: 2,
+              repeat: Infinity,
+              ease: 'easeInOut'
+            }}
+          />
+        </motion.div>
+      );
+    }
+  }
+
+  if (!isVisible || notifications.length === 0) return null;
+
+  return (
+    <motion.div
+      className="z-20"
+      animate={{ opacity: isFading ? 0 : 1 }}
+      transition={{ duration: 0.6, ease: 'easeOut' }}
+    >
+      <AnimatePresence mode="wait">
+        {!isExpanded ? (
+          // COLLAPSED STATE - Wave (larger) → Dark (smaller)
+          <motion.div
+            key="collapsed"
+            className="cursor-pointer"
+            drag
+            dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+            dragElastic={0.2}
+            onDragEnd={handleCollapsedDrag}
+            onClick={handleTap}
+            initial={{ scale: 0.7, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <motion.div
+              className={`relative flex items-center gap-2 backdrop-blur-md border rounded-full overflow-hidden ${
+                phase === 'wave' && isNewNotification
+                  ? 'border-white/40'
+                  : 'bg-black/50 border-white/10'
+              }`}
+              animate={{
+                width: phase === 'wave' && isNewNotification ? 190 : 165,
+                height: phase === 'wave' && isNewNotification ? 30 : 26,
+                paddingLeft: phase === 'wave' && isNewNotification ? 16 : 14,
+                paddingRight: phase === 'wave' && isNewNotification ? 16 : 14,
+              }}
+              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              {/* LIQUID WAVE - Only for NEW notifications */}
+              {phase === 'wave' && isNewNotification && (
+                <motion.div
+                  className="absolute inset-0 overflow-hidden"
+                  initial={{ x: '-100%' }}
+                  animate={{ x: '0%' }}
+                  transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                >
+                  {/* Base layer - slow movement */}
+                  <motion.div
+                    className="absolute inset-0"
+                    style={{
+                      background: 'linear-gradient(90deg, #7c3aed 0%, #ec4899 25%, #f0abfc 50%, #3b82f6 75%, #7c3aed 100%)',
+                      backgroundSize: '200% 100%',
+                    }}
+                    animate={{ backgroundPosition: ['0% 0%', '-200% 0%'] }}
+                    transition={{ duration: 3, ease: 'linear', repeat: Infinity }}
+                  />
+                  {/* Middle layer - medium movement */}
+                  <motion.div
+                    className="absolute inset-0 opacity-60"
+                    style={{
+                      background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 30%, rgba(236,72,153,0.6) 50%, rgba(255,255,255,0.4) 70%, transparent 100%)',
+                      backgroundSize: '150% 100%',
+                    }}
+                    animate={{ backgroundPosition: ['100% 0%', '-100% 0%'] }}
+                    transition={{ duration: 2, ease: 'easeInOut', repeat: Infinity }}
+                  />
+                  {/* Top shimmer - fast highlights */}
+                  <motion.div
+                    className="absolute inset-0 opacity-40"
+                    style={{
+                      background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.8) 45%, rgba(255,255,255,0.9) 50%, rgba(255,255,255,0.8) 55%, transparent 100%)',
+                      backgroundSize: '80% 100%',
+                    }}
+                    animate={{ backgroundPosition: ['-80% 0%', '180% 0%'] }}
+                    transition={{ duration: 1.5, ease: 'easeInOut', repeat: Infinity }}
+                  />
+                </motion.div>
+              )}
+
+              {/* Dot - color based on notification type */}
+              <motion.span
+                className="relative z-10 w-1.5 h-1.5 rounded-full flex-shrink-0"
+                style={{
+                  backgroundColor: (phase === 'wave' && isNewNotification) ? '#fff' :
+                    currentNotification?.color ? currentNotification.color :
+                    currentNotification?.type === 'music' ? '#a855f7' :
+                    currentNotification?.type === 'message' ? '#3b82f6' :
+                    '#ef4444'
+                }}
+                animate={
+                  (phase === 'wave' && isNewNotification)
+                    ? { opacity: 1, scale: [1, 1.3, 1] }
+                    : { opacity: 1, scale: 1 }
+                }
+                transition={(phase === 'wave' && isNewNotification)
+                  ? { duration: 0.8, repeat: Infinity }
+                  : { duration: 0.3 }
+                }
+              />
+
+              {/* Preview text */}
+              <span className={`relative z-10 text-[10px] truncate lowercase ${
+                (phase === 'wave' && isNewNotification) ? 'text-white font-semibold' : 'text-white/70'
+              }`}>
+                {currentNotification?.subtitle}
+              </span>
+
+              {/* Unread indicator */}
+              {unreadCount > 1 && (
+                <span className={`relative z-10 text-[9px] flex-shrink-0 ${
+                  (phase === 'wave' && isNewNotification) ? 'text-white/90' : 'text-white/30'
+                }`}>
+                  +{unreadCount - 1}
+                </span>
+              )}
+            </motion.div>
+          </motion.div>
+        ) : (
+          // EXPANDED STATE - Larger white pill, smooth entrance
+          <motion.div
+            key="expanded"
+            className="cursor-pointer"
+            drag={!isReplying}
+            dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+            dragElastic={0.3}
+            onDragEnd={handleExpandedDrag}
+            initial={{ scale: 0.85, opacity: 0, y: -5 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.9, opacity: 0, y: -5 }}
+            transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <motion.div
+              className="relative backdrop-blur-md rounded-2xl shadow-xl border overflow-hidden"
+              animate={{
+                width: isSending ? 200 : (isReplying ? 300 : 280),
+                opacity: isSending ? 0 : 1,
+                scale: isSending ? 0.9 : 1,
+                backgroundColor: isReplying ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.95)',
+                borderColor: isReplying ? 'rgba(168,85,247,0.3)' : 'rgba(255,255,255,0.2)'
+              }}
+              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+            >
+              {/* Wave overlay for transitions & reply mode */}
+              <AnimatePresence>
+                {(isReplying || isTransitioning) && (
+                  <motion.div
+                    className="absolute inset-0 overflow-hidden"
+                    initial={{ x: '-100%' }}
+                    animate={{ x: isSending ? '100%' : '0%' }}
+                    exit={{ x: '100%' }}
+                    transition={{ duration: isSending ? 0.8 : 0.5, ease: [0.16, 1, 0.3, 1] }}
+                  >
+                    {/* Deep water base */}
+                    <motion.div
+                      className="absolute inset-0"
+                      style={{
+                        background: 'linear-gradient(90deg, #4c1d95 0%, #7c3aed 25%, #ec4899 50%, #3b82f6 75%, #4c1d95 100%)',
+                        backgroundSize: '200% 100%',
+                      }}
+                      animate={{ backgroundPosition: ['0% 0%', '-200% 0%'] }}
+                      transition={{ duration: 4, ease: 'linear', repeat: Infinity }}
+                    />
+                    {/* Flowing light */}
+                    <motion.div
+                      className="absolute inset-0 opacity-50"
+                      style={{
+                        background: 'linear-gradient(90deg, transparent 0%, rgba(240,171,252,0.5) 30%, rgba(255,255,255,0.4) 50%, rgba(240,171,252,0.5) 70%, transparent 100%)',
+                        backgroundSize: '150% 100%',
+                      }}
+                      animate={{ backgroundPosition: ['100% 0%', '-100% 0%'] }}
+                      transition={{ duration: 2.5, ease: 'easeInOut', repeat: Infinity }}
+                    />
+                    {/* Surface shimmer */}
+                    <motion.div
+                      className="absolute inset-0 opacity-30"
+                      style={{
+                        background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.9) 48%, rgba(255,255,255,1) 50%, rgba(255,255,255,0.9) 52%, transparent 100%)',
+                        backgroundSize: '60% 100%',
+                      }}
+                      animate={{ backgroundPosition: ['-60% 0%', '160% 0%'] }}
+                      transition={{ duration: 2, ease: 'easeInOut', repeat: Infinity }}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Navigation dots */}
+              {notifications.length > 1 && !isReplying && (
+                <div className="flex justify-center gap-1 pt-2">
+                  {notifications.map((_, i) => (
+                    <motion.div
+                      key={i}
+                      className={`w-1 h-1 rounded-full ${i === currentIndex ? 'bg-black/60' : 'bg-black/20'}`}
+                      animate={{ scale: i === currentIndex ? 1.2 : 1 }}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* Content */}
+              <div className="relative z-10 p-3">
+                {!isReplying ? (
+                  // Normal expanded view
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 min-w-0 text-left">
+                      <p className="text-xs font-semibold text-black truncate">
+                        {currentNotification?.title}
+                      </p>
+                      <p className="text-[10px] text-black/60 truncate">
+                        {currentNotification?.subtitle}
+                      </p>
+                    </div>
+
+                    {currentNotification?.type === 'music' ? (
+                      <div className="flex gap-1.5">
+                        <motion.button
+                          className="px-2.5 py-1 rounded-full bg-black/10 text-[10px] font-medium text-black/70"
+                          whileTap={{ scale: 0.95 }}
+                          onClick={(e) => { e.stopPropagation(); handleAction('queue'); }}
+                        >
+                          +Queue
+                        </motion.button>
+                        <motion.button
+                          className="px-2 py-1 rounded-full bg-black/10 text-[10px] font-medium text-black/70"
+                          whileTap={{ scale: 0.95 }}
+                          onClick={(e) => { e.stopPropagation(); handleAction('like'); }}
+                        >
+                          ♡
+                        </motion.button>
+                      </div>
+                    ) : currentNotification?.type === 'message' ? (
+                      <motion.button
+                        className="px-2.5 py-1 rounded-full bg-purple-500/20 text-[10px] font-medium text-purple-700"
+                        whileTap={{ scale: 0.95 }}
+                        onClick={(e) => { e.stopPropagation(); handleReplyMode(); }}
+                      >
+                        Reply
+                      </motion.button>
+                    ) : (
+                      <motion.button
+                        className="px-2.5 py-1 rounded-full bg-black/10 text-[10px] font-medium text-black/70"
+                        whileTap={{ scale: 0.95 }}
+                        onClick={(e) => { e.stopPropagation(); handleAction('view'); }}
+                      >
+                        View
+                      </motion.button>
+                    )}
+                  </div>
+                ) : (
+                  // Reply mode - Type or Tap to Speak
+                  <motion.div
+                    className="space-y-2"
+                    animate={{
+                      x: isSending ? 100 : 0,
+                      opacity: isSending ? 0 : 1
+                    }}
+                    transition={{ duration: 0.6, ease: [0.4, 0, 0.2, 1] }}
+                    onClick={handleVoiceTap}
+                  >
+                    <p className="text-[10px] text-white/80 font-medium">→ {currentNotification?.title}</p>
+
+                    {/* Countdown */}
+                    {countdown !== null ? (
+                      <motion.div
+                        className="flex items-center justify-center py-2"
+                        key={countdown}
+                        initial={{ scale: 0.5, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                      >
+                        <span className="text-2xl font-bold text-white">{countdown}</span>
+                      </motion.div>
+                    ) : isRecording ? (
+                      /* Recording with waveform */
+                      <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-center gap-1 py-2">
+                          {waveformLevels.map((level, i) => (
+                            <motion.div
+                              key={i}
+                              className="w-1 bg-purple-400 rounded-full"
+                              animate={{ height: level * 24 }}
+                              transition={{ duration: 0.1 }}
+                            />
+                          ))}
+                        </div>
+                        {transcript && (
+                          <p className="text-[10px] text-white/50 text-center truncate px-2">{transcript}</p>
+                        )}
+                        <motion.button
+                          className="w-full py-2 rounded-full bg-purple-500 flex items-center justify-center gap-2"
+                          whileTap={{ scale: 0.98 }}
+                          onClick={handleSendReply}
+                        >
+                          <span className="text-white text-xs">Send</span>
+                          <span className="text-white text-sm">↑</span>
+                        </motion.button>
+                      </div>
+                    ) : (
+                      /* Type or Tap to Speak */
+                      <div className="space-y-2">
+                        <div className="flex gap-2 items-center" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            ref={replyInputRef}
+                            type="text"
+                            value={replyText}
+                            onChange={handleInputChange}
+                            onKeyDown={(e) => e.key === 'Enter' && handleSendReply()}
+                            placeholder="Type..."
+                            className="flex-1 px-4 py-2 rounded-full bg-white/10 border-0 text-white text-[12px] placeholder:text-white/40 focus:outline-none"
+                            style={{ caretColor: '#f0abfc' }}
+                          />
+                          {replyText.trim() && (
+                            <motion.button
+                              className="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center"
+                              whileTap={{ scale: 0.9 }}
+                              onClick={handleSendReply}
+                            >
+                              <span className="text-white text-sm">↑</span>
+                            </motion.button>
+                          )}
+                        </div>
+                        {!replyText.trim() && (
+                          <p className="text-[10px] text-white/40 text-center">Tap to Speak</p>
+                        )}
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </div>
+
+              {/* Swipe hint */}
+              {!isReplying && (
+                <div className="pb-2 flex justify-center">
+                  <div className="w-8 h-0.5 bg-black/20 rounded-full" />
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+};
+
 function App() {
   const { currentTrack } = usePlayerStore();
   const [bgError, setBgError] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [appMode, setAppMode] = useState<AppMode>('voyo'); // Start with VOYO Superapp!
+  // VOYO PLAYER FIRST - Default to player, but remember user preference
+  const [appMode, setAppMode] = useState<AppMode>(() => {
+    // One-time migration: reset to voyo player as new default (v1.2)
+    const migrated = localStorage.getItem('voyo-mode-migrated-v12');
+    if (!migrated) {
+      localStorage.removeItem('voyo-app-mode');
+      localStorage.setItem('voyo-mode-migrated-v12', 'true');
+      return 'voyo';
+    }
+    const saved = localStorage.getItem('voyo-app-mode');
+    return (saved === 'classic' || saved === 'voyo' || saved === 'video')
+      ? (saved as AppMode)
+      : 'voyo';
+  });
   const [backgroundType, setBackgroundType] = useState<BackgroundType>('glow'); // Clean ambient glow
   const [isBackgroundPickerOpen, setIsBackgroundPickerOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const isLandscape = useOrientation();
+
+  // SPLASH SCREEN - Show on first load only (per session)
+  const [showSplash, setShowSplash] = useState(() => {
+    // Check if splash was already shown this session (v2 = new design)
+    const splashShown = sessionStorage.getItem('voyo-splash-v2');
+    return !splashShown;
+  });
+
+  const handleSplashComplete = useCallback(() => {
+    sessionStorage.setItem('voyo-splash-v2', 'true');
+    setShowSplash(false);
+  }, []);
 
   // MOBILE FIX: Setup audio unlock on app mount
   useEffect(() => {
@@ -84,6 +921,11 @@ function App() {
     console.log('[VOYO] Track pool maintenance started');
     // No cleanup needed - maintenance runs in background
   }, []);
+
+  // PERSIST APP MODE: Save to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem('voyo-app-mode', appMode);
+  }, [appMode]);
 
   // Get background image URL with fallback
   const getBackgroundUrl = () => {
@@ -104,6 +946,11 @@ function App() {
 
   return (
     <div className="relative h-full w-full bg-[#0a0a0f] overflow-hidden">
+      {/* VOYO Splash Screen - Premium water drop animation */}
+      {showSplash && (
+        <VoyoSplash onComplete={handleSplashComplete} minDuration={2500} />
+      )}
+
       {/* Dynamic Background based on current track (only for VOYO modes) */}
       {appMode !== 'video' && appMode !== 'classic' && (
         <div className="absolute inset-0 z-0">
@@ -172,7 +1019,8 @@ function App() {
             exit={{ opacity: 0, x: 50 }}
           >
             {/* Top Bar - VOYO Logo & Navigation */}
-            <header className="flex items-center justify-between px-4 py-3 flex-shrink-0">
+            <header className="relative flex items-center justify-between px-4 py-3 flex-shrink-0">
+              {/* Left: VOYO Logo */}
               <motion.div
                 className="flex items-center gap-2"
                 initial={{ opacity: 0, x: -20 }}
@@ -188,31 +1036,14 @@ function App() {
                 </div>
               </motion.div>
 
-              {/* Navigation Buttons */}
+              {/* Center: Dynamic Island Notifications */}
+              <div className="flex-1 flex justify-center">
+                <DynamicIsland />
+              </div>
+
+              {/* Right: Navigation Buttons - Search + Profile */}
               <div className="flex items-center gap-2">
-                {/* Vibe/Background Picker Button */}
-                <motion.button
-                  className="p-2 rounded-full bg-purple-500/20 hover:bg-purple-500/30 transition-colors border border-purple-500/30"
-                  onClick={() => setIsBackgroundPickerOpen(true)}
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                  title="Choose Vibe"
-                >
-                  <Sparkles className="w-5 h-5 text-purple-400" />
-                </motion.button>
-
-                {/* Classic Mode Button */}
-                <motion.button
-                  className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
-                  onClick={handleSwitchToClassic}
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                  title="Classic Mode"
-                >
-                  <Home className="w-5 h-5 text-white/70" />
-                </motion.button>
-
-                {/* Search Button */}
+                {/* Search */}
                 <motion.button
                   className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
                   onClick={() => setIsSearchOpen(true)}
@@ -222,12 +1053,12 @@ function App() {
                   <Search className="w-5 h-5 text-white/70" />
                 </motion.button>
 
-                {/* Profile Button */}
+                {/* Profile */}
                 <motion.button
                   className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+                  onClick={() => setIsProfileOpen(true)}
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
-                  onClick={() => setIsProfileOpen(true)}
                 >
                   <User className="w-5 h-5 text-white/70" />
                 </motion.button>
@@ -239,7 +1070,11 @@ function App() {
               {isLandscape ? (
                 <LandscapeVOYO onVideoMode={handleVideoModeEnter} />
               ) : (
-                <PortraitVOYO onSearch={() => setIsSearchOpen(true)} />
+                <PortraitVOYO
+                  onSearch={() => setIsSearchOpen(true)}
+                  onHome={handleSwitchToClassic}
+                  onLibrary={() => { handleSwitchToClassic(); /* Go to classic mode with library tab */ }}
+                />
               )}
             </div>
           </motion.div>

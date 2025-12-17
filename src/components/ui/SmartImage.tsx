@@ -4,7 +4,7 @@
  * NEVER shows broken images
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   getThumbnailFallbackChain,
@@ -27,7 +27,7 @@ export interface SmartImageProps {
 
 type LoadState = 'loading' | 'loaded' | 'error';
 
-export const SmartImage: React.FC<SmartImageProps> = ({
+const SmartImageInner: React.FC<SmartImageProps> = ({
   src,
   alt,
   className = '',
@@ -43,6 +43,16 @@ export const SmartImage: React.FC<SmartImageProps> = ({
   const [isInView, setIsInView] = useState(!lazy);
   const imgRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Track previous src to avoid unnecessary reloads
+  const prevSrcRef = useRef<string>('');
+  const hasLoadedRef = useRef<boolean>(false);
+
+  // Stable callback refs to avoid re-triggering effect
+  const onLoadRef = useRef(onLoad);
+  const onErrorRef = useRef(onError);
+  onLoadRef.current = onLoad;
+  onErrorRef.current = onError;
 
   // Intersection Observer for lazy loading
   useEffect(() => {
@@ -71,13 +81,23 @@ export const SmartImage: React.FC<SmartImageProps> = ({
   }, [lazy, isInView]);
 
   // Load image with fallback chain
+  // CRITICAL: Only reload if src actually changes, not on every parent re-render
   useEffect(() => {
     if (!isInView) return;
+
+    // Skip if we've already loaded this exact src
+    const srcKey = `${src}|${trackId}|${fallbackSrc}`;
+    if (hasLoadedRef.current && prevSrcRef.current === srcKey) {
+      return;
+    }
 
     let cancelled = false;
 
     const loadImage = async () => {
-      setLoadState('loading');
+      // Only show loading state if we don't have an image yet
+      if (!currentSrc) {
+        setLoadState('loading');
+      }
 
       // Step 1: Check cache if trackId provided
       if (trackId) {
@@ -87,7 +107,9 @@ export const SmartImage: React.FC<SmartImageProps> = ({
           if (success && !cancelled) {
             setCurrentSrc(cachedUrl);
             setLoadState('loaded');
-            onLoad?.();
+            hasLoadedRef.current = true;
+            prevSrcRef.current = srcKey;
+            onLoadRef.current?.();
             return;
           }
         }
@@ -99,8 +121,10 @@ export const SmartImage: React.FC<SmartImageProps> = ({
         if (success && !cancelled) {
           setCurrentSrc(src);
           setLoadState('loaded');
+          hasLoadedRef.current = true;
+          prevSrcRef.current = srcKey;
           if (trackId) cacheThumbnail(trackId, src);
-          onLoad?.();
+          onLoadRef.current?.();
           return;
         }
       }
@@ -113,8 +137,10 @@ export const SmartImage: React.FC<SmartImageProps> = ({
           if (success && !cancelled) {
             setCurrentSrc(fallbackUrl);
             setLoadState('loaded');
+            hasLoadedRef.current = true;
+            prevSrcRef.current = srcKey;
             cacheThumbnail(trackId, fallbackUrl);
-            onLoad?.();
+            onLoadRef.current?.();
             return;
           }
         }
@@ -126,7 +152,9 @@ export const SmartImage: React.FC<SmartImageProps> = ({
         if (success && !cancelled) {
           setCurrentSrc(fallbackSrc);
           setLoadState('loaded');
-          onLoad?.();
+          hasLoadedRef.current = true;
+          prevSrcRef.current = srcKey;
+          onLoadRef.current?.();
           return;
         }
       }
@@ -136,7 +164,9 @@ export const SmartImage: React.FC<SmartImageProps> = ({
         const placeholderSrc = generatePlaceholder(alt || 'Track', 400);
         setCurrentSrc(placeholderSrc);
         setLoadState('loaded');
-        onError?.();
+        hasLoadedRef.current = true;
+        prevSrcRef.current = srcKey;
+        onErrorRef.current?.();
       }
     };
 
@@ -145,7 +175,7 @@ export const SmartImage: React.FC<SmartImageProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [src, fallbackSrc, trackId, alt, isInView, onLoad, onError]);
+  }, [src, fallbackSrc, trackId, alt, isInView, currentSrc]);
 
   return (
     <div ref={containerRef} className={`relative overflow-hidden ${className}`}>
@@ -200,5 +230,8 @@ export const SmartImage: React.FC<SmartImageProps> = ({
     </div>
   );
 };
+
+// Memoize to prevent re-renders when parent re-renders with same props
+export const SmartImage = memo(SmartImageInner);
 
 export default SmartImage;

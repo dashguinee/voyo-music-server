@@ -43,6 +43,14 @@ interface CachedTrackInfo {
   downloadedAt: number;
 }
 
+// Boost completion event for hot-swap
+interface BoostCompletion {
+  trackId: string;
+  duration: number; // seconds it took
+  isFast: boolean;  // < 7 seconds
+  timestamp: number;
+}
+
 interface DownloadStore {
   // State
   downloads: Map<string, DownloadProgress>;
@@ -55,6 +63,10 @@ interface DownloadStore {
   manualBoostCount: number;
   autoBoostEnabled: boolean;
   showAutoBoostPrompt: boolean;
+
+  // Hot-swap tracking (for DJ rewind feature)
+  boostStartTimes: Record<string, number>;
+  lastBoostCompletion: BoostCompletion | null;
 
   // Actions
   initialize: () => Promise<void>;
@@ -125,6 +137,10 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
   autoBoostEnabled: localStorage.getItem('voyo-auto-boost') === 'true',
   showAutoBoostPrompt: false,
 
+  // Hot-swap tracking (for DJ rewind feature)
+  boostStartTimes: {},
+  lastBoostCompletion: null,
+
   initialize: async () => {
     if (get().isInitialized) return;
 
@@ -171,7 +187,11 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
     // NORMALIZE: Always use raw YouTube ID for storage (not VOYO encoded)
     const normalizedId = decodeVoyoId(trackId);
     console.log('🎵 BOOST: Starting boost for trackId:', trackId, '→ normalized:', normalizedId, '| title:', title);
-    const { downloads, manualBoostCount, autoBoostEnabled } = get();
+    const { downloads, manualBoostCount, autoBoostEnabled, boostStartTimes } = get();
+
+    // Record boost start time for hot-swap feature
+    const boostStartTime = Date.now();
+    set({ boostStartTimes: { ...boostStartTimes, [normalizedId]: boostStartTime } });
 
     // Already downloading or complete?
     const existing = downloads.get(normalizedId);
@@ -232,10 +252,25 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
         // Show auto-boost prompt after 3 manual boosts (if not already enabled)
         const shouldPrompt = newCount >= 3 && !autoBoostEnabled && !localStorage.getItem('voyo-auto-boost-dismissed');
 
+        // Calculate boost duration for hot-swap feature
+        const boostEndTime = Date.now();
+        const startTime = get().boostStartTimes[normalizedId] || boostStartTime;
+        const boostDuration = (boostEndTime - startTime) / 1000; // seconds
+        const isFastBoost = boostDuration < 7; // DJ rewind threshold
+
+        console.log(`🎵 BOOST: Completed in ${boostDuration.toFixed(1)}s - ${isFastBoost ? '⚡ FAST (DJ rewind!)' : '📦 Normal'}`);
+
         set({
           downloads: finalDownloads,
           manualBoostCount: newCount,
           showAutoBoostPrompt: shouldPrompt,
+          // Emit completion event for hot-swap
+          lastBoostCompletion: {
+            trackId: normalizedId,
+            duration: boostDuration,
+            isFast: isFastBoost,
+            timestamp: boostEndTime,
+          },
         });
 
         // Refresh cache info

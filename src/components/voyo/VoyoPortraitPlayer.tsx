@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { usePlayerStore } from '../../store/playerStore';
 import { useIntentStore, VibeMode } from '../../store/intentStore';
+import { usePreferenceStore } from '../../store/preferenceStore';
 import { getThumbnailUrl, getTrackThumbnailUrl } from '../../utils/imageHelpers';
 import { Track, ReactionType } from '../../types';
 import { SmartImage } from '../ui/SmartImage';
@@ -26,6 +27,54 @@ import { useMobilePlay } from '../../hooks/useMobilePlay';
 import { BoostButton } from '../ui/BoostButton';
 import { BoostSettings } from '../ui/BoostSettings';
 import { haptics, getReactionHaptic } from '../../utils/haptics';
+
+// ============================================
+// ISOLATED TIME COMPONENTS - Prevents full re-renders
+// These subscribe directly to currentTime/duration without
+// causing parent components to re-render
+// ============================================
+
+// Time display that only re-renders when time changes
+const CurrentTimeDisplay = memo(() => {
+  const currentTime = usePlayerStore((state) => state.currentTime);
+  return (
+    <span className="text-[8px] text-white/40 font-mono tabular-nums min-w-[26px]">
+      {Math.floor(currentTime / 60)}:{Math.floor(currentTime % 60).toString().padStart(2, '0')}
+    </span>
+  );
+});
+
+// Progress slider that only re-renders when time/duration changes
+const ProgressSlider = memo(({ isScrubbing }: { isScrubbing: boolean }) => {
+  const currentTime = usePlayerStore((state) => state.currentTime);
+  const duration = usePlayerStore((state) => state.duration);
+  const seekTo = usePlayerStore((state) => state.seekTo);
+
+  return (
+    <div className="flex-1 relative h-3 flex items-center">
+      <div className="absolute left-0 right-0 h-[1px] bg-white/15 rounded-full" />
+      <input
+        type="range"
+        min="0"
+        max={duration || 100}
+        value={currentTime}
+        onChange={(e) => seekTo(parseFloat(e.target.value))}
+        className="absolute inset-0 w-full opacity-0 cursor-pointer z-10"
+      />
+      <motion.div
+        className="absolute w-[5px] h-[5px] rounded-full bg-red-500/90"
+        animate={{
+          scale: isScrubbing ? 1.3 : 1,
+        }}
+        style={{
+          left: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
+          transform: 'translateX(-50%)',
+          boxShadow: isScrubbing ? '0 0 10px rgba(239,68,68,0.9)' : '0 0 4px rgba(239,68,68,0.4)',
+        }}
+      />
+    </div>
+  );
+});
 
 // ============================================
 // MIX BOARD SYSTEM - Discovery Machine Patent 🎛️
@@ -878,7 +927,7 @@ const BackdropLibrary = ({
 // ============================================
 // EXPAND BUTTON - Opens fullscreen video mode
 // ============================================
-const ExpandVideoButton = ({ onClick }: { onClick: () => void }) => (
+const ExpandVideoButton = memo(({ onClick }: { onClick: () => void }) => (
   <motion.button
     onClick={onClick}
     className="absolute top-3 right-3 z-30 p-2 rounded-xl bg-black/40 backdrop-blur-sm border border-white/10 text-white/60 hover:text-white hover:bg-black/60 hover:border-purple-500/30 transition-all group"
@@ -896,30 +945,21 @@ const ExpandVideoButton = ({ onClick }: { onClick: () => void }) => (
       </div>
     </div>
   </motion.button>
-);
+));
 
 // ============================================
 // RIGHT-SIDE TOOLBAR - Vertical action buttons
 // ============================================
-const RightToolbar = ({ onSettingsClick }: { onSettingsClick: () => void }) => {
+const RightToolbar = memo(({ onSettingsClick }: { onSettingsClick: () => void }) => {
   const currentTrack = usePlayerStore(state => state.currentTrack);
-  const [isLiked, setIsLiked] = useState(false);
 
-  // Reset like state when track changes
-  useEffect(() => {
-    setIsLiked(false);
-    // Check localStorage for liked status
-    if (currentTrack?.trackId) {
-      const liked = localStorage.getItem(`voyo_liked_${currentTrack.trackId}`);
-      setIsLiked(liked === 'true');
-    }
-  }, [currentTrack?.trackId]);
+  // Get like state from preference store (persisted)
+  const { trackPreferences, setExplicitLike } = usePreferenceStore();
+  const isLiked = currentTrack?.trackId ? trackPreferences[currentTrack.trackId]?.explicitLike === true : false;
 
   const handleLike = () => {
     if (!currentTrack?.trackId) return;
-    const newLiked = !isLiked;
-    setIsLiked(newLiked);
-    localStorage.setItem(`voyo_liked_${currentTrack.trackId}`, String(newLiked));
+    setExplicitLike(currentTrack.trackId, !isLiked);
     haptics.success();
   };
 
@@ -967,7 +1007,7 @@ const RightToolbar = ({ onSettingsClick }: { onSettingsClick: () => void }) => {
       </motion.button>
     </motion.div>
   );
-};
+});
 
 // Spring configs - OPTIMIZED for smooth, fluid motion
 const springs = {
@@ -1036,7 +1076,7 @@ const SmallCard = memo(({ track, onTap, isPlayed }: { track: Track; onTap: () =>
 // ============================================
 // DASH PLACEHOLDER (Empty state for queue/history)
 // ============================================
-const DashPlaceholder = ({ onClick, label }: { onClick?: () => void; label: string }) => (
+const DashPlaceholder = memo(({ onClick, label }: { onClick?: () => void; label: string }) => (
   <motion.button
     onClick={onClick}
     className="w-[70px] h-[70px] rounded-2xl bg-gradient-to-br from-purple-900/30 to-pink-900/20 border border-purple-500/20 flex flex-col items-center justify-center gap-1 hover:border-purple-500/40 transition-colors"
@@ -1050,7 +1090,7 @@ const DashPlaceholder = ({ onClick, label }: { onClick?: () => void; label: stri
     <Plus size={14} className="text-purple-400/60" />
     <span className="text-[7px] text-gray-500 uppercase tracking-wider">{label}</span>
   </motion.button>
-);
+));
 
 // ============================================
 // PORTAL BELT - Watch dial style infinite loop
@@ -1071,7 +1111,7 @@ interface PortalBeltProps {
   scrollOutwardTrigger?: number; // Increment to trigger outward scroll
 }
 
-const PortalBelt = ({ tracks, onTap, onTeaser, onQueueAdd, playedTrackIds, type, mixModes, modeBoosts, isActive, scrollOutwardTrigger = 0 }: PortalBeltProps) => {
+const PortalBelt = memo(({ tracks, onTap, onTeaser, onQueueAdd, playedTrackIds, type, mixModes, modeBoosts, isActive, scrollOutwardTrigger = 0 }: PortalBeltProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [offset, setOffset] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
@@ -1338,7 +1378,7 @@ const PortalBelt = ({ tracks, onTap, onTeaser, onQueueAdd, playedTrackIds, type,
       </div>
     </div>
   );
-};
+});
 
 // ============================================
 // STREAM CARD (Horizontal scroll - HOT/DISCOVERY - with VOYO brand tint)
@@ -1676,13 +1716,10 @@ const BigCenterCard = memo(({ track, onExpandVideo }: { track: Track; onExpandVi
 // PLAY CONTROLS - SPINNING VINYL DISK PLAY BUTTON
 // ============================================
 const PlayControls = memo(({
-
   isPlaying,
   onToggle,
   onPrev,
   onNext,
-  currentTime,
-  duration,
   isScrubbing,
   onScrubStart,
   onScrubEnd,
@@ -1690,13 +1727,10 @@ const PlayControls = memo(({
   scrubDirection,
   skeepLevel,
 }: {
-
   isPlaying: boolean;
   onToggle: () => void;
   onPrev: () => void;
   onNext: () => void;
-  currentTime: number;
-  duration: number;
   isScrubbing: boolean;
   onScrubStart: (direction: 'forward' | 'backward') => void;
   onScrubEnd: () => void;
@@ -2505,7 +2539,6 @@ export const VoyoPortraitPlayer = ({
     setCurrentTrack,
     addReaction,
     reactions,
-    currentTime,
     duration,
     seekTo,
     // SKEEP (Fast-forward) state
@@ -2852,6 +2885,25 @@ export const VoyoPortraitPlayer = ({
     setDjWakeMessageText("Don't forget, double tap to wake DJ ✌🏾");
     setShowDJWakeMessage(true);
     setTimeout(() => setShowDJWakeMessage(false), 2000);
+  }, []);
+
+  // ============================================
+  // MEMOIZED CALLBACKS - Prevent re-renders on tap
+  // ============================================
+  const handleOpenBoostSettings = useCallback(() => {
+    setIsBoostSettingsOpen(true);
+  }, []);
+
+  const handleToggleHotBelt = useCallback(() => {
+    setIsHotBeltActive(prev => !prev);
+  }, []);
+
+  const handleToggleDiscoveryBelt = useCallback(() => {
+    setIsDiscoveryBeltActive(prev => !prev);
+  }, []);
+
+  const handleExpandVideo = useCallback(() => {
+    setIsFullscreenVideo(true);
   }, []);
 
   // Handle tap/hold/double-tap
@@ -3340,14 +3392,14 @@ export const VoyoPortraitPlayer = ({
       >
 
         {/* RIGHT-SIDE TOOLBAR - Always visible */}
-        <RightToolbar onSettingsClick={() => setIsBoostSettingsOpen(true)} />
+        <RightToolbar onSettingsClick={handleOpenBoostSettings} />
 
         {/* 1. Main Artwork with Expand Video Button */}
         <div className="relative">
           {currentTrack ? (
             <BigCenterCard
               track={currentTrack}
-              onExpandVideo={() => setIsFullscreenVideo(true)}
+              onExpandVideo={handleExpandVideo}
             />
           ) : (
             <div className="w-48 h-48 rounded-[2rem] bg-white/5 border border-white/10 flex items-center justify-center">
@@ -3463,6 +3515,7 @@ export const VoyoPortraitPlayer = ({
         </div>
 
         {/* MINIMAL PROGRESS - Fades when idle, only current time + red dot */}
+        {/* Uses isolated components to prevent full re-renders */}
         <motion.div
           className="w-full max-w-[180px] mt-2 mb-1 px-2 z-30"
           animate={{ opacity: isScrubbing ? 1 : 0.25 }}
@@ -3470,34 +3523,10 @@ export const VoyoPortraitPlayer = ({
           transition={{ duration: 0.5 }}
         >
           <div className="flex items-center gap-2">
-            {/* Current Time only - no end time needed */}
-            <span className="text-[8px] text-white/40 font-mono tabular-nums min-w-[26px]">
-              {Math.floor(currentTime / 60)}:{Math.floor(currentTime % 60).toString().padStart(2, '0')}
-            </span>
-
-            {/* Translucent track + red dot */}
-            <div className="flex-1 relative h-3 flex items-center">
-              <div className="absolute left-0 right-0 h-[1px] bg-white/15 rounded-full" />
-              <input
-                type="range"
-                min="0"
-                max={duration || 100}
-                value={currentTime}
-                onChange={(e) => seekTo(parseFloat(e.target.value))}
-                className="absolute inset-0 w-full opacity-0 cursor-pointer z-10"
-              />
-              <motion.div
-                className="absolute w-[5px] h-[5px] rounded-full bg-red-500/90"
-                animate={{
-                  scale: isScrubbing ? 1.3 : 1,
-                }}
-                style={{
-                  left: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
-                  transform: 'translateX(-50%)',
-                  boxShadow: isScrubbing ? '0 0 10px rgba(239,68,68,0.9)' : '0 0 4px rgba(239,68,68,0.4)',
-                }}
-              />
-            </div>
+            {/* Current Time only - isolated component */}
+            <CurrentTimeDisplay />
+            {/* Progress slider - isolated component */}
+            <ProgressSlider isScrubbing={isScrubbing} />
           </div>
         </motion.div>
 
@@ -3507,8 +3536,6 @@ export const VoyoPortraitPlayer = ({
           onToggle={handlePlayPause}
           onPrev={prevTrack}
           onNext={handleNextTrack}
-          currentTime={currentTime}
-          duration={duration}
           isScrubbing={isScrubbing}
           onScrubStart={handleScrubStart}
           onScrubEnd={handleScrubEnd}
@@ -3564,7 +3591,7 @@ export const VoyoPortraitPlayer = ({
         <div className="flex justify-between px-6 mb-3">
           {/* HOT Label - Red Neon */}
           <motion.button
-            onClick={() => setIsHotBeltActive(prev => !prev)}
+            onClick={handleToggleHotBelt}
             className="flex items-center gap-1.5 px-2 py-1 rounded relative overflow-hidden"
             animate={isHotBeltActive ? {
               scale: [1, 1.02, 1],
@@ -3608,7 +3635,7 @@ export const VoyoPortraitPlayer = ({
 
           {/* DISCOVERY Label - Cyan Neon */}
           <motion.button
-            onClick={() => setIsDiscoveryBeltActive(prev => !prev)}
+            onClick={handleToggleDiscoveryBelt}
             className="flex items-center gap-1.5 px-2 py-1 rounded relative overflow-hidden"
             animate={isDiscoveryBeltActive ? {
               scale: [1, 1.02, 1],

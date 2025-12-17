@@ -30,6 +30,7 @@ import {
   ChevronUp
 } from 'lucide-react';
 import { usePlayerStore } from '../../store/playerStore';
+import { usePreferenceStore } from '../../store/preferenceStore';
 import { getTrackThumbnailUrl } from '../../utils/imageHelpers';
 import { useMobilePlay } from '../../hooks/useMobilePlay';
 
@@ -220,7 +221,10 @@ export const NowPlaying = ({ isOpen, onClose }: NowPlayingProps) => {
   } = usePlayerStore();
   const { handlePlayPause } = useMobilePlay();
 
-  const [isLiked, setIsLiked] = useState(false);
+  // Get like state from preference store (persisted)
+  const { trackPreferences, setExplicitLike } = usePreferenceStore();
+  const isLiked = currentTrack ? trackPreferences[currentTrack.trackId]?.explicitLike === true : false;
+
   const [isShuffled, setIsShuffled] = useState(false);
   const [repeatMode, setRepeatMode] = useState<'off' | 'all' | 'one'>('off');
 
@@ -384,7 +388,7 @@ export const NowPlaying = ({ isOpen, onClose }: NowPlayingProps) => {
               </div>
               <motion.button
                 className="p-2"
-                onClick={() => setIsLiked(!isLiked)}
+                onClick={() => currentTrack && setExplicitLike(currentTrack.trackId, !isLiked)}
                 whileHover={{ scale: 1.2 }}
                 whileTap={{ scale: 0.9 }}
               >
