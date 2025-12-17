@@ -7,7 +7,7 @@
  * - Join portal → sync playback with host
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -90,13 +90,33 @@ export const ProfilePage = () => {
     };
   }, [username]);
 
-  // Update from viewingUniverse when it changes
+  // Update from viewingUniverse when it changes + AUTO-SYNC playback
+  const [hasJoinedPortal, setHasJoinedPortal] = useState(false);
+  const lastTrackIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (viewingUniverse) {
       setNowPlaying(viewingUniverse.nowPlaying);
       setPortalOpen(viewingUniverse.portalOpen);
+
+      // AUTO-SYNC: If viewer has joined portal and track changes, auto-play new track
+      if (hasJoinedPortal && viewingUniverse.nowPlaying) {
+        const newTrackId = viewingUniverse.nowPlaying.trackId;
+        if (lastTrackIdRef.current && lastTrackIdRef.current !== newTrackId) {
+          // Track changed! Auto-sync to new track
+          const track = {
+            id: newTrackId,
+            trackId: newTrackId,
+            title: viewingUniverse.nowPlaying.title,
+            artist: viewingUniverse.nowPlaying.artist,
+            coverUrl: viewingUniverse.nowPlaying.thumbnail,
+          };
+          setCurrentTrack(track as any);
+        }
+        lastTrackIdRef.current = newTrackId;
+      }
     }
-  }, [viewingUniverse]);
+  }, [viewingUniverse, hasJoinedPortal, setCurrentTrack]);
 
   // Handle PIN login
   const handlePinLogin = async () => {
@@ -130,6 +150,10 @@ export const ProfilePage = () => {
 
     // Set as current track and play
     setCurrentTrack(track as any);
+
+    // Mark as joined - enables auto-sync for future track changes
+    setHasJoinedPortal(true);
+    lastTrackIdRef.current = nowPlaying.trackId;
   };
 
   // Loading state
@@ -334,12 +358,25 @@ export const ProfilePage = () => {
                 {/* Join Button */}
                 <motion.button
                   onClick={handleJoinPortal}
-                  className="w-full mt-4 py-3 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold flex items-center justify-center gap-2"
+                  className={`w-full mt-4 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 ${
+                    hasJoinedPortal
+                      ? 'bg-green-500/20 border border-green-500/30 text-green-400'
+                      : 'bg-gradient-to-r from-purple-500 to-pink-500 text-white'
+                  }`}
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                 >
-                  <Play className="w-5 h-5" fill="white" />
-                  Join Portal • Listen Along
+                  {hasJoinedPortal ? (
+                    <>
+                      <Radio className="w-5 h-5" />
+                      Synced • Following Along
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-5 h-5" fill="white" />
+                      Join Portal • Listen Along
+                    </>
+                  )}
                 </motion.button>
               </div>
             </div>

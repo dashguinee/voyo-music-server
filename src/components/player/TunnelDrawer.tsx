@@ -3,10 +3,11 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence, Reorder, PanInfo } from 'framer-motion';
-import { X, Music2, Plus, Trash2, GripVertical } from 'lucide-react';
+import { X, Music2, Plus, Trash2, GripVertical, Heart } from 'lucide-react';
 import { usePlayerStore } from '../../store/playerStore';
 import { Track } from '../../types';
 import { getThumbnailUrl } from '../../data/tracks';
+import { PlaylistModal } from '../playlist/PlaylistModal';
 
 interface TunnelDrawerProps {
   isOpen: boolean;
@@ -30,6 +31,7 @@ const TunnelDrawer: React.FC<TunnelDrawerProps> = ({
   } = usePlayerStore();
 
   const [queueItems, setQueueItems] = useState(queue);
+  const [playlistTrack, setPlaylistTrack] = useState<Track | null>(null);
 
   // Sync queue items when store updates
   React.useEffect(() => {
@@ -265,9 +267,30 @@ const TunnelDrawer: React.FC<TunnelDrawerProps> = ({
                               {item.track.artist}
                             </p>
                           </div>
-                          <span className="text-xs text-white/40 flex-shrink-0">
+                          <span className="text-xs text-white/40 flex-shrink-0 mr-1">
                             {formatDuration(item.track.duration)}
                           </span>
+                          {/* Heart: tap to like, hold to add to playlist */}
+                          <motion.button
+                            className="p-1.5 rounded-full hover:bg-white/10"
+                            onClick={(e) => e.stopPropagation()}
+                            onPointerDown={(e) => {
+                              e.stopPropagation();
+                              const timer = setTimeout(() => {
+                                setPlaylistTrack(item.track);
+                              }, 500);
+                              (e.currentTarget as any).__timer = timer;
+                            }}
+                            onPointerUp={(e) => {
+                              clearTimeout((e.currentTarget as any).__timer);
+                            }}
+                            onPointerLeave={(e) => {
+                              clearTimeout((e.currentTarget as any).__timer);
+                            }}
+                            whileTap={{ scale: 0.9 }}
+                          >
+                            <Heart className="w-4 h-4 text-white/40 hover:text-pink-400" />
+                          </motion.button>
                         </motion.div>
                       </Reorder.Item>
                     ))}
@@ -299,6 +322,16 @@ const TunnelDrawer: React.FC<TunnelDrawerProps> = ({
                 Add More Tracks
               </button>
             </div>
+
+            {/* Playlist Modal */}
+            {playlistTrack && (
+              <PlaylistModal
+                isOpen={!!playlistTrack}
+                onClose={() => setPlaylistTrack(null)}
+                trackId={playlistTrack.trackId}
+                trackTitle={playlistTrack.title}
+              />
+            )}
           </motion.div>
         </>
       )}

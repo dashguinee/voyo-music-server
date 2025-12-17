@@ -5,20 +5,21 @@
  * Bottom Navigation:
  * - Home (Home Feed)
  * - VOYO (Switch to VOYO Mode)
- * - Settings (Profile)
+ * - Library
  */
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Home, Radio, Library as LibraryIcon, User } from 'lucide-react';
+import { Home, Radio, Library as LibraryIcon, Users } from 'lucide-react';
 import { HomeFeed } from './HomeFeed';
 import { Library } from './Library';
+import { Hub } from './Hub';
 import { NowPlaying } from './NowPlaying';
 import { usePlayerStore } from '../../store/playerStore';
 import { getYouTubeThumbnail } from '../../data/tracks';
 import { Track } from '../../types';
 
-type ClassicTab = 'home' | 'library' | 'profile';
+type ClassicTab = 'home' | 'hub' | 'library';
 
 interface ClassicModeProps {
   onSwitchToVOYO: () => void;
@@ -91,7 +92,7 @@ const MiniPlayer = ({ onClick }: { onClick: () => void }) => {
   );
 };
 
-// Bottom Navigation
+// Bottom Navigation - Home ↔ DAHUB toggle on left
 const BottomNav = ({
   activeTab,
   onTabChange,
@@ -101,48 +102,64 @@ const BottomNav = ({
   onTabChange: (tab: ClassicTab) => void;
   onVOYOClick: () => void;
 }) => {
-  const tabs = [
-    { id: 'home' as ClassicTab, icon: Home, label: 'Home' },
-    { id: 'library' as ClassicTab, icon: LibraryIcon, label: 'Library' },
-    { id: 'voyo' as const, icon: Radio, label: 'VOYO', special: true },
-    { id: 'profile' as ClassicTab, icon: User, label: 'Profile' },
-  ];
+  // Left button toggles between Home and Hub
+  const isHub = activeTab === 'hub';
+  const leftIcon = isHub ? Home : Users;
+  const leftLabel = isHub ? 'Home' : 'DAHUB';
 
   return (
     <nav className="absolute bottom-0 left-0 right-0 flex items-center justify-around py-3 px-6 bg-[#0a0a0f]/95 backdrop-blur-lg border-t border-white/5">
-      {tabs.map((tab) => (
-        <motion.button
-          key={tab.id}
-          className={`flex flex-col items-center gap-1 p-2 ${
-            tab.special
-              ? 'relative'
-              : activeTab === tab.id
-                ? 'text-purple-400'
-                : 'text-white/40'
-          }`}
-          onClick={() => {
-            if (tab.id === 'voyo') {
-              onVOYOClick();
-            } else {
-              onTabChange(tab.id as ClassicTab);
-            }
-          }}
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
+      {/* LEFT: Home ↔ DAHUB Toggle */}
+      <motion.button
+        className={`flex flex-col items-center gap-1 p-2 ${
+          activeTab === 'home' || activeTab === 'hub' ? 'text-purple-400' : 'text-white/40'
+        }`}
+        onClick={() => onTabChange(isHub ? 'home' : 'hub')}
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.9 }}
+      >
+        <motion.div
+          key={leftLabel}
+          initial={{ rotateY: 90, opacity: 0 }}
+          animate={{ rotateY: 0, opacity: 1 }}
+          transition={{ duration: 0.2 }}
         >
-          {tab.special ? (
-            // VOYO button - special styling
-            <div className="w-14 h-14 -mt-6 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/30">
-              <tab.icon className="w-6 h-6 text-white" />
-            </div>
-          ) : (
-            <>
-              <tab.icon className="w-6 h-6" />
-              <span className="text-xs">{tab.label}</span>
-            </>
-          )}
-        </motion.button>
-      ))}
+          {isHub ? <Home className="w-6 h-6" /> : <Users className="w-6 h-6" />}
+        </motion.div>
+        <motion.span
+          key={leftLabel + '-label'}
+          className="text-xs"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+        >
+          {leftLabel}
+        </motion.span>
+      </motion.button>
+
+      {/* CENTER: VOYO Player */}
+      <motion.button
+        className="relative"
+        onClick={onVOYOClick}
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.9 }}
+      >
+        <div className="w-14 h-14 -mt-6 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/30">
+          <Radio className="w-6 h-6 text-white" />
+        </div>
+      </motion.button>
+
+      {/* RIGHT: Library */}
+      <motion.button
+        className={`flex flex-col items-center gap-1 p-2 ${
+          activeTab === 'library' ? 'text-purple-400' : 'text-white/40'
+        }`}
+        onClick={() => onTabChange('library')}
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.9 }}
+      >
+        <LibraryIcon className="w-6 h-6" />
+        <span className="text-xs">Library</span>
+      </motion.button>
     </nav>
   );
 };
@@ -232,10 +249,12 @@ export const ClassicMode = ({ onSwitchToVOYO, onSearch }: ClassicModeProps) => {
           {activeTab === 'home' && (
             <HomeFeed onTrackPlay={handleTrackClick} onSearch={onSearch} />
           )}
+          {activeTab === 'hub' && (
+            <Hub />
+          )}
           {activeTab === 'library' && (
             <Library onTrackClick={handleTrackClick} />
           )}
-          {activeTab === 'profile' && <SettingsScreen />}
         </motion.div>
       </AnimatePresence>
 

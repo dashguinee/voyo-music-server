@@ -15,18 +15,19 @@ import { Search, Heart, Music, Clock, MoreVertical, Play, ListPlus, Zap, Plus } 
 import { usePlayerStore } from '../../store/playerStore';
 import { useDownloadStore } from '../../store/downloadStore';
 import { usePreferenceStore } from '../../store/preferenceStore';
+import { usePlaylistStore } from '../../store/playlistStore';
 import { getYouTubeThumbnail, TRACKS } from '../../data/tracks';
 import { Track } from '../../types';
 import { getAudioStream } from '../../services/api';
 import { PlaylistModal } from '../playlist/PlaylistModal';
 
-// Filter tabs - Offline includes both auto-cached and boosted
-const FILTERS = [
-  { id: 'all', label: 'All' },
-  { id: 'offline', label: 'Offline' },
-  { id: 'liked', label: 'Liked' },
-  { id: 'saved', label: 'Saved songs' },
-  { id: 'recent', label: 'Recent' },
+// Base filter tabs
+const BASE_FILTERS = [
+  { id: 'all', label: 'All', color: 'bg-white/10' },
+  { id: 'liked', label: 'Liked', color: 'bg-pink-500/20 text-pink-400' },
+  { id: 'queue', label: 'Queue', color: 'bg-purple-500/20 text-purple-400' },
+  { id: 'history', label: 'History', color: 'bg-white/5 text-white/40' },
+  { id: 'offline', label: 'Offline', color: 'bg-emerald-500/20 text-emerald-400' },
 ];
 
 // Song Row Component with Hover Preview
@@ -241,27 +242,30 @@ const SongRow = ({
         <span>{track.duration || '3:45'}</span>
       </div>
 
-      {/* Like Button */}
+      {/* Heart button: tap to like, hold to add to playlist */}
       <motion.button
-        className="p-2"
+        className="p-2 relative"
         onClick={(e) => { e.stopPropagation(); onLike(); }}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          // Start long press timer (500ms)
+          const timer = setTimeout(() => {
+            onAddToPlaylist();
+          }, 500);
+          (e.currentTarget as any).__longPressTimer = timer;
+        }}
+        onPointerUp={(e) => {
+          clearTimeout((e.currentTarget as any).__longPressTimer);
+        }}
+        onPointerLeave={(e) => {
+          clearTimeout((e.currentTarget as any).__longPressTimer);
+        }}
         whileHover={{ scale: 1.2 }}
         whileTap={{ scale: 0.9 }}
       >
         <Heart
-          className={`w-5 h-5 ${isLiked ? 'text-pink-500 fill-pink-500' : 'text-white/40'}`}
+          className={`w-5 h-5 transition-colors ${isLiked ? 'text-pink-500 fill-pink-500' : 'text-white/40'}`}
         />
-      </motion.button>
-
-      {/* Add to Playlist */}
-      <motion.button
-        className="p-2"
-        onClick={(e) => { e.stopPropagation(); onAddToPlaylist(); }}
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.9 }}
-        title="Add to playlist"
-      >
-        <Plus className="w-5 h-5 text-white/40 hover:text-purple-400 transition-colors" />
       </motion.button>
     </motion.div>
   );
@@ -275,10 +279,21 @@ export const Library = ({ onTrackClick }: LibraryProps) => {
   const [activeFilter, setActiveFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [playlistModalTrack, setPlaylistModalTrack] = useState<Track | null>(null);
-  const { setCurrentTrack, addToQueue } = usePlayerStore();
+  const { setCurrentTrack, addToQueue, queue, history } = usePlayerStore();
+  const { playlists } = usePlaylistStore();
 
   // Get liked tracks from preference store (persisted to localStorage)
   const { trackPreferences, setExplicitLike } = usePreferenceStore();
+
+  // Build dynamic filter tabs: base + playlists
+  const filters = useMemo(() => {
+    const playlistFilters = playlists.map(p => ({
+      id: `playlist:${p.id}`,
+      label: p.name,
+      color: 'bg-purple-500/10 text-purple-300',
+    }));
+    return [...BASE_FILTERS, ...playlistFilters];
+  }, [playlists]);
 
   // Compute liked tracks set from preferences
   const likedTracks = useMemo(() => {
@@ -319,37 +334,55 @@ export const Library = ({ onTrackClick }: LibraryProps) => {
   const trackQualityMap = new Map(cachedTracks.map(t => [t.id, t.quality]));
 
   // Filter tracks based on active filter and search
-  const filteredTracks = (() => {
-    // For offline filter, show all cached tracks (both standard and boosted)
+  const filteredTracks = useMemo(() => {
+    const matchesSearch = (track: Track) =>
+      !searchQuery ||
+      track.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      track.artist.toLowerCase().includes(searchQuery.toLowerCase());
+
+    // Offline filter: cached tracks only
     if (activeFilter === 'offline') {
-      return boostedTracks.filter(track => {
-        const matchesSearch = !searchQuery ||
-          track.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          track.artist.toLowerCase().includes(searchQuery.toLowerCase());
-        return matchesSearch;
-      });
+      return boostedTracks.filter(matchesSearch);
     }
 
-    // For other filters, use static TRACKS
-    return TRACKS.filter(track => {
-      const matchesSearch = !searchQuery ||
-        track.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        track.artist.toLowerCase().includes(searchQuery.toLowerCase());
+    // Queue filter: show current queue
+    if (activeFilter === 'queue') {
+      return queue
+        .map(q => q.track)
+        .filter(matchesSearch);
+    }
 
-      if (!matchesSearch) return false;
+    // History filter: show history (reversed, most recent first)
+    if (activeFilter === 'history') {
+      return [...history]
+        .reverse()
+        .map(h => h.track)
+        .filter(matchesSearch);
+    }
+
+    // Playlist filter: show tracks in specific playlist
+    if (activeFilter.startsWith('playlist:')) {
+      const playlistId = activeFilter.replace('playlist:', '');
+      const playlist = playlists.find(p => p.id === playlistId);
+      if (!playlist) return [];
+
+      return playlist.trackIds
+        .map(trackId => TRACKS.find(t => t.trackId === trackId || t.id === trackId))
+        .filter((t): t is Track => t !== undefined && matchesSearch(t));
+    }
+
+    // All other filters: use TRACKS
+    return TRACKS.filter(track => {
+      if (!matchesSearch(track)) return false;
 
       switch (activeFilter) {
         case 'liked':
           return likedTracks.has(track.id);
-        case 'saved':
-          return true; // All tracks are "saved" for now
-        case 'recent':
-          return true; // Show all for now
         default:
           return true;
       }
     });
-  })();
+  }, [activeFilter, searchQuery, boostedTracks, queue, history, playlists, likedTracks]);
 
   const handleTrackClick = (track: Track) => {
     setCurrentTrack(track);
@@ -385,19 +418,25 @@ export const Library = ({ onTrackClick }: LibraryProps) => {
 
       {/* Filter Tabs */}
       <div className="flex gap-2 px-4 py-3 overflow-x-auto scrollbar-hide">
-        {FILTERS.map((filter) => (
+        {filters.map((filter) => (
           <motion.button
             key={filter.id}
             className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
               activeFilter === filter.id
                 ? 'bg-purple-500 text-white'
-                : 'bg-white/10 text-white/70 hover:bg-white/20'
+                : filter.color || 'bg-white/10 text-white/70 hover:bg-white/20'
             }`}
             onClick={() => setActiveFilter(filter.id)}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
             {filter.label}
+            {/* Show count badge for queue */}
+            {filter.id === 'queue' && queue.length > 0 && (
+              <span className="ml-1.5 px-1.5 py-0.5 text-xs bg-purple-500/30 rounded-full">
+                {queue.length}
+              </span>
+            )}
           </motion.button>
         ))}
       </div>
@@ -405,9 +444,22 @@ export const Library = ({ onTrackClick }: LibraryProps) => {
       {/* Song Count */}
       <div className="px-4 py-2">
         <p className="text-white/40 text-sm">
-          {filteredTracks.length} {activeFilter === 'offline' ? 'offline songs' : 'songs'}
+          {filteredTracks.length} {
+            activeFilter === 'offline' ? 'offline songs' :
+            activeFilter === 'queue' ? 'in queue' :
+            activeFilter === 'history' ? 'played' :
+            activeFilter === 'liked' ? 'liked' :
+            activeFilter.startsWith('playlist:') ? 'in playlist' :
+            'songs'
+          }
           {activeFilter === 'offline' && filteredTracks.length === 0 && (
             <span className="block text-xs mt-1">Play songs to build your offline library!</span>
+          )}
+          {activeFilter === 'queue' && filteredTracks.length === 0 && (
+            <span className="block text-xs mt-1">Add tracks to your queue to see them here!</span>
+          )}
+          {activeFilter === 'history' && filteredTracks.length === 0 && (
+            <span className="block text-xs mt-1">Your listening history will appear here</span>
           )}
         </p>
       </div>

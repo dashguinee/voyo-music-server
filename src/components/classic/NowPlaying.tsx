@@ -389,28 +389,43 @@ export const NowPlaying = ({ isOpen, onClose }: NowPlayingProps) => {
                   {currentTrack.artist}
                 </motion.p>
               </div>
-              <div className="flex items-center gap-1">
-                <motion.button
-                  className="p-2"
-                  onClick={() => setShowPlaylistModal(true)}
-                  whileHover={{ scale: 1.2 }}
-                  whileTap={{ scale: 0.9 }}
-                >
-                  <ListPlus className="w-6 h-6 text-white/50 hover:text-purple-400 transition-colors" />
-                </motion.button>
-                <motion.button
-                  className="p-2"
-                  onClick={() => currentTrack && setExplicitLike(currentTrack.trackId, !isLiked)}
-                  whileHover={{ scale: 1.2 }}
-                  whileTap={{ scale: 0.9 }}
-                >
-                  <Heart
-                    className={`w-6 h-6 transition-colors ${
-                      isLiked ? 'text-pink-500 fill-pink-500' : 'text-white/50'
-                    }`}
-                  />
-                </motion.button>
-              </div>
+              {/* Heart button: tap to like, hold to add to playlist */}
+              <motion.button
+                className="p-2 relative"
+                onClick={() => currentTrack && setExplicitLike(currentTrack.trackId, !isLiked)}
+                onPointerDown={() => {
+                  // Start long press timer (500ms)
+                  const timer = setTimeout(() => {
+                    setShowPlaylistModal(true);
+                  }, 500);
+                  (window as any).__heartLongPressTimer = timer;
+                }}
+                onPointerUp={() => {
+                  // Clear timer on release
+                  clearTimeout((window as any).__heartLongPressTimer);
+                }}
+                onPointerLeave={() => {
+                  // Clear timer if pointer leaves
+                  clearTimeout((window as any).__heartLongPressTimer);
+                }}
+                whileHover={{ scale: 1.2 }}
+                whileTap={{ scale: 0.9 }}
+              >
+                <Heart
+                  className={`w-6 h-6 transition-colors ${
+                    isLiked ? 'text-pink-500 fill-pink-500' : 'text-white/50'
+                  }`}
+                />
+                {/* Long press hint ring */}
+                <motion.div
+                  className="absolute inset-0 rounded-full border-2 border-purple-500/0"
+                  whileTap={{
+                    borderColor: 'rgba(168, 85, 247, 0.5)',
+                    scale: 1.3,
+                    transition: { duration: 0.5 }
+                  }}
+                />
+              </motion.button>
             </div>
           </div>
 
