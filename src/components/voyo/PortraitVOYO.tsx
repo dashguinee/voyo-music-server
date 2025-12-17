@@ -1,11 +1,12 @@
 /**
  * VOYO Music - Portrait VOYO Mode
- * Tab Orchestrator: MUSIC | FEED | CREATE
+ * Tab Orchestrator: MUSIC | FEED | CREATE | DAHUB
  *
  * This is the main container that switches between:
  * - VoyoPortraitPlayer (Music experience)
  * - VoyoVerticalFeed (TikTok-style feed)
  * - CreatorUpload (Content creation)
+ * - Hub (DAHUB social hub)
  */
 
 import { useState, useRef, useEffect } from 'react';
@@ -19,6 +20,7 @@ import { VoyoBottomNav } from './navigation/VoyoBottomNav';
 import { VoyoVerticalFeed } from './feed/VoyoVerticalFeed';
 import { CreatorUpload } from './upload/CreatorUpload';
 import { VoyoPortraitPlayer } from './VoyoPortraitPlayer';
+import { Hub } from '../classic/Hub';
 
 // Quick DJ Prompts
 const DJ_PROMPTS = [
@@ -269,7 +271,21 @@ export const PortraitVOYO = ({ onSearch, onDahub, onHome }: PortraitVOYOProps) =
           )}
         </AnimatePresence>
 
-        {/* LAYER 4: BOTTOM NAVIGATION (Always on Top) */}
+        {/* LAYER 4: DAHUB MODE (Slide-in from Left) */}
+        <motion.div
+          className="absolute inset-0 z-20 bg-[#050507] pb-20 overflow-y-auto"
+          initial={false}
+          animate={{
+            x: voyoActiveTab === 'dahub' ? 0 : '-100%',
+            opacity: voyoActiveTab === 'dahub' ? 1 : 0
+          }}
+          transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+          style={{ pointerEvents: voyoActiveTab === 'dahub' ? 'auto' : 'none' }}
+        >
+          <Hub />
+        </motion.div>
+
+        {/* LAYER 5: BOTTOM NAVIGATION (Always on Top) */}
         <div className="absolute bottom-0 left-0 right-0 z-50">
           <VoyoBottomNav onDahub={onDahub} onHome={onHome} />
         </div>

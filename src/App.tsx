@@ -1072,7 +1072,7 @@ function App() {
               ) : (
                 <PortraitVOYO
                   onSearch={() => setIsSearchOpen(true)}
-                  onDahub={() => setVoyoTab('feed')}
+                  onDahub={() => setVoyoTab('dahub')}
                   onHome={handleSwitchToClassic}
                 />
               )}

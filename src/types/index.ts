@@ -189,7 +189,7 @@ export interface LiveSession {
 // =============================================
 
 // VOYO Tab Navigation
-export type VoyoTab = 'music' | 'feed' | 'upload';
+export type VoyoTab = 'music' | 'feed' | 'upload' | 'dahub';
 
 // Feed Item (TikTok-style content)
 export interface FeedItem {
