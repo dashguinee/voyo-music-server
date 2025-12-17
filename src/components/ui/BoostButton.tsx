@@ -298,6 +298,7 @@ const BoostSparks = ({ preset = 'boosted' }: { preset?: BoostPreset }) => {
 export const BoostButton = ({ variant = 'toolbar', className = '' }: BoostButtonProps) => {
   const currentTrack = usePlayerStore((state) => state.currentTrack);
   const playbackSource = usePlayerStore((state) => state.playbackSource);
+  const setPlaybackSource = usePlayerStore((state) => state.setPlaybackSource);
   const boostProfile = usePlayerStore((state) => state.boostProfile) as BoostPreset;
   const colors = PRESET_COLORS[boostProfile];
 
@@ -307,12 +308,15 @@ export const BoostButton = ({ variant = 'toolbar', className = '' }: BoostButton
     downloads,
     isTrackBoosted,
     lastBoostCompletion,
+    checkCache,
   } = useDownloadStore();
 
   const [isBoosted, setIsBoosted] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
   const [showSparks, setShowSparks] = useState(false);
   const [showBurst, setShowBurst] = useState(false);
+  // Toggle state: true = using boosted, false = using original
+  const [usingBoosted, setUsingBoosted] = useState(true);
 
   // Check if current track is already boosted
   useEffect(() => {
@@ -374,11 +378,34 @@ export const BoostButton = ({ variant = 'toolbar', className = '' }: BoostButton
   const isDownloading = downloadStatus?.status === 'downloading';
   const isQueued = downloadStatus?.status === 'queued';
   const progress = downloadStatus?.progress || 0;
-  const isActive = isBoosted || playbackSource === 'cached';
+  // Active = boosted AND using boosted audio (not toggled to original)
+  const isActive = isBoosted && usingBoosted;
+  // Show toggle indicator when boosted but using original
+  const isToggled = isBoosted && !usingBoosted;
 
-  const handleBoost = () => {
-    if (isDownloading || isQueued || isBoosted) return;
+  const handleBoost = async () => {
+    if (isDownloading || isQueued) return;
 
+    // If already boosted, toggle between boosted and original
+    if (isBoosted) {
+      if (usingBoosted) {
+        // Switch to original (iframe)
+        console.log('🎵 BOOST: Switching to original audio');
+        setPlaybackSource('iframe');
+        setUsingBoosted(false);
+      } else {
+        // Switch back to boosted (cached)
+        console.log('🎵 BOOST: Switching to boosted audio');
+        const cachedUrl = await checkCache(currentTrack.trackId);
+        if (cachedUrl) {
+          setPlaybackSource('cached');
+          setUsingBoosted(true);
+        }
+      }
+      return;
+    }
+
+    // Not boosted yet - start boost download
     setShowSparks(true);
     boostTrack(
       currentTrack.trackId,
@@ -389,6 +416,13 @@ export const BoostButton = ({ variant = 'toolbar', className = '' }: BoostButton
     );
   };
 
+  // Sync usingBoosted state with actual playback source
+  useEffect(() => {
+    if (isBoosted) {
+      setUsingBoosted(playbackSource === 'cached');
+    }
+  }, [playbackSource, isBoosted]);
+
   // ============================================
   // TOOLBAR VARIANT - Premium floating style (matches Like/Settings buttons)
   // Dynamic colors based on active preset
@@ -397,15 +431,17 @@ export const BoostButton = ({ variant = 'toolbar', className = '' }: BoostButton
     return (
       <motion.button
         onClick={handleBoost}
-        disabled={isDownloading || isQueued || isActive}
+        disabled={isDownloading || isQueued}
         className={`w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-md shadow-lg transition-all duration-300 relative ${
           isActive
             ? `${colors.bg} border ${colors.border} ${colors.shadow}`
-            : 'bg-black/40 border border-white/10 hover:bg-black/50 hover:border-white/20'
+            : isToggled
+              ? 'bg-white/10 border border-white/20 hover:bg-white/15' // Dimmed when toggled to original
+              : 'bg-black/40 border border-white/10 hover:bg-black/50 hover:border-white/20'
         } ${className}`}
         whileHover={{ scale: 1.15, y: -2 }}
         whileTap={{ scale: 0.9 }}
-        title={isActive ? `${boostProfile.charAt(0).toUpperCase() + boostProfile.slice(1)} Mode` : isDownloading ? `Boosting ${progress}%` : 'Boost (HD + Enhanced Audio)'}
+        title={isActive ? `${boostProfile.charAt(0).toUpperCase() + boostProfile.slice(1)} Mode (tap to use original)` : isToggled ? 'Using original (tap for boosted)' : isDownloading ? `Boosting ${progress}%` : 'Boost (HD + Enhanced Audio)'}
       >
         {/* Glow effect when boosted - color based on preset */}
         {isActive && (
@@ -423,8 +459,10 @@ export const BoostButton = ({ variant = 'toolbar', className = '' }: BoostButton
         {/* Progress ring - fills around the button edge */}
         {(isDownloading || isQueued) && <ProgressRing progress={progress} isStarting={isDownloading || isQueued} size={44} preset={boostProfile} />}
 
-        {/* Lightning icon - color based on preset */}
-        <LightningIcon isGlowing={isActive} isCharging={isDownloading || isQueued} size={16} preset={boostProfile} />
+        {/* Lightning icon - color based on preset, dimmed when toggled */}
+        <div className={isToggled ? 'opacity-50' : ''}>
+          <LightningIcon isGlowing={isActive || isToggled} isCharging={isDownloading || isQueued} size={16} preset={boostProfile} />
+        </div>
         {showSparks && <BoostSparks preset={boostProfile} />}
       </motion.button>
     );

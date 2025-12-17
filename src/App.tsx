@@ -870,7 +870,7 @@ const DynamicIsland = () => {
 };
 
 function App() {
-  const { currentTrack } = usePlayerStore();
+  const { currentTrack, setVoyoTab } = usePlayerStore();
   const [bgError, setBgError] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   // VOYO PLAYER FIRST - Default to player, but remember user preference
@@ -894,13 +894,13 @@ function App() {
 
   // SPLASH SCREEN - Show on first load only (per session)
   const [showSplash, setShowSplash] = useState(() => {
-    // Check if splash was already shown this session (v2 = new design)
-    const splashShown = sessionStorage.getItem('voyo-splash-v2');
+    // Check if splash was already shown this session (v3 = fixed design)
+    const splashShown = sessionStorage.getItem('voyo-splash-v3');
     return !splashShown;
   });
 
   const handleSplashComplete = useCallback(() => {
-    sessionStorage.setItem('voyo-splash-v2', 'true');
+    sessionStorage.setItem('voyo-splash-v3', 'true');
     setShowSplash(false);
   }, []);
 
@@ -1072,8 +1072,8 @@ function App() {
               ) : (
                 <PortraitVOYO
                   onSearch={() => setIsSearchOpen(true)}
+                  onDahub={() => setVoyoTab('feed')}
                   onHome={handleSwitchToClassic}
-                  onLibrary={() => { handleSwitchToClassic(); /* Go to classic mode with library tab */ }}
                 />
               )}
             </div>

@@ -2524,6 +2524,8 @@ export const VoyoPortraitPlayer = ({
   onToggleDJMode?: () => void;
   onSearch?: () => void;
 }) => {
+  // Optimized store subscription - only subscribe to what we need in render
+  // NOTE: Don't subscribe to duration here - use usePlayerStore.getState() in handlers
   const {
     currentTrack,
     isPlaying,
@@ -2539,7 +2541,6 @@ export const VoyoPortraitPlayer = ({
     setCurrentTrack,
     addReaction,
     reactions,
-    duration,
     seekTo,
     // SKEEP (Fast-forward) state
     playbackRate,

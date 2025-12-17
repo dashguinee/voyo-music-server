@@ -1,16 +1,19 @@
 /**
  * VOYO Splash Screen - Premium Water Drop Animation
  *
- * Design:
- * 1. VOYO logo appears with signature glow
- * 2. Centered water drop forms and falls
- * 3. Creates expanding ripples on impact
- * 4. Logo pulses as rings expand outward
- * 5. Smooth fade reveals the player
+ * USEFUL: Actually preloads stores and data during animation
+ * - Initializes download store (IndexedDB)
+ * - Preloads first track thumbnail for smoother experience
+ * - Initializes preference store
+ * - Only completes when BOTH animation AND data are ready
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useDownloadStore } from '../../store/downloadStore';
+import { usePreferenceStore } from '../../store/preferenceStore';
+import { TRACKS } from '../../data/tracks';
+import { getThumbnailUrl } from '../../utils/imageHelpers';
 
 interface VoyoSplashProps {
   onComplete: () => void;
@@ -19,21 +22,75 @@ interface VoyoSplashProps {
 
 export const VoyoSplash = ({ onComplete, minDuration = 2800 }: VoyoSplashProps) => {
   const [phase, setPhase] = useState<'intro' | 'drop' | 'impact' | 'expand' | 'done'>('intro');
+  const [isDataReady, setIsDataReady] = useState(false);
+  const [isAnimationDone, setIsAnimationDone] = useState(false);
+  const hasCompletedRef = useRef(false);
 
+  // Store initialization
+  const initDownloads = useDownloadStore((s) => s.initialize);
+  const preferenceStore = usePreferenceStore(); // Touch to initialize
+
+  // Preload: Initialize stores AND preload first track thumbnails
+  useEffect(() => {
+    const preloadData = async () => {
+      try {
+        console.log('🎵 SPLASH: Initializing stores...');
+
+        // 1. Initialize IndexedDB for cached tracks
+        await initDownloads();
+        console.log('🎵 SPLASH: ✅ IndexedDB ready!');
+
+        // 2. Preload first 3 track thumbnails for instant display
+        const firstTracks = TRACKS.slice(0, 3);
+        const thumbnailPromises = firstTracks.map(track => {
+          return new Promise<void>((resolve) => {
+            const img = new Image();
+            img.onload = () => resolve();
+            img.onerror = () => resolve(); // Don't fail on thumbnail errors
+            img.src = getThumbnailUrl(track.trackId, 'high');
+          });
+        });
+
+        // Wait for thumbnails with timeout
+        await Promise.race([
+          Promise.all(thumbnailPromises),
+          new Promise(resolve => setTimeout(resolve, 1500)) // Max 1.5s for thumbnails
+        ]);
+        console.log('🎵 SPLASH: ✅ Thumbnails preloaded!');
+
+        // 3. Touch preference store to ensure it's initialized
+        console.log('🎵 SPLASH: ✅ Preferences loaded!', Object.keys(preferenceStore.trackPreferences).length, 'tracks');
+
+        setIsDataReady(true);
+      } catch (err) {
+        console.warn('🎵 SPLASH: Init error (continuing anyway):', err);
+        setIsDataReady(true);
+      }
+    };
+
+    preloadData();
+  }, [initDownloads, preferenceStore.trackPreferences]);
+
+  // Animation timeline
   useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = [];
 
-    // Phase timeline
-    timers.push(setTimeout(() => setPhase('drop'), 500));      // Drop starts falling
-    timers.push(setTimeout(() => setPhase('impact'), 1200));   // Impact + ripples
-    timers.push(setTimeout(() => setPhase('expand'), 2000));   // Final expansion
-    timers.push(setTimeout(() => {
-      setPhase('done');
-      onComplete();
-    }, minDuration));
+    timers.push(setTimeout(() => setPhase('drop'), 500));
+    timers.push(setTimeout(() => setPhase('impact'), 1200));
+    timers.push(setTimeout(() => setPhase('expand'), 2000));
+    timers.push(setTimeout(() => setIsAnimationDone(true), minDuration));
 
     return () => timers.forEach(clearTimeout);
-  }, [minDuration, onComplete]);
+  }, [minDuration]);
+
+  // Complete only when BOTH animation AND data are ready
+  useEffect(() => {
+    if (isAnimationDone && isDataReady && !hasCompletedRef.current) {
+      hasCompletedRef.current = true;
+      setPhase('done');
+      onComplete();
+    }
+  }, [isAnimationDone, isDataReady, onComplete]);
 
   return (
     <AnimatePresence>
@@ -166,7 +223,7 @@ export const VoyoSplash = ({ onComplete, minDuration = 2800 }: VoyoSplashProps) 
                   exit={{ opacity: 0 }}
                   transition={{
                     duration: phase === 'drop' ? 0.5 : 0.4,
-                    ease: phase === 'drop' ? [0.55, 0.055, 0.675, 0.19] : 'easeOut', // Gravity
+                    ease: phase === 'drop' ? [0.55, 0.055, 0.675, 0.19] : 'easeOut',
                   }}
                 >
                   {/* Drop body */}
@@ -261,36 +318,52 @@ export const VoyoSplash = ({ onComplete, minDuration = 2800 }: VoyoSplashProps) 
             </AnimatePresence>
           </div>
 
-          {/* Loading dots */}
+          {/* Loading status */}
           <motion.div
-            className="absolute bottom-20"
+            className="absolute bottom-20 flex flex-col items-center gap-2"
             initial={{ opacity: 0 }}
             animate={{ opacity: phase === 'impact' || phase === 'expand' ? 1 : 0 }}
             transition={{ duration: 0.3 }}
           >
+            {/* Loading dots */}
             <div className="flex items-center gap-1.5">
               {[0, 1, 2].map((i) => (
                 <motion.div
                   key={i}
                   className="w-2 h-2 rounded-full"
                   style={{
-                    background: 'linear-gradient(135deg, #a855f7, #ec4899)',
-                    boxShadow: '0 0 10px rgba(168, 85, 247, 0.5)',
+                    background: isDataReady
+                      ? 'linear-gradient(135deg, #22c55e, #16a34a)'
+                      : 'linear-gradient(135deg, #a855f7, #ec4899)',
+                    boxShadow: isDataReady
+                      ? '0 0 10px rgba(34, 197, 94, 0.5)'
+                      : '0 0 10px rgba(168, 85, 247, 0.5)',
                   }}
-                  animate={{
+                  animate={isDataReady ? {
+                    scale: [1, 1.3, 1],
+                  } : {
                     y: [0, -10, 0],
                     scale: [1, 1.2, 1],
                     opacity: [0.5, 1, 0.5],
                   }}
                   transition={{
-                    duration: 0.6,
+                    duration: isDataReady ? 0.3 : 0.6,
                     delay: i * 0.12,
-                    repeat: Infinity,
+                    repeat: isDataReady ? 0 : Infinity,
                     ease: 'easeInOut',
                   }}
                 />
               ))}
             </div>
+
+            {/* Status text */}
+            <motion.p
+              className="text-[10px] text-purple-300/40"
+              animate={{ opacity: [0.4, 0.7, 0.4] }}
+              transition={{ duration: 1.5, repeat: Infinity }}
+            >
+              {isDataReady ? 'Ready' : 'Loading tracks...'}
+            </motion.p>
           </motion.div>
 
           {/* Bottom brand */}

@@ -156,6 +156,7 @@ export const AudioPlayer = () => {
     playbackRate,
     boostProfile,
     currentTime: savedCurrentTime,
+    playbackSource: storePlaybackSource,
     setCurrentTime,
     setDuration,
     setProgress,
@@ -619,6 +620,81 @@ export const AudioPlayer = () => {
     };
   }, [currentTrack?.trackId, initIframePlayer, isPlaying, startListenSession, endListenSession, checkCache, setPlaybackSource, setupAudioEnhancement]);
 
+  // 🔄 TOGGLE: Watch for playback source changes from store (boost toggle feature)
+  useEffect(() => {
+    if (!currentTrack?.trackId || !storePlaybackSource) return;
+
+    // Sync internal state with store - handles toggle between boosted/original
+    const performSourceSwitch = async () => {
+      const currentPosition = playbackMode === 'cached' && audioRef.current
+        ? audioRef.current.currentTime
+        : playerRef.current?.getCurrentTime?.() || 0;
+
+      if (storePlaybackSource === 'iframe' && playbackMode === 'cached') {
+        // Switching FROM cached TO iframe (using original)
+        console.log('🔄 TOGGLE: Switching to iframe playback');
+
+        // Stop cached audio
+        if (audioRef.current) {
+          audioRef.current.pause();
+        }
+
+        // Initialize iframe player
+        setPlaybackMode('iframe');
+
+        // Wait for iframe to be ready then seek
+        setTimeout(() => {
+          if (playerRef.current && currentPosition > 2) {
+            playerRef.current.seekTo(currentPosition, true);
+            if (isPlaying) playerRef.current.playVideo();
+          }
+        }, 500);
+
+      } else if (storePlaybackSource === 'cached' && playbackMode === 'iframe') {
+        // Switching FROM iframe TO cached (using boosted)
+        console.log('🔄 TOGGLE: Switching to cached playback');
+
+        const cachedUrl = await checkCache(currentTrack.trackId);
+        if (!cachedUrl) {
+          console.warn('🔄 TOGGLE: No cached URL found');
+          return;
+        }
+
+        // Stop iframe player
+        if (playerRef.current) {
+          try {
+            playerRef.current.pauseVideo();
+          } catch (e) {
+            // Ignore
+          }
+        }
+
+        // Switch to cached mode
+        setPlaybackMode('cached');
+
+        if (audioRef.current) {
+          if (cachedUrlRef.current) {
+            URL.revokeObjectURL(cachedUrlRef.current);
+          }
+          cachedUrlRef.current = cachedUrl;
+          audioRef.current.src = cachedUrl;
+          audioRef.current.load();
+
+          audioRef.current.oncanplaythrough = () => {
+            if (audioRef.current && currentPosition > 2) {
+              audioRef.current.currentTime = currentPosition;
+            }
+            if (isPlaying && audioRef.current) {
+              audioRef.current.play().catch(() => {});
+            }
+          };
+        }
+      }
+    };
+
+    performSourceSwitch();
+  }, [storePlaybackSource, currentTrack?.trackId, playbackMode, checkCache, isPlaying]);
+
   // ⚡ HOT-SWAP: When boost completes mid-song, swap to boosted audio with DJ rewind
   useEffect(() => {
     if (!lastBoostCompletion || !currentTrack?.trackId) return;
@@ -640,8 +716,14 @@ export const AudioPlayer = () => {
       // Save current position
       const currentPosition = playerRef.current?.getCurrentTime?.() || 0;
 
-      // Play DJ rewind sound for fast boosts
-      if (lastBoostCompletion.isFast && audioContextRef.current) {
+      // DJ Rewind logic:
+      // - Fast boost + early in song (< 30s): Rewind to start with sound effect
+      // - Fast boost + far into song (> 30s): Smooth resume (don't lose progress on long mixes)
+      // - Slow boost: Always smooth resume
+      const shouldDJRewind = lastBoostCompletion.isFast && currentPosition < 30;
+
+      // Play DJ rewind sound only when actually rewinding
+      if (shouldDJRewind && audioContextRef.current) {
         try {
           const ctx = audioContextRef.current;
           // Create a quick "pullback" sound - descending tone
@@ -708,9 +790,12 @@ export const AudioPlayer = () => {
 
         audioRef.current.oncanplaythrough = () => {
           if (audioRef.current) {
-            // Resume from previous position (or start fresh for fast boosts)
-            if (!lastBoostCompletion.isFast && currentPosition > 2) {
+            // Resume from previous position (unless DJ rewind for fast boosts early in song)
+            if (!shouldDJRewind && currentPosition > 2) {
               audioRef.current.currentTime = currentPosition;
+              console.log(`🎵 HOT-SWAP: Resuming at ${currentPosition.toFixed(1)}s`);
+            } else if (shouldDJRewind) {
+              console.log('🎵 HOT-SWAP: DJ Rewind - starting fresh!');
             }
 
             if (isPlaying) {
