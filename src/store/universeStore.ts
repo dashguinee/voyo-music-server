@@ -281,13 +281,15 @@ export const useUniverseStore = create<UniverseStore>((set, get) => ({
     if (result.success && result.universe) {
       localStorage.setItem(STORAGE_KEYS.username, result.universe.username);
 
-      // Sync state from cloud to local
-      // TODO: Merge with local state intelligently
       set({
         isLoggedIn: true,
         currentUsername: result.universe.username,
         isLoading: false,
       });
+
+      // Sync state from cloud to local (async, don't block login)
+      setTimeout(() => get().syncFromCloud(), 100);
+
       return true;
     } else {
       set({ error: result.error || 'Login failed', isLoading: false });
@@ -433,8 +435,53 @@ export const useUniverseStore = create<UniverseStore>((set, get) => ({
   // SYNC: Pull cloud state to local
   // ========================================
   syncFromCloud: async () => {
-    // TODO: Implement cloud → local sync
-    return true;
+    const { currentUsername, isLoggedIn } = get();
+    if (!isLoggedIn || !currentUsername || !isSupabaseConfigured) return false;
+
+    try {
+      // Fetch universe from Supabase
+      const { supabase } = await import('../lib/supabase');
+      if (!supabase) return false;
+
+      const { data, error } = await supabase
+        .from('universes')
+        .select('state, public_profile')
+        .eq('username', currentUsername)
+        .single();
+
+      if (error || !data) return false;
+
+      const cloudState = data.state as UniverseState;
+      const preferences = usePreferenceStore.getState();
+      const player = usePlayerStore.getState();
+
+      // Restore likes to preferenceStore
+      if (cloudState.likes && cloudState.likes.length > 0) {
+        cloudState.likes.forEach((trackId: string) => {
+          if (!preferences.trackPreferences[trackId]?.explicitLike) {
+            preferences.setExplicitLike(trackId, true);
+          }
+        });
+      }
+
+      // Restore preferences to playerStore
+      if (cloudState.preferences) {
+        if (cloudState.preferences.boostProfile) {
+          player.setBoostProfile(cloudState.preferences.boostProfile as any);
+        }
+        if (cloudState.preferences.shuffleMode !== undefined) {
+          if (cloudState.preferences.shuffleMode !== player.shuffleMode) {
+            player.toggleShuffle();
+          }
+        }
+      }
+
+      console.log('[VOYO] Synced from cloud:', currentUsername);
+      return true;
+    } catch (error) {
+      console.error('[VOYO] Sync from cloud failed:', error);
+      return false;
+    }
   },
 
   // ========================================

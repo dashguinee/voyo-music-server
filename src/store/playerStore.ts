@@ -19,6 +19,43 @@ import { prefetchTrack } from '../services/api';
 type NetworkQuality = 'slow' | 'medium' | 'fast' | 'unknown';
 type PrefetchStatus = 'idle' | 'loading' | 'ready' | 'error';
 
+// ============================================
+// PERSISTENCE HELPERS - Remember state on refresh
+// ============================================
+const STORAGE_KEY = 'voyo-player-state';
+
+interface PersistedState {
+  currentTrackId?: string;
+  currentTime?: number;
+  voyoActiveTab?: VoyoTab;
+}
+
+function loadPersistedState(): PersistedState {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    return saved ? JSON.parse(saved) : {};
+  } catch {
+    return {};
+  }
+}
+
+function savePersistedState(state: PersistedState): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+function getPersistedTrack(): Track {
+  const { currentTrackId } = loadPersistedState();
+  if (currentTrackId) {
+    const track = TRACKS.find(t => t.id === currentTrackId || t.trackId === currentTrackId);
+    if (track) return track;
+  }
+  return TRACKS[0];
+}
+
 interface PlayerStore {
   // Current Track State
   currentTrack: Track | null;
@@ -146,12 +183,15 @@ interface PlayerStore {
   setOyeBarBehavior: (behavior: 'fade' | 'disappear') => void;
 }
 
+// Load persisted state once at init
+const _persistedState = loadPersistedState();
+
 export const usePlayerStore = create<PlayerStore>((set, get) => ({
-  // Initial State
-  currentTrack: TRACKS[0],
+  // Initial State - restored from localStorage where available
+  currentTrack: getPersistedTrack(),
   isPlaying: false,
   progress: 0,
-  currentTime: 0,
+  currentTime: _persistedState.currentTime || 0,
   duration: 0,
   volume: parseInt(localStorage.getItem('voyo-volume') || '100', 10),
   seekPosition: null,
@@ -196,9 +236,14 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   isRouletteMode: false,
   rouletteTracks: TRACKS,
 
-  // VOYO Superapp Tab - Default to music
-  voyoActiveTab: 'music',
-  setVoyoTab: (tab) => set({ voyoActiveTab: tab }),
+  // VOYO Superapp Tab - restored from localStorage
+  voyoActiveTab: _persistedState.voyoActiveTab || 'music',
+  setVoyoTab: (tab) => {
+    set({ voyoActiveTab: tab });
+    // Persist tab change
+    const current = loadPersistedState();
+    savePersistedState({ ...current, voyoActiveTab: tab });
+  },
 
   // Playback Actions
   setCurrentTrack: (track) => {
@@ -226,13 +271,67 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
     // AUTO-TRIGGER: Update smart discovery for this track
     get().updateDiscoveryForTrack(track);
+
+    // PERSIST: Save track ID so it survives refresh
+    const current = loadPersistedState();
+    savePersistedState({ ...current, currentTrackId: track.id || track.trackId, currentTime: 0 });
+
+    // PORTAL SYNC: Update now_playing if portal is open
+    setTimeout(async () => {
+      try {
+        const { useUniverseStore } = await import('./universeStore');
+        const universeStore = useUniverseStore.getState();
+        if (universeStore.isPortalOpen) {
+          universeStore.updateNowPlaying();
+        }
+      } catch {
+        // Ignore sync errors
+      }
+    }, 100);
   },
 
-  togglePlay: () => set((state) => ({ isPlaying: !state.isPlaying })),
+  togglePlay: () => {
+    set((state) => ({ isPlaying: !state.isPlaying }));
+
+    // PORTAL SYNC: Update now_playing on play/pause
+    setTimeout(async () => {
+      try {
+        const { useUniverseStore } = await import('./universeStore');
+        const universeStore = useUniverseStore.getState();
+        if (universeStore.isPortalOpen) {
+          universeStore.updateNowPlaying();
+        }
+      } catch {
+        // Ignore sync errors
+      }
+    }, 100);
+  },
 
   setProgress: (progress) => set({ progress }),
 
-  setCurrentTime: (time) => set({ currentTime: time }),
+  setCurrentTime: (time) => {
+    set({ currentTime: time });
+    // PERSIST: Save position every 5 seconds (avoid excessive writes)
+    if (Math.floor(time) % 5 === 0 && time > 0) {
+      const current = loadPersistedState();
+      savePersistedState({ ...current, currentTime: time });
+    }
+
+    // PORTAL SYNC: Update now_playing every 10 seconds for live position
+    if (Math.floor(time) % 10 === 0 && time > 0) {
+      (async () => {
+        try {
+          const { useUniverseStore } = await import('./universeStore');
+          const universeStore = useUniverseStore.getState();
+          if (universeStore.isPortalOpen) {
+            universeStore.updateNowPlaying();
+          }
+        } catch {
+          // Ignore sync errors
+        }
+      })();
+    }
+  },
 
   setDuration: (duration) => set({ duration }),
 

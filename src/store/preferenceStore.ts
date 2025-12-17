@@ -301,6 +301,19 @@ export const usePreferenceStore = create<PreferenceStore>()(
             },
           };
         });
+
+        // Auto-sync to cloud when logged in (debounced)
+        setTimeout(async () => {
+          try {
+            const { useUniverseStore } = await import('./universeStore');
+            const universeStore = useUniverseStore.getState();
+            if (universeStore.isLoggedIn) {
+              universeStore.syncToCloud();
+            }
+          } catch {
+            // Ignore sync errors
+          }
+        }, 500);
       },
 
       // Get track preference
