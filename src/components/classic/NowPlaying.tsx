@@ -24,6 +24,7 @@ import {
   Pause,
   SkipForward,
   ListMusic,
+  ListPlus,
   Repeat,
   Volume2,
   MessageCircle,
@@ -33,6 +34,7 @@ import { usePlayerStore } from '../../store/playerStore';
 import { usePreferenceStore } from '../../store/preferenceStore';
 import { getTrackThumbnailUrl } from '../../utils/imageHelpers';
 import { useMobilePlay } from '../../hooks/useMobilePlay';
+import { PlaylistModal } from '../playlist/PlaylistModal';
 
 // ============================================
 // VOYO DJ TYPES
@@ -227,6 +229,7 @@ export const NowPlaying = ({ isOpen, onClose }: NowPlayingProps) => {
 
   const [isShuffled, setIsShuffled] = useState(false);
   const [repeatMode, setRepeatMode] = useState<'off' | 'all' | 'one'>('off');
+  const [showPlaylistModal, setShowPlaylistModal] = useState(false);
 
   // VOYO DJ State
   const [floatingReactions, setFloatingReactions] = useState<FloatingReaction[]>([]);
@@ -386,18 +389,28 @@ export const NowPlaying = ({ isOpen, onClose }: NowPlayingProps) => {
                   {currentTrack.artist}
                 </motion.p>
               </div>
-              <motion.button
-                className="p-2"
-                onClick={() => currentTrack && setExplicitLike(currentTrack.trackId, !isLiked)}
-                whileHover={{ scale: 1.2 }}
-                whileTap={{ scale: 0.9 }}
-              >
-                <Heart
-                  className={`w-6 h-6 transition-colors ${
-                    isLiked ? 'text-pink-500 fill-pink-500' : 'text-white/50'
-                  }`}
-                />
-              </motion.button>
+              <div className="flex items-center gap-1">
+                <motion.button
+                  className="p-2"
+                  onClick={() => setShowPlaylistModal(true)}
+                  whileHover={{ scale: 1.2 }}
+                  whileTap={{ scale: 0.9 }}
+                >
+                  <ListPlus className="w-6 h-6 text-white/50 hover:text-purple-400 transition-colors" />
+                </motion.button>
+                <motion.button
+                  className="p-2"
+                  onClick={() => currentTrack && setExplicitLike(currentTrack.trackId, !isLiked)}
+                  whileHover={{ scale: 1.2 }}
+                  whileTap={{ scale: 0.9 }}
+                >
+                  <Heart
+                    className={`w-6 h-6 transition-colors ${
+                      isLiked ? 'text-pink-500 fill-pink-500' : 'text-white/50'
+                    }`}
+                  />
+                </motion.button>
+              </div>
             </div>
           </div>
 
@@ -530,6 +543,14 @@ export const NowPlaying = ({ isOpen, onClose }: NowPlayingProps) => {
               onToggle={() => setIsCommentsExpanded(!isCommentsExpanded)}
             />
           </div>
+
+          {/* Playlist Modal */}
+          <PlaylistModal
+            isOpen={showPlaylistModal}
+            onClose={() => setShowPlaylistModal(false)}
+            trackId={currentTrack.trackId}
+            trackTitle={currentTrack.title}
+          />
         </motion.div>
       )}
     </AnimatePresence>

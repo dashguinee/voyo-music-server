@@ -28,6 +28,7 @@ import {
   PublicProfile,
   NowPlaying,
 } from '../lib/supabase';
+import { TRACKS } from '../data/tracks';
 
 // ============================================
 // TYPES
@@ -410,6 +411,14 @@ export const useUniverseStore = create<UniverseStore>((set, get) => ({
         shuffleMode: player.shuffleMode,
         repeatMode: player.repeatMode,
       },
+      // Queue - store trackIds only (last 20)
+      queue: player.queue.slice(0, 20).map((q) => q.track.trackId || q.track.id),
+      // History - store last 50 plays
+      history: player.history.slice(-50).map((h) => ({
+        trackId: h.track.trackId || h.track.id,
+        playedAt: h.playedAt,
+        duration: h.duration,
+      })),
       stats: {
         totalListens: Object.values(preferences.trackPreferences).reduce(
           (sum, p) => sum + (p.totalListens || 0),
@@ -475,6 +484,18 @@ export const useUniverseStore = create<UniverseStore>((set, get) => ({
           }
         }
       }
+
+      // Restore queue from cloud (if local queue is empty)
+      if (cloudState.queue && cloudState.queue.length > 0 && player.queue.length === 0) {
+        cloudState.queue.forEach((trackId: string) => {
+          const track = TRACKS.find((t) => t.trackId === trackId || t.id === trackId);
+          if (track) {
+            player.addToQueue(track);
+          }
+        });
+      }
+
+      // Note: History is not restored to avoid duplicates - it rebuilds as user plays
 
       console.log('[VOYO] Synced from cloud:', currentUsername);
       return true;

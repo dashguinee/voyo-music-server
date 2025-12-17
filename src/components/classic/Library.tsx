@@ -11,13 +11,14 @@
 
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Heart, Music, Clock, MoreVertical, Play, ListPlus, Zap } from 'lucide-react';
+import { Search, Heart, Music, Clock, MoreVertical, Play, ListPlus, Zap, Plus } from 'lucide-react';
 import { usePlayerStore } from '../../store/playerStore';
 import { useDownloadStore } from '../../store/downloadStore';
 import { usePreferenceStore } from '../../store/preferenceStore';
 import { getYouTubeThumbnail, TRACKS } from '../../data/tracks';
 import { Track } from '../../types';
 import { getAudioStream } from '../../services/api';
+import { PlaylistModal } from '../playlist/PlaylistModal';
 
 // Filter tabs - Offline includes both auto-cached and boosted
 const FILTERS = [
@@ -36,7 +37,8 @@ const SongRow = ({
   cacheQuality,
   onClick,
   onLike,
-  onAddToQueue
+  onAddToQueue,
+  onAddToPlaylist
 }: {
   track: Track;
   index: number;
@@ -45,6 +47,7 @@ const SongRow = ({
   onClick: () => void;
   onLike: () => void;
   onAddToQueue: () => void;
+  onAddToPlaylist: () => void;
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [teaserState, setTeaserState] = useState<'idle' | 'playing' | 'played'>('idle');
@@ -250,13 +253,15 @@ const SongRow = ({
         />
       </motion.button>
 
-      {/* More Options */}
+      {/* Add to Playlist */}
       <motion.button
         className="p-2"
+        onClick={(e) => { e.stopPropagation(); onAddToPlaylist(); }}
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.9 }}
+        title="Add to playlist"
       >
-        <MoreVertical className="w-5 h-5 text-white/40" />
+        <Plus className="w-5 h-5 text-white/40 hover:text-purple-400 transition-colors" />
       </motion.button>
     </motion.div>
   );
@@ -269,6 +274,7 @@ interface LibraryProps {
 export const Library = ({ onTrackClick }: LibraryProps) => {
   const [activeFilter, setActiveFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [playlistModalTrack, setPlaylistModalTrack] = useState<Track | null>(null);
   const { setCurrentTrack, addToQueue } = usePlayerStore();
 
   // Get liked tracks from preference store (persisted to localStorage)
@@ -419,6 +425,7 @@ export const Library = ({ onTrackClick }: LibraryProps) => {
               onClick={() => handleTrackClick(track)}
               onLike={() => handleLike(track.id)}
               onAddToQueue={() => addToQueue(track)}
+              onAddToPlaylist={() => setPlaylistModalTrack(track)}
             />
           ))
         ) : (
@@ -428,6 +435,16 @@ export const Library = ({ onTrackClick }: LibraryProps) => {
           </div>
         )}
       </div>
+
+      {/* Playlist Modal */}
+      {playlistModalTrack && (
+        <PlaylistModal
+          isOpen={!!playlistModalTrack}
+          onClose={() => setPlaylistModalTrack(null)}
+          trackId={playlistModalTrack.trackId}
+          trackTitle={playlistModalTrack.title}
+        />
+      )}
     </div>
   );
 };

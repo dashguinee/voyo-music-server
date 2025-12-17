@@ -358,6 +358,33 @@ export const universeAPI = {
     if (!supabase || !channel) return;
     supabase.removeChannel(channel);
   },
+
+  /**
+   * Search users by username
+   */
+  async searchUsers(query: string, limit = 10): Promise<{
+    username: string;
+    displayName: string;
+    avatarUrl: string | null;
+    portalOpen: boolean;
+  }[]> {
+    if (!supabase || query.length < 2) return [];
+
+    const { data, error } = await supabase
+      .from('universes')
+      .select('username, public_profile, portal_open')
+      .ilike('username', `%${query.toLowerCase()}%`)
+      .limit(limit);
+
+    if (error || !data) return [];
+
+    return data.map((u: any) => ({
+      username: u.username,
+      displayName: u.public_profile?.displayName || u.username,
+      avatarUrl: u.public_profile?.avatarUrl || null,
+      portalOpen: u.portal_open || false,
+    }));
+  },
 };
 
 export default supabase;

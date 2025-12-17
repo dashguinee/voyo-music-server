@@ -38,11 +38,13 @@ import {
   User,
   Edit3,
   Camera,
-  Save
+  Save,
+  Search
 } from 'lucide-react';
 import { useUniverseStore } from '../../store/universeStore';
 import { usePreferenceStore } from '../../store/preferenceStore';
 import { universeAPI } from '../../lib/supabase';
+import { UserSearch } from './UserSearch';
 
 interface UniversePanelProps {
   isOpen: boolean;
@@ -76,7 +78,7 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
   const { trackPreferences } = usePreferenceStore();
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<'auth' | 'stats' | 'profile' | 'backup' | 'portal'>(
+  const [activeTab, setActiveTab] = useState<'auth' | 'stats' | 'profile' | 'backup' | 'portal' | 'discover'>(
     isLoggedIn ? 'stats' : 'auth'
   );
 
@@ -316,8 +318,8 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
               {(isLoggedIn
                 ? [
                     { id: 'stats', icon: Music, label: 'Stats' },
+                    { id: 'discover', icon: Search, label: 'Find' },
                     { id: 'profile', icon: Edit3, label: 'Profile' },
-                    { id: 'backup', icon: Shield, label: 'Backup' },
                     { id: 'portal', icon: Users, label: 'Portal' },
                   ]
                 : [{ id: 'auth', icon: LogIn, label: 'Login' }]
@@ -571,6 +573,15 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
                     </div>
                   </div>
                 </div>
+              )}
+
+              {/* DISCOVER TAB */}
+              {activeTab === 'discover' && isLoggedIn && (
+                <UserSearch
+                  onSelectUser={(username) => {
+                    window.location.href = `/${username}`;
+                  }}
+                />
               )}
 
               {/* PROFILE TAB */}

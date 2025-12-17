@@ -497,6 +497,19 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       }
       return { queue: [...state.queue, newItem] };
     });
+
+    // CLOUD SYNC: Sync queue to cloud (debounced)
+    setTimeout(async () => {
+      try {
+        const { useUniverseStore } = await import('./universeStore');
+        const universeStore = useUniverseStore.getState();
+        if (universeStore.isLoggedIn) {
+          universeStore.syncToCloud();
+        }
+      } catch {
+        // Ignore sync errors
+      }
+    }, 1000);
   },
 
   removeFromQueue: (index) => {
@@ -529,6 +542,19 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         },
       ],
     }));
+
+    // CLOUD SYNC: Sync history to cloud (debounced)
+    setTimeout(async () => {
+      try {
+        const { useUniverseStore } = await import('./universeStore');
+        const universeStore = useUniverseStore.getState();
+        if (universeStore.isLoggedIn) {
+          universeStore.syncToCloud();
+        }
+      } catch {
+        // Ignore sync errors
+      }
+    }, 2000);
   },
 
   // Recommendation Actions
