@@ -27,6 +27,8 @@ import { useMobilePlay } from '../../hooks/useMobilePlay';
 import { BoostButton } from '../ui/BoostButton';
 import { BoostSettings } from '../ui/BoostSettings';
 import { haptics, getReactionHaptic } from '../../utils/haptics';
+import { useReactionStore, ReactionCategory, initReactionSubscription } from '../../store/reactionStore';
+import { useUniverseStore } from '../../store/universeStore';
 
 // ============================================
 // ISOLATED TIME COMPONENTS - Prevents full re-renders
@@ -229,9 +231,12 @@ const NeonBillboardCard = memo(({
   textAnimation = 'bounce',
   onClick,
   onDragToQueue, // Callback when card is dragged up to queue
+  onDoubleTap, // NEW: Double-tap to create reaction
   isActive = false,
   boostLevel = 0, // 0-6 bars - manual preference
   queueMultiplier = 1, // x1-x5 - queue behavior multiplier
+  communityPulseCount = 0, // NEW: Live pulse from community reactions
+  reactionEmoji = '🔥', // NEW: Emoji for this category
 }: {
   title: string;
   taglines: string[];
@@ -242,16 +247,32 @@ const NeonBillboardCard = memo(({
   textAnimation?: TextAnimation;
   onClick?: () => void;
   onDragToQueue?: () => void; // "Give me this vibe NOW" - drag to add matching tracks
+  onDoubleTap?: () => void; // Double-tap = reaction to community
   isActive?: boolean;
   boostLevel?: number;
   queueMultiplier?: number; // x1-x5 based on queue dominance
+  communityPulseCount?: number; // Live reactions from community
+  reactionEmoji?: string; // Category emoji
 }) => {
   const [currentTagline, setCurrentTagline] = useState(0);
   const [showTapBurst, setShowTapBurst] = useState(false);
   const [isDraggingToQueue, setIsDraggingToQueue] = useState(false);
   const [showQueuedFeedback, setShowQueuedFeedback] = useState(false);
+  const [showReactionFeedback, setShowReactionFeedback] = useState(false); // NEW: Double-tap feedback
+  const [flyingEmoji, setFlyingEmoji] = useState<string | null>(null); // NEW: Flying emoji animation
+  const lastTapTimeRef = useRef(0); // NEW: For double-tap detection
   const cardRef = useRef<HTMLButtonElement>(null);
   const isInView = useInView(cardRef, { once: false, margin: "-10%" });
+
+  // NEW: Community pulse effect - glow intensifies when others react
+  const [communityGlow, setCommunityGlow] = useState(0);
+  useEffect(() => {
+    if (communityPulseCount > 0) {
+      setCommunityGlow(1);
+      const timer = setTimeout(() => setCommunityGlow(0), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [communityPulseCount]);
 
   // STARVING LOGIC: 0 bars = dying, 6 bars = BLAZING
   const isStarving = boostLevel === 0;
@@ -315,6 +336,26 @@ const NeonBillboardCard = memo(({
       className="flex-shrink-0 w-32 h-16 rounded-lg relative overflow-hidden group"
       onClick={() => {
         if (isDraggingToQueue) return; // Don't trigger tap if we just dragged
+
+        const now = Date.now();
+        const timeSinceLastTap = now - lastTapTimeRef.current;
+        lastTapTimeRef.current = now;
+
+        // DOUBLE-TAP DETECTION (< 300ms between taps)
+        if (timeSinceLastTap < 300 && onDoubleTap) {
+          // Double-tap = REACT to community!
+          haptics?.success?.();
+          setFlyingEmoji(reactionEmoji);
+          setShowReactionFeedback(true);
+          setTimeout(() => {
+            setFlyingEmoji(null);
+            setShowReactionFeedback(false);
+          }, 1500);
+          onDoubleTap();
+          return;
+        }
+
+        // Single tap = boost mode
         setShowTapBurst(true);
         setTimeout(() => setShowTapBurst(false), 400);
         onClick?.();
@@ -421,6 +462,69 @@ const NeonBillboardCard = memo(({
               Vibe Queued!
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* REACTION FEEDBACK - Flying emoji on double-tap */}
+      <AnimatePresence>
+        {flyingEmoji && (
+          <motion.div
+            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none"
+            initial={{ opacity: 1, scale: 1, y: 0 }}
+            animate={{
+              opacity: [1, 1, 0],
+              scale: [1, 1.5, 2],
+              y: [0, -40, -80],
+            }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 1, ease: 'easeOut' }}
+          >
+            <span className="text-3xl">{flyingEmoji}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* REACTION BADGE - Shows "OYÉ!" on double-tap */}
+      <AnimatePresence>
+        {showReactionFeedback && (
+          <motion.div
+            className="absolute -top-8 left-1/2 -translate-x-1/2 z-50"
+            initial={{ opacity: 0, y: 10, scale: 0.8 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10, scale: 0.8 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+          >
+            <div
+              className="text-[10px] font-black px-3 py-1.5 rounded-full shadow-lg whitespace-nowrap"
+              style={{
+                background: `linear-gradient(135deg, ${neon}, ${glow})`,
+                color: '#000',
+                boxShadow: `0 0 15px ${glow}, 0 0 30px ${glow}`,
+              }}
+            >
+              OYÉ! 🎉
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* COMMUNITY PULSE - Glow intensifies when others react */}
+      <AnimatePresence>
+        {communityGlow > 0 && (
+          <motion.div
+            className="absolute inset-0 rounded-lg pointer-events-none z-30"
+            initial={{ opacity: 0 }}
+            animate={{
+              opacity: [0.8, 0.4, 0],
+              scale: [1, 1.1, 1.15],
+            }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 2, ease: 'easeOut' }}
+            style={{
+              boxShadow: `0 0 40px ${neon}, 0 0 80px ${glow}`,
+              border: `2px solid ${neon}`,
+            }}
+          />
         )}
       </AnimatePresence>
 
@@ -2554,6 +2658,35 @@ export const VoyoPortraitPlayer = ({
   // MOBILE FIX: Use direct play handler
   const { handlePlayPause } = useMobilePlay();
 
+  // ====== REACTION SYSTEM - Community Spine ======
+  const { createReaction, categoryPulse, subscribeToReactions, isSubscribed } = useReactionStore();
+  const { currentUsername, isLoggedIn } = useUniverseStore();
+
+  // Subscribe to realtime reactions on mount
+  useEffect(() => {
+    if (!isSubscribed) {
+      initReactionSubscription();
+    }
+  }, [isSubscribed]);
+
+  // Handle double-tap on MixBoard column = create reaction
+  const handleModeReaction = useCallback(async (category: ReactionCategory) => {
+    if (!currentTrack) return;
+
+    // Create reaction (works offline too)
+    await createReaction({
+      username: currentUsername || 'anonymous',
+      trackId: currentTrack.id,
+      trackTitle: currentTrack.title,
+      trackArtist: currentTrack.artist,
+      trackThumbnail: currentTrack.coverUrl,
+      category,
+      reactionType: 'oye',
+    });
+
+    console.log(`[Reaction] OYÉ! ${category} on ${currentTrack.title}`);
+  }, [currentTrack, currentUsername, createReaction]);
+
   // Backdrop state
   const [backdropEnabled, setBackdropEnabled] = useState(true); // ON by default for the floaty feel
   const [currentBackdrop, setCurrentBackdrop] = useState('album'); // 'album', 'gradient-purple', etc.
@@ -3966,9 +4099,12 @@ export const VoyoPortraitPlayer = ({
               textAnimation="bounce"
               onClick={() => handleModeBoost('afro-heat')}
               onDragToQueue={() => handleModeToQueueWithIntent('afro-heat')}
+              onDoubleTap={() => handleModeReaction('afro-heat')}
               isActive={isModeActive('afro-heat')}
               boostLevel={modeBoosts['afro-heat'] || 0}
               queueMultiplier={queueMultipliers['afro-heat'] || 1}
+              communityPulseCount={categoryPulse['afro-heat']?.count || 0}
+              reactionEmoji="🔥"
             />
             {/* Chill Vibes - CHILL mood */}
             <NeonBillboardCard
@@ -3981,9 +4117,12 @@ export const VoyoPortraitPlayer = ({
               textAnimation="slideUp"
               onClick={() => handleModeBoost('chill-vibes')}
               onDragToQueue={() => handleModeToQueueWithIntent('chill-vibes')}
+              onDoubleTap={() => handleModeReaction('chill-vibes')}
               isActive={isModeActive('chill-vibes')}
               boostLevel={modeBoosts['chill-vibes'] || 0}
               queueMultiplier={queueMultipliers['chill-vibes'] || 1}
+              communityPulseCount={categoryPulse['chill-vibes']?.count || 0}
+              reactionEmoji="🌙"
             />
             {/* Party Mode - HYPE mood */}
             <NeonBillboardCard
@@ -3996,9 +4135,12 @@ export const VoyoPortraitPlayer = ({
               textAnimation="scaleIn"
               onClick={() => handleModeBoost('party-mode')}
               onDragToQueue={() => handleModeToQueueWithIntent('party-mode')}
+              onDoubleTap={() => handleModeReaction('party-mode')}
               isActive={isModeActive('party-mode')}
               boostLevel={modeBoosts['party-mode'] || 0}
               queueMultiplier={queueMultipliers['party-mode'] || 1}
+              communityPulseCount={categoryPulse['party-mode']?.count || 0}
+              reactionEmoji="🎉"
             />
             {/* Late Night - MYSTERIOUS mood */}
             <NeonBillboardCard
@@ -4011,9 +4153,12 @@ export const VoyoPortraitPlayer = ({
               textAnimation="rotateIn"
               onClick={() => handleModeBoost('late-night')}
               onDragToQueue={() => handleModeToQueueWithIntent('late-night')}
+              onDoubleTap={() => handleModeReaction('late-night')}
               isActive={isModeActive('late-night')}
               boostLevel={modeBoosts['late-night'] || 0}
               queueMultiplier={queueMultipliers['late-night'] || 1}
+              communityPulseCount={categoryPulse['late-night']?.count || 0}
+              reactionEmoji="✨"
             />
             {/* Workout - INTENSE mood */}
             <NeonBillboardCard
@@ -4026,9 +4171,12 @@ export const VoyoPortraitPlayer = ({
               textAnimation="bounce"
               onClick={() => handleModeBoost('workout')}
               onDragToQueue={() => handleModeToQueueWithIntent('workout')}
+              onDoubleTap={() => handleModeReaction('workout')}
               isActive={isModeActive('workout')}
               boostLevel={modeBoosts['workout'] || 0}
               queueMultiplier={queueMultipliers['workout'] || 1}
+              communityPulseCount={categoryPulse['workout']?.count || 0}
+              reactionEmoji="💪"
             />
 
             {/* RANDOM MIXER - Spotify-style discovery recommendations */}
