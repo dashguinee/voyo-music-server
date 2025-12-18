@@ -221,6 +221,16 @@ const getTrackModeColor = (
   return null; // No mode match - no color coding
 };
 
+// Community punch type - short comment + emoji that becomes billboard tagline
+interface CommunityPunch {
+  id: string;
+  text: string;
+  username: string;
+  trackId: string;
+  trackTitle: string;
+  emoji: string;
+}
+
 const NeonBillboardCard = memo(({
   title,
   taglines,
@@ -237,6 +247,8 @@ const NeonBillboardCard = memo(({
   queueMultiplier = 1, // x1-x5 - queue behavior multiplier
   communityPulseCount = 0, // NEW: Live pulse from community reactions
   reactionEmoji = '🔥', // NEW: Emoji for this category
+  communityPunches = [], // NEW: Community-contributed punches
+  onPunchClick, // NEW: Navigate to track when punch is clicked
 }: {
   title: string;
   taglines: string[];
@@ -253,6 +265,8 @@ const NeonBillboardCard = memo(({
   queueMultiplier?: number; // x1-x5 based on queue dominance
   communityPulseCount?: number; // Live reactions from community
   reactionEmoji?: string; // Category emoji
+  communityPunches?: CommunityPunch[]; // Community-contributed taglines
+  onPunchClick?: (punch: CommunityPunch) => void; // Navigate to track
 }) => {
   const [currentTagline, setCurrentTagline] = useState(0);
   const [showTapBurst, setShowTapBurst] = useState(false);
@@ -263,6 +277,25 @@ const NeonBillboardCard = memo(({
   const lastTapTimeRef = useRef(0); // NEW: For double-tap detection
   const cardRef = useRef<HTMLButtonElement>(null);
   const isInView = useInView(cardRef, { once: false, margin: "-10%" });
+
+  // Mix community punches with static taglines - community first!
+  type TaglineItem = { type: 'static'; text: string } | { type: 'punch'; punch: CommunityPunch };
+  const allTaglines: TaglineItem[] = useMemo(() => {
+    const items: TaglineItem[] = [];
+    // Add community punches first (they take priority)
+    communityPunches.forEach(punch => {
+      items.push({ type: 'punch', punch });
+    });
+    // Then add static taglines
+    taglines.forEach(text => {
+      items.push({ type: 'static', text });
+    });
+    return items;
+  }, [communityPunches, taglines]);
+
+  // Current item being displayed
+  const currentItem = allTaglines[currentTagline % allTaglines.length];
+  const isPunch = currentItem?.type === 'punch';
 
   // NEW: Community pulse effect - glow intensifies when others react
   const [communityGlow, setCommunityGlow] = useState(0);
@@ -294,16 +327,16 @@ const NeonBillboardCard = memo(({
 
   // Smart visibility: Only animate when in view (research: Z5)
   useEffect(() => {
-    if (!isInView) return;
+    if (!isInView || allTaglines.length === 0) return;
 
     const timer = setTimeout(() => {
       const interval = setInterval(() => {
-        setCurrentTagline(prev => (prev + 1) % taglines.length);
+        setCurrentTagline(prev => (prev + 1) % allTaglines.length);
       }, timing.taglineDwell);
       return () => clearInterval(interval);
     }, delay * 1000);
     return () => clearTimeout(timer);
-  }, [taglines.length, delay, timing.taglineDwell, isInView]);
+  }, [allTaglines.length, delay, timing.taglineDwell, isInView]);
 
   // 5-Layer Neon Glow System (research: Z2, Z10)
   // Layer 1: White-hot core (tight)
@@ -554,7 +587,7 @@ const NeonBillboardCard = memo(({
           {title}
         </motion.div>
 
-        {/* Animated Tagline - Canva-style with mood timing */}
+        {/* Animated Tagline - Canva-style with mood timing + Community Punches */}
         <div className="h-4 relative overflow-hidden w-full mt-1" style={{ perspective: '100px' }}>
           <AnimatePresence mode="wait">
             <motion.div
@@ -568,18 +601,41 @@ const NeonBillboardCard = memo(({
                 ease: [0.34, 1.56, 0.64, 1] // Bouncy spring
               }}
             >
-              <span
-                className="text-[8px] font-bold tracking-wide whitespace-nowrap"
-                style={{
-                  color: 'rgba(255,255,255,0.85)',
-                  textShadow: `
-                    0 0 4px ${glow},
-                    0 0 8px ${glow}
-                  `,
-                }}
-              >
-                {taglines[currentTagline]}
-              </span>
+              {isPunch && currentItem.type === 'punch' ? (
+                // Community Punch - clickable, navigates to track
+                <button
+                  className="text-[8px] font-bold tracking-wide whitespace-nowrap flex items-center gap-0.5 hover:scale-105 transition-transform"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onPunchClick?.(currentItem.punch);
+                  }}
+                  style={{
+                    color: 'rgba(255,255,255,0.95)',
+                    textShadow: `
+                      0 0 4px ${glow},
+                      0 0 8px ${glow}
+                    `,
+                  }}
+                >
+                  <span className="opacity-60">@{currentItem.punch.username.slice(0, 6)}</span>
+                  <span className="mx-0.5">·</span>
+                  <span>{currentItem.punch.text}</span>
+                </button>
+              ) : (
+                // Static tagline
+                <span
+                  className="text-[8px] font-bold tracking-wide whitespace-nowrap"
+                  style={{
+                    color: 'rgba(255,255,255,0.85)',
+                    textShadow: `
+                      0 0 4px ${glow},
+                      0 0 8px ${glow}
+                    `,
+                  }}
+                >
+                  {currentItem?.type === 'static' ? currentItem.text : ''}
+                </span>
+              )}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -2659,7 +2715,14 @@ export const VoyoPortraitPlayer = ({
   const { handlePlayPause } = useMobilePlay();
 
   // ====== REACTION SYSTEM - Community Spine ======
-  const { createReaction, categoryPulse, subscribeToReactions, isSubscribed } = useReactionStore();
+  const {
+    createReaction,
+    categoryPulse,
+    subscribeToReactions,
+    isSubscribed,
+    recentReactions,
+    fetchRecentReactions
+  } = useReactionStore();
   const { currentUsername, isLoggedIn } = useUniverseStore();
 
   // Subscribe to realtime reactions on mount
@@ -2668,6 +2731,11 @@ export const VoyoPortraitPlayer = ({
       initReactionSubscription();
     }
   }, [isSubscribed]);
+
+  // Fetch recent reactions for punches
+  useEffect(() => {
+    fetchRecentReactions(50);
+  }, [fetchRecentReactions]);
 
   // Handle double-tap on MixBoard column = create reaction
   const handleModeReaction = useCallback(async (category: ReactionCategory) => {
@@ -2686,6 +2754,50 @@ export const VoyoPortraitPlayer = ({
 
     console.log(`[Reaction] OYÉ! ${category} on ${currentTrack.title}`);
   }, [currentTrack, currentUsername, createReaction]);
+
+  // Get community punches for each category (short + has emoji)
+  const getCommunityPunches = useCallback((category: ReactionCategory): CommunityPunch[] => {
+    const hasEmoji = (text: string) => /\p{Emoji}/u.test(text);
+    const isShort = (text: string) => text.length <= 30;
+
+    return recentReactions
+      .filter(r => r.category === category && r.comment && hasEmoji(r.comment) && isShort(r.comment))
+      .slice(0, 5) // Max 5 punches per category
+      .map(r => ({
+        id: r.id,
+        text: r.comment || '',
+        username: r.username,
+        trackId: r.track_id,
+        trackTitle: r.track_title,
+        emoji: r.emoji,
+      }));
+  }, [recentReactions]);
+
+  // Punches for each category
+  const afroHeatPunches = useMemo(() => getCommunityPunches('afro-heat'), [getCommunityPunches]);
+  const chillVibesPunches = useMemo(() => getCommunityPunches('chill-vibes'), [getCommunityPunches]);
+  const partyModePunches = useMemo(() => getCommunityPunches('party-mode'), [getCommunityPunches]);
+  const lateNightPunches = useMemo(() => getCommunityPunches('late-night'), [getCommunityPunches]);
+  const workoutPunches = useMemo(() => getCommunityPunches('workout'), [getCommunityPunches]);
+
+  // Handle punch click - navigate to track's expand view
+  const handlePunchClick = useCallback((punch: CommunityPunch) => {
+    console.log(`[Punch] Navigate to track: ${punch.trackTitle} (${punch.trackId})`);
+
+    // Find the track in HOT or DISCOVERY feeds
+    const allTracks = [...hotTracks, ...discoverTracks];
+    const foundTrack = allTracks.find(t => t.id === punch.trackId || t.trackId === punch.trackId);
+
+    if (foundTrack) {
+      // Play the track - this will also update NowPlaying
+      setCurrentTrack(foundTrack);
+    } else {
+      // Track not in current feeds - trigger search with the track title
+      // This opens the search overlay with the track as query
+      console.log(`[Punch] Track not in feeds, would search for: ${punch.trackTitle}`);
+      // For now, just log - full search integration would require onSearch callback
+    }
+  }, [hotTracks, discoverTracks, setCurrentTrack]);
 
   // Backdrop state
   const [backdropEnabled, setBackdropEnabled] = useState(true); // ON by default for the floaty feel
@@ -4087,7 +4199,7 @@ export const VoyoPortraitPlayer = ({
             </motion.button>
           </div>
           <div className="overflow-x-auto no-scrollbar flex gap-3 pb-1 -mb-2">
-            {/* ====== MIX BOARD PRESETS - Tap to boost influence on HOT/DISCOVERY ====== */}
+            {/* ====== MIX BOARD PRESETS - Tap to boost, Double-tap to react, Click punch to discover ====== */}
             {/* Afro Heat - ENERGETIC mood */}
             <NeonBillboardCard
               title="Afro Heat"
@@ -4105,6 +4217,8 @@ export const VoyoPortraitPlayer = ({
               queueMultiplier={queueMultipliers['afro-heat'] || 1}
               communityPulseCount={categoryPulse['afro-heat']?.count || 0}
               reactionEmoji="🔥"
+              communityPunches={afroHeatPunches}
+              onPunchClick={handlePunchClick}
             />
             {/* Chill Vibes - CHILL mood */}
             <NeonBillboardCard
@@ -4123,6 +4237,8 @@ export const VoyoPortraitPlayer = ({
               queueMultiplier={queueMultipliers['chill-vibes'] || 1}
               communityPulseCount={categoryPulse['chill-vibes']?.count || 0}
               reactionEmoji="🌙"
+              communityPunches={chillVibesPunches}
+              onPunchClick={handlePunchClick}
             />
             {/* Party Mode - HYPE mood */}
             <NeonBillboardCard
@@ -4141,6 +4257,8 @@ export const VoyoPortraitPlayer = ({
               queueMultiplier={queueMultipliers['party-mode'] || 1}
               communityPulseCount={categoryPulse['party-mode']?.count || 0}
               reactionEmoji="🎉"
+              communityPunches={partyModePunches}
+              onPunchClick={handlePunchClick}
             />
             {/* Late Night - MYSTERIOUS mood */}
             <NeonBillboardCard
@@ -4159,6 +4277,8 @@ export const VoyoPortraitPlayer = ({
               queueMultiplier={queueMultipliers['late-night'] || 1}
               communityPulseCount={categoryPulse['late-night']?.count || 0}
               reactionEmoji="✨"
+              communityPunches={lateNightPunches}
+              onPunchClick={handlePunchClick}
             />
             {/* Workout - INTENSE mood */}
             <NeonBillboardCard
@@ -4177,6 +4297,8 @@ export const VoyoPortraitPlayer = ({
               queueMultiplier={queueMultipliers['workout'] || 1}
               communityPulseCount={categoryPulse['workout']?.count || 0}
               reactionEmoji="💪"
+              communityPunches={workoutPunches}
+              onPunchClick={handlePunchClick}
             />
 
             {/* RANDOM MIXER - Spotify-style discovery recommendations */}
