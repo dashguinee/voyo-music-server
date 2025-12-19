@@ -272,6 +272,14 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     // AUTO-TRIGGER: Update smart discovery for this track
     get().updateDiscoveryForTrack(track);
 
+    // REFRESH HOT TRACKS: Every 3rd track change, refresh hot recommendations
+    // (Not every track to avoid performance hit, but often enough to stay fresh)
+    const trackChangeCount = (window as any).__voyoTrackChangeCount || 0;
+    (window as any).__voyoTrackChangeCount = trackChangeCount + 1;
+    if (trackChangeCount % 3 === 0) {
+      setTimeout(() => get().refreshRecommendations(), 500);
+    }
+
     // PERSIST: Save track ID so it survives refresh
     const current = loadPersistedState();
     savePersistedState({ ...current, currentTrackId: track.id || track.trackId, currentTime: 0 });

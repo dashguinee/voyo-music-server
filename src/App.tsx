@@ -899,7 +899,14 @@ function App() {
   useEffect(() => {
     startPoolMaintenance();
     console.log('[VOYO] Track pool maintenance started');
-    // No cleanup needed - maintenance runs in background
+
+    // INITIAL REFRESH: Refresh recommendations on app load (after small delay for stores to hydrate)
+    const initTimer = setTimeout(() => {
+      usePlayerStore.getState().refreshRecommendations();
+      console.log('[VOYO] Initial recommendations refreshed');
+    }, 1000);
+
+    return () => clearTimeout(initTimer);
   }, []);
 
   // REALTIME NOTIFICATIONS: Subscribe to Supabase events for DynamicIsland

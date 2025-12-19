@@ -13,7 +13,7 @@ import { motion } from 'framer-motion';
 import { Search, Bell, Play } from 'lucide-react';
 import { getThumb } from '../../utils/thumbnail';
 import { TRACKS, MOOD_TUNNELS, getHotTracks } from '../../data/tracks';
-import { getUserTopTracks, getPersonalizedHotTracks } from '../../services/personalization';
+import { getUserTopTracks, getPoolAwareHotTracks } from '../../services/personalization';
 import { usePlayerStore } from '../../store/playerStore';
 import { Track, MoodTunnel } from '../../types';
 
@@ -181,7 +181,7 @@ export const HomeFeed = ({ onTrackPlay, onSearch }: HomeFeedProps) => {
   // Data for shelves (memoized for performance)
   const recentlyPlayed = useMemo(() => getRecentlyPlayed(history, 10), [history]);
   const heavyRotation = useMemo(() => getUserTopTracks(10), []);
-  const madeForYou = useMemo(() => getPersonalizedHotTracks(10), []);
+  const madeForYou = useMemo(() => getPoolAwareHotTracks(10), []);
   const moods = MOOD_TUNNELS;
   const newReleases = useMemo(() => getNewReleases(10), []);
 

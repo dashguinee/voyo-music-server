@@ -299,6 +299,12 @@ export const useTrackPoolStore = create<TrackPoolStore>()(
               lastScoredAt: new Date().toISOString(),
             })),
           }));
+
+          // TRIGGER PLAYER REFRESH: After rescoring, update player recommendations
+          import('./playerStore').then(({ usePlayerStore }) => {
+            usePlayerStore.getState().refreshRecommendations();
+            console.log('[VOYO Pool] Rescored all tracks, refreshed recommendations');
+          }).catch(() => {});
         });
       },
 
