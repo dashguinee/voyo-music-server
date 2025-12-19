@@ -29,6 +29,11 @@ import { useUniverseStore } from '../../../store/universeStore';
 import { useTrackPoolStore } from '../../../store/trackPoolStore';
 import { followsAPI } from '../../../lib/supabase';
 import { TRACKS } from '../../../data/tracks';
+import { AudioVisualizer, WaveformVisualizer } from './AudioVisualizer';
+
+// Snippet config
+const SNIPPET_DURATION = 25; // Seconds per snippet before auto-advance
+const DEFAULT_SEEK_PERCENT = 25; // Where to start if no hotspots
 
 // ============================================
 // FEED MODE TYPE
@@ -364,6 +369,7 @@ interface FeedCardProps {
   trackThumbnail?: string;
   reactions: Reaction[];
   nativeOyeScore?: number; // Track's base OYE score from library
+  hottestPosition?: number; // 0-100 percentage of hottest part
   isActive: boolean;
   isPlaying: boolean;
   isThisTrack: boolean; // Is this card's track the current track?
@@ -378,6 +384,7 @@ interface FeedCardProps {
   onShare?: () => void; // Share track
   onSeekToHotspot?: (position: number) => void; // Seek to hot part
   onFollowArtist?: () => void; // Follow/unfollow artist
+  onSnippetEnd?: () => void; // Called when snippet duration ends (for auto-advance)
 }
 
 const FeedCard = ({
@@ -387,6 +394,7 @@ const FeedCard = ({
   trackThumbnail,
   reactions,
   nativeOyeScore = 0,
+  hottestPosition,
   isActive,
   isPlaying,
   isThisTrack,
@@ -401,17 +409,52 @@ const FeedCard = ({
   onShare,
   onSeekToHotspot,
   onFollowArtist,
+  onSnippetEnd,
 }: FeedCardProps) => {
   const [showComments, setShowComments] = useState(false);
   const [userReactions, setUserReactions] = useState<Set<ReactionType>>(new Set());
+  const [snippetStarted, setSnippetStarted] = useState(false);
+  const snippetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Auto-play when card becomes active
+  // Auto-play snippet when card becomes active
   useEffect(() => {
     if (isActive && !isThisTrack) {
-      // This card is now active but not playing - auto-play it
+      // This card is now active but not playing - start snippet
       onPlay();
+
+      // Seek to hottest part (or default position) after a brief delay for load
+      setTimeout(() => {
+        const seekPosition = hottestPosition ?? DEFAULT_SEEK_PERCENT;
+        onSeekToHotspot?.(seekPosition);
+        setSnippetStarted(true);
+      }, 300);
     }
-  }, [isActive, isThisTrack, onPlay]);
+
+    // Reset snippet state when card becomes inactive
+    if (!isActive) {
+      setSnippetStarted(false);
+      if (snippetTimerRef.current) {
+        clearTimeout(snippetTimerRef.current);
+        snippetTimerRef.current = null;
+      }
+    }
+  }, [isActive, isThisTrack, onPlay, onSeekToHotspot, hottestPosition]);
+
+  // Auto-advance timer - trigger after SNIPPET_DURATION seconds
+  useEffect(() => {
+    if (isActive && isPlaying && isThisTrack && snippetStarted && onSnippetEnd) {
+      snippetTimerRef.current = setTimeout(() => {
+        console.log(`[Feed] Snippet ended for ${trackTitle}, auto-advancing...`);
+        onSnippetEnd();
+      }, SNIPPET_DURATION * 1000);
+
+      return () => {
+        if (snippetTimerRef.current) {
+          clearTimeout(snippetTimerRef.current);
+        }
+      };
+    }
+  }, [isActive, isPlaying, isThisTrack, snippetStarted, onSnippetEnd, trackTitle]);
 
   // Count reactions
   const reactionCounts = useMemo(() => {
@@ -463,14 +506,22 @@ const FeedCard = ({
 
   return (
     <div className="relative w-full h-full bg-black">
-      {/* Background - Thumbnail with gradient */}
+      {/* Background - Thumbnail with gradient + Visualizer */}
       <div className="absolute inset-0">
         {trackThumbnail ? (
-          <img
+          <motion.img
             src={trackThumbnail}
             alt={trackTitle}
             className="w-full h-full object-cover"
             onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0'; }}
+            animate={{
+              scale: isPlaying && isThisTrack ? [1, 1.02, 1] : 1,
+            }}
+            transition={{
+              duration: 4,
+              repeat: Infinity,
+              ease: 'easeInOut',
+            }}
           />
         ) : (
           <div className="w-full h-full bg-gradient-to-br from-purple-900/50 to-pink-900/30 flex items-center justify-center">
@@ -480,6 +531,40 @@ const FeedCard = ({
         {/* Gradient overlays */}
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-black/20" />
         <div className="absolute inset-0 bg-gradient-to-r from-transparent to-black/30" />
+
+        {/* Audio Visualizer - shows when playing */}
+        <AudioVisualizer
+          isPlaying={isPlaying && isThisTrack}
+          intensity={0.8}
+          barCount={24}
+          position="bottom"
+          color="rgba(168, 85, 247, 0.7)"
+        />
+
+        {/* Waveform effect overlay */}
+        <WaveformVisualizer
+          isPlaying={isPlaying && isThisTrack}
+          color="rgba(236, 72, 153, 0.5)"
+        />
+
+        {/* Playing indicator pulse */}
+        {isPlaying && isThisTrack && (
+          <motion.div
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 rounded-full pointer-events-none"
+            style={{
+              background: 'radial-gradient(circle, rgba(168,85,247,0.3) 0%, transparent 70%)',
+            }}
+            animate={{
+              scale: [1, 1.5, 1],
+              opacity: [0.5, 0.2, 0.5],
+            }}
+            transition={{
+              duration: 2,
+              repeat: Infinity,
+              ease: 'easeInOut',
+            }}
+          />
+        )}
       </div>
 
       {/* Tap to play/pause - invisible overlay */}
@@ -636,7 +721,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
   const [isLoadingFollows, setIsLoadingFollows] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const { recentReactions, fetchRecentReactions, subscribeToReactions, isSubscribed, createReaction, computeHotspots, getCategoryScore, getTopCategories } = useReactionStore();
+  const { recentReactions, fetchRecentReactions, subscribeToReactions, isSubscribed, createReaction, computeHotspots, getCategoryScore, getTopCategories, getHotspots } = useReactionStore();
   const { setCurrentTrack, addToQueue, currentTrack, isPlaying, togglePlay, progress, duration, seekTo, volume, setVolume } = usePlayerStore();
   const { currentUsername } = useUniverseStore();
   const { hotPool, recordReaction } = useTrackPoolStore();
@@ -751,6 +836,12 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
       const reactionData = reactionsByTrack.get(trackId);
       const poolScore = 'poolScore' in track ? (track as any).poolScore : 0;
 
+      // Get hottest position for this track
+      const hotspots = getHotspots(trackId);
+      const hottestSpot = hotspots.length > 0
+        ? hotspots.reduce((a, b) => a.intensity > b.intensity ? a : b)
+        : null;
+
       return {
         trackId,
         trackTitle: track.title,
@@ -762,6 +853,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
         categoryBoost: reactionData?.categoryBoost || 50,
         dominantCategory: reactionData?.dominantCategory || 'afro-heat',
         poolScore, // Include pool score for sorting
+        hottestPosition: hottestSpot?.position, // Position of hottest part (0-100)
       };
     });
 
@@ -797,7 +889,27 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
       // Quaternary: Random shuffle for equal scores (variety)
       return Math.random() - 0.5;
     });
-  }, [recentReactions, getCategoryScore, hotPool, feedMode, followingList]);
+  }, [recentReactions, getCategoryScore, hotPool, feedMode, followingList, getHotspots]);
+
+  // Auto-advance to next card (called when snippet ends)
+  const handleSnippetEnd = useCallback(() => {
+    if (!containerRef.current) return;
+
+    const nextIndex = currentIndex + 1;
+    if (nextIndex < trackGroups.length) {
+      // Scroll to next card
+      const itemHeight = containerRef.current.clientHeight;
+      containerRef.current.scrollTo({
+        top: nextIndex * itemHeight,
+        behavior: 'smooth',
+      });
+      setCurrentIndex(nextIndex);
+      console.log(`[Feed] Auto-advancing to card ${nextIndex + 1}/${trackGroups.length}`);
+    } else {
+      // At end of feed - could loop or stop
+      console.log('[Feed] Reached end of feed');
+    }
+  }, [currentIndex, trackGroups.length]);
 
   // Handle scroll snap
   const handleScroll = () => {
@@ -992,6 +1104,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
                 trackThumbnail={group.trackThumbnail}
                 reactions={group.reactions}
                 nativeOyeScore={group.nativeOyeScore}
+                hottestPosition={group.hottestPosition}
                 isActive={cardIsActive}
                 isPlaying={isPlaying && isThisTrack}
                 isThisTrack={isThisTrack}
@@ -1023,6 +1136,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
                 onShare={() => handleShare(group.trackId, group.trackTitle, group.trackArtist)}
                 onSeekToHotspot={handleSeekToHotspot}
                 onFollowArtist={() => handleFollowArtist(group.trackArtist)}
+                onSnippetEnd={handleSnippetEnd}
               />
             </div>
           );
