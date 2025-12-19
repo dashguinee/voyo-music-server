@@ -25,6 +25,7 @@ export const VoyoSplash = ({ onComplete, minDuration = 2800 }: VoyoSplashProps) 
   const [isDataReady, setIsDataReady] = useState(false);
   const [isAnimationDone, setIsAnimationDone] = useState(false);
   const hasCompletedRef = useRef(false);
+  const isDataReadyRef = useRef(false);
 
   // Store initialization
   const initDownloads = useDownloadStore((s) => s.initialize);
@@ -36,9 +37,14 @@ export const VoyoSplash = ({ onComplete, minDuration = 2800 }: VoyoSplashProps) 
       try {
         console.log('🎵 SPLASH: Initializing stores...');
 
-        // 1. Initialize IndexedDB for cached tracks
-        await initDownloads();
-        console.log('🎵 SPLASH: ✅ IndexedDB ready!');
+        // 1. Initialize IndexedDB for cached tracks (with timeout)
+        await Promise.race([
+          initDownloads(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('IndexedDB timeout')), 3000))
+        ]).catch(err => {
+          console.warn('🎵 SPLASH: IndexedDB init failed/timeout, continuing:', err);
+        });
+        console.log('🎵 SPLASH: ✅ IndexedDB ready (or skipped)!');
 
         // 2. Preload first 3 track thumbnails for instant display
         const firstTracks = TRACKS.slice(0, 3);
@@ -61,14 +67,27 @@ export const VoyoSplash = ({ onComplete, minDuration = 2800 }: VoyoSplashProps) 
         // 3. Touch preference store to ensure it's initialized
         console.log('🎵 SPLASH: ✅ Preferences loaded!', Object.keys(preferenceStore.trackPreferences).length, 'tracks');
 
+        isDataReadyRef.current = true;
         setIsDataReady(true);
       } catch (err) {
         console.warn('🎵 SPLASH: Init error (continuing anyway):', err);
+        isDataReadyRef.current = true;
         setIsDataReady(true);
       }
     };
 
     preloadData();
+
+    // SAFETY: Force ready after 5 seconds no matter what
+    const safetyTimeout = setTimeout(() => {
+      if (!isDataReadyRef.current) {
+        console.warn('🎵 SPLASH: Safety timeout triggered, forcing ready');
+        isDataReadyRef.current = true;
+        setIsDataReady(true);
+      }
+    }, 5000);
+
+    return () => clearTimeout(safetyTimeout);
   }, [initDownloads, preferenceStore.trackPreferences]);
 
   // Animation timeline
