@@ -946,6 +946,53 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
     });
   }, [recentReactions, getCategoryScore, hotPool, feedMode, followingList, getHotspots]);
 
+  // 🔥 AUDIO PRECACHING - Preload next 3 tracks for instant playback
+  useEffect(() => {
+    if (!isActive || trackGroups.length === 0) return;
+
+    const API_BASE = 'https://voyo-music-api.fly.dev';
+    const PREFETCH_COUNT = 3; // Preload 3 tracks ahead
+
+    // Get next tracks to preload
+    const tracksToPreload = trackGroups.slice(currentIndex + 1, currentIndex + 1 + PREFETCH_COUNT);
+
+    const audioElements: HTMLAudioElement[] = [];
+
+    tracksToPreload.forEach((group, i) => {
+      const trackId = group.trackId;
+
+      // Use setTimeout to stagger prefetch requests (less network congestion)
+      const timeoutId = setTimeout(() => {
+        // Create a silent audio element to trigger browser caching
+        const audio = new Audio();
+        audio.preload = 'auto';
+        audio.src = `${API_BASE}/cdn/stream/${trackId}?type=audio&quality=medium`;
+        audio.volume = 0;
+
+        // Start loading
+        audio.load();
+        audioElements.push(audio);
+
+        console.log(`[Feed] 🔥 Precaching track ${currentIndex + 2 + i}: ${group.trackTitle}`);
+      }, i * 300); // Stagger by 300ms each
+
+      // Store timeout for cleanup
+      (window as any)[`prefetchTimeout_${i}`] = timeoutId;
+    });
+
+    // Cleanup function
+    return () => {
+      // Clear pending timeouts
+      for (let i = 0; i < PREFETCH_COUNT; i++) {
+        clearTimeout((window as any)[`prefetchTimeout_${i}`]);
+      }
+      // Release audio elements
+      audioElements.forEach(audio => {
+        audio.src = '';
+      });
+    };
+  }, [currentIndex, isActive, trackGroups]);
+
   // Auto-advance to next card (called when snippet ends)
   const handleSnippetEnd = useCallback(() => {
     if (!containerRef.current) return;

@@ -8,10 +8,15 @@
 const PIPED_API = 'https://pipedapi.kavin.rocks';
 
 // Fallback Piped instances (in case primary is down)
+// Updated Dec 2025 - many instances are unreliable, try multiple
 const PIPED_INSTANCES = [
   'https://pipedapi.kavin.rocks',
-  'https://pipedapi.adminforge.de',
-  'https://api.piped.yt',
+  'https://pipedapi-libre.kavin.rocks',
+  'https://pipedapi.leptons.xyz',
+  'https://piped-api.privacy.com.de',
+  'https://pipedapi.moomoo.me',
+  'https://pipedapi.syncpundit.io',
+  'https://pipedapi.tokhmi.xyz',
 ];
 
 // ============================================
