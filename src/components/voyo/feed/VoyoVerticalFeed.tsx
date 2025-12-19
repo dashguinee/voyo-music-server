@@ -345,6 +345,7 @@ interface FeedCardProps {
   onAddToLibrary?: () => void; // OYÉ = add to library + boost
   onAddToPlaylist?: () => void; // + button
   onGoToPlayer?: () => void; // Navigate to full music player
+  onShare?: () => void; // Share track
 }
 
 const FeedCard = ({
@@ -364,6 +365,7 @@ const FeedCard = ({
   onAddToLibrary,
   onAddToPlaylist,
   onGoToPlayer,
+  onShare,
 }: FeedCardProps) => {
   const [showComments, setShowComments] = useState(false);
   const [userReactions, setUserReactions] = useState<Set<ReactionType>>(new Set());
@@ -531,7 +533,10 @@ const FeedCard = ({
         </button>
 
         {/* Share */}
-        <button className="flex flex-col items-center">
+        <button
+          className="flex flex-col items-center active:scale-90 transition-transform"
+          onClick={onShare}
+        >
           <Share2 className="w-8 h-8 text-white" />
         </button>
       </div>
@@ -561,7 +566,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
   const containerRef = useRef<HTMLDivElement>(null);
 
   const { recentReactions, fetchRecentReactions, subscribeToReactions, isSubscribed, createReaction, computeHotspots, getCategoryScore, getTopCategories } = useReactionStore();
-  const { setCurrentTrack, addToQueue, currentTrack, isPlaying, togglePlay, progress } = usePlayerStore();
+  const { setCurrentTrack, addToQueue, currentTrack, isPlaying, togglePlay, progress, volume, setVolume } = usePlayerStore();
   const { currentUsername } = useUniverseStore();
   const { hotPool } = useTrackPoolStore();
 
@@ -742,6 +747,25 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
     });
   }, [createReaction, currentTrack, progress, currentUsername]);
 
+  // Handle share - use Web Share API if available
+  const handleShare = useCallback((trackId: string, trackTitle: string, trackArtist: string) => {
+    const shareData = {
+      title: trackTitle,
+      text: `🎵 ${trackTitle} by ${trackArtist} on VOYO Music`,
+      url: `https://voyomusic.com/?track=${trackId}`,
+    };
+
+    if (navigator.share) {
+      navigator.share(shareData).catch(() => {
+        // Fallback: copy to clipboard
+        navigator.clipboard.writeText(shareData.url);
+      });
+    } else {
+      // Fallback: copy to clipboard
+      navigator.clipboard.writeText(shareData.url);
+    }
+  }, []);
+
   if (!isActive) return null;
 
   // Empty state
@@ -802,16 +826,23 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
                 onAddComment={(text) => handleAddComment(group.trackId, group.trackTitle, group.trackArtist, text)}
                 onAddToLibrary={() => {
                   // OYÉ = Add to library (queue) + auto-play
-                  const track = TRACKS.find(t => t.id === group.trackId || t.trackId === group.trackId);
-                  if (track) addToQueue(track);
-                  console.log(`[Feed] OYÉ! Added ${group.trackTitle} to library`);
+                  const poolTrack = hotPool.find(t => t.id === group.trackId || t.trackId === group.trackId);
+                  const seedTrack = TRACKS.find(t => t.id === group.trackId || t.trackId === group.trackId);
+                  const track = poolTrack || seedTrack;
+                  if (track) {
+                    addToQueue(track);
+                    // Also record reaction for the OYÉ
+                    handleReact(group.trackId, group.trackTitle, group.trackArtist, 'oye');
+                  }
                 }}
                 onAddToPlaylist={() => {
                   // + button = Add to queue
-                  const track = TRACKS.find(t => t.id === group.trackId || t.trackId === group.trackId);
+                  const poolTrack = hotPool.find(t => t.id === group.trackId || t.trackId === group.trackId);
+                  const seedTrack = TRACKS.find(t => t.id === group.trackId || t.trackId === group.trackId);
+                  const track = poolTrack || seedTrack;
                   if (track) addToQueue(track);
-                  console.log(`[Feed] Added ${group.trackTitle} to playlist`);
                 }}
+                onShare={() => handleShare(group.trackId, group.trackTitle, group.trackArtist)}
               />
             </div>
           );
@@ -821,12 +852,19 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
       {/* Top Navigation - Following | For You */}
       <div className="absolute top-4 left-0 right-0 z-30">
         <div className="flex items-center justify-center gap-6">
-          <button className="text-white/50 text-base font-semibold">Following</button>
+          <button className="text-white/50 text-base font-semibold opacity-50">Following</button>
           <button className="text-white text-base font-bold border-b-2 border-white pb-0.5">For You</button>
         </div>
-        {/* Mute button */}
-        <button className="absolute right-4 top-0">
-          <VolumeX className="w-5 h-5 text-white/70" />
+        {/* Mute/Unmute button */}
+        <button
+          className="absolute right-4 top-0 active:scale-90 transition-transform"
+          onClick={() => setVolume(volume > 0 ? 0 : 80)}
+        >
+          {volume > 0 ? (
+            <Volume2 className="w-5 h-5 text-white/70" />
+          ) : (
+            <VolumeX className="w-5 h-5 text-white/70" />
+          )}
         </button>
       </div>
 
