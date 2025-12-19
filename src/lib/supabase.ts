@@ -387,4 +387,109 @@ export const universeAPI = {
   },
 };
 
+// ============================================
+// FOLLOWS API
+// ============================================
+
+export const followsAPI = {
+  /**
+   * Follow a user
+   */
+  async follow(followerUsername: string, followingUsername: string): Promise<boolean> {
+    if (!supabase) return false;
+
+    const { error } = await supabase.from('follows').upsert({
+      follower: followerUsername.toLowerCase(),
+      following: followingUsername.toLowerCase(),
+      created_at: new Date().toISOString(),
+    });
+
+    return !error;
+  },
+
+  /**
+   * Unfollow a user
+   */
+  async unfollow(followerUsername: string, followingUsername: string): Promise<boolean> {
+    if (!supabase) return false;
+
+    const { error } = await supabase
+      .from('follows')
+      .delete()
+      .eq('follower', followerUsername.toLowerCase())
+      .eq('following', followingUsername.toLowerCase());
+
+    return !error;
+  },
+
+  /**
+   * Check if following
+   */
+  async isFollowing(followerUsername: string, followingUsername: string): Promise<boolean> {
+    if (!supabase) return false;
+
+    const { data } = await supabase
+      .from('follows')
+      .select('follower')
+      .eq('follower', followerUsername.toLowerCase())
+      .eq('following', followingUsername.toLowerCase())
+      .single();
+
+    return !!data;
+  },
+
+  /**
+   * Get users I follow
+   */
+  async getFollowing(username: string): Promise<string[]> {
+    if (!supabase) return [];
+
+    const { data, error } = await supabase
+      .from('follows')
+      .select('following')
+      .eq('follower', username.toLowerCase());
+
+    if (error || !data) return [];
+    return data.map((f: any) => f.following);
+  },
+
+  /**
+   * Get my followers
+   */
+  async getFollowers(username: string): Promise<string[]> {
+    if (!supabase) return [];
+
+    const { data, error } = await supabase
+      .from('follows')
+      .select('follower')
+      .eq('following', username.toLowerCase());
+
+    if (error || !data) return [];
+    return data.map((f: any) => f.follower);
+  },
+
+  /**
+   * Get follow counts
+   */
+  async getCounts(username: string): Promise<{ followers: number; following: number }> {
+    if (!supabase) return { followers: 0, following: 0 };
+
+    const [followersRes, followingRes] = await Promise.all([
+      supabase
+        .from('follows')
+        .select('follower', { count: 'exact', head: true })
+        .eq('following', username.toLowerCase()),
+      supabase
+        .from('follows')
+        .select('following', { count: 'exact', head: true })
+        .eq('follower', username.toLowerCase()),
+    ]);
+
+    return {
+      followers: followersRes.count || 0,
+      following: followingRes.count || 0,
+    };
+  },
+};
+
 export default supabase;

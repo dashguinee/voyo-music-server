@@ -21,24 +21,40 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Heart, MessageCircle, Share2, Music2, Zap, Play, Pause,
   ChevronDown, User, MapPin, Flame, Plus, X, Volume2, VolumeX,
-  Bookmark, UserPlus
+  Bookmark, UserPlus, UserMinus, FastForward
 } from 'lucide-react';
 import { useReactionStore, Reaction, ReactionCategory, ReactionType, TrackHotspot } from '../../../store/reactionStore';
 import { usePlayerStore } from '../../../store/playerStore';
 import { useUniverseStore } from '../../../store/universeStore';
 import { useTrackPoolStore } from '../../../store/trackPoolStore';
+import { followsAPI } from '../../../lib/supabase';
 import { TRACKS } from '../../../data/tracks';
+
+// ============================================
+// FEED MODE TYPE
+// ============================================
+type FeedMode = 'forYou' | 'following';
 
 // ============================================
 // PROGRESS BAR COMPONENT WITH HEATMAP
 // ============================================
-const ProgressBar = ({ isActive, trackId }: { isActive: boolean; trackId: string }) => {
+const ProgressBar = ({ isActive, trackId, onSeekToHotspot }: {
+  isActive: boolean;
+  trackId: string;
+  onSeekToHotspot?: (position: number) => void;
+}) => {
   const progress = usePlayerStore((state) => state.progress);
   const currentTime = usePlayerStore((state) => state.currentTime);
   const duration = usePlayerStore((state) => state.duration);
   const getHotspots = useReactionStore((state) => state.getHotspots);
 
   const hotspots = useMemo(() => getHotspots(trackId), [getHotspots, trackId]);
+
+  // Find the hottest spot (highest intensity)
+  const hottestSpot = useMemo(() => {
+    if (hotspots.length === 0) return null;
+    return hotspots.reduce((a, b) => a.intensity > b.intensity ? a : b);
+  }, [hotspots]);
 
   if (!isActive) return null;
 
@@ -97,11 +113,24 @@ const ProgressBar = ({ isActive, trackId }: { isActive: boolean; trackId: string
         {' / '}
         {Math.floor(duration / 60)}:{Math.floor(duration % 60).toString().padStart(2, '0')}
       </div>
-      {/* Hotspot count indicator */}
+      {/* Hotspot count indicator + Skip to hot button */}
       {hotspots.length > 0 && (
-        <div className="absolute bottom-2 right-4 flex items-center gap-1 text-white/60 text-[10px]">
-          <Flame className="w-3 h-3 text-orange-400" />
-          <span>{hotspots.length} hot {hotspots.length === 1 ? 'spot' : 'spots'}</span>
+        <div className="absolute bottom-2 right-4 flex items-center gap-2">
+          {hottestSpot && onSeekToHotspot && (
+            <motion.button
+              className="flex items-center gap-1 px-2 py-1 rounded-full bg-orange-500/80 text-white text-[10px] font-bold"
+              onClick={() => onSeekToHotspot(hottestSpot.position)}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <FastForward className="w-3 h-3" />
+              <span>🔥 HOT</span>
+            </motion.button>
+          )}
+          <div className="flex items-center gap-1 text-white/60 text-[10px]">
+            <Flame className="w-3 h-3 text-orange-400" />
+            <span>{hotspots.length} hot {hotspots.length === 1 ? 'spot' : 'spots'}</span>
+          </div>
         </div>
       )}
     </div>
@@ -338,6 +367,7 @@ interface FeedCardProps {
   isActive: boolean;
   isPlaying: boolean;
   isThisTrack: boolean; // Is this card's track the current track?
+  isFollowingArtist?: boolean; // Is current user following this artist?
   onPlay: () => void;
   onTogglePlay: () => void;
   onReact: (type: ReactionType) => void;
@@ -346,6 +376,8 @@ interface FeedCardProps {
   onAddToPlaylist?: () => void; // + button
   onGoToPlayer?: () => void; // Navigate to full music player
   onShare?: () => void; // Share track
+  onSeekToHotspot?: (position: number) => void; // Seek to hot part
+  onFollowArtist?: () => void; // Follow/unfollow artist
 }
 
 const FeedCard = ({
@@ -358,6 +390,7 @@ const FeedCard = ({
   isActive,
   isPlaying,
   isThisTrack,
+  isFollowingArtist = false,
   onPlay,
   onTogglePlay,
   onReact,
@@ -366,6 +399,8 @@ const FeedCard = ({
   onAddToPlaylist,
   onGoToPlayer,
   onShare,
+  onSeekToHotspot,
+  onFollowArtist,
 }: FeedCardProps) => {
   const [showComments, setShowComments] = useState(false);
   const [userReactions, setUserReactions] = useState<Set<ReactionType>>(new Set());
@@ -454,8 +489,12 @@ const FeedCard = ({
         aria-label={isPlaying ? 'Pause' : 'Play'}
       />
 
-      {/* Progress Bar with Heatmap */}
-      <ProgressBar isActive={isActive && isThisTrack} trackId={trackId} />
+      {/* Progress Bar with Heatmap + Hot Part Seek */}
+      <ProgressBar
+        isActive={isActive && isThisTrack}
+        trackId={trackId}
+        onSeekToHotspot={onSeekToHotspot}
+      />
 
       {/* Scrolling Comments Overlay */}
       <ScrollingCommentsOverlay
@@ -477,8 +516,37 @@ const FeedCard = ({
           );
         })()}
 
-        {/* Artist Handle */}
-        <p className="text-white/80 text-sm font-medium mb-1">@{trackArtist.toLowerCase().replace(/\s+/g, '_')}</p>
+        {/* Artist Handle + Follow Button */}
+        <div className="flex items-center gap-2 mb-1">
+          <p className="text-white/80 text-sm font-medium">@{trackArtist.toLowerCase().replace(/\s+/g, '_')}</p>
+          {onFollowArtist && (
+            <motion.button
+              className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-colors ${
+                isFollowingArtist
+                  ? 'bg-white/20 text-white/70'
+                  : 'bg-pink-500/90 text-white'
+              }`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onFollowArtist();
+              }}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              {isFollowingArtist ? (
+                <>
+                  <UserMinus className="w-3 h-3" />
+                  <span>Following</span>
+                </>
+              ) : (
+                <>
+                  <UserPlus className="w-3 h-3" />
+                  <span>Follow</span>
+                </>
+              )}
+            </motion.button>
+          )}
+        </div>
 
         {/* Track Title */}
         <h3 className="text-white text-base font-semibold mb-2 line-clamp-2 leading-tight">
@@ -563,12 +631,15 @@ interface VoyoVerticalFeedProps {
 
 export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedProps) => {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [feedMode, setFeedMode] = useState<FeedMode>('forYou');
+  const [followingList, setFollowingList] = useState<Set<string>>(new Set());
+  const [isLoadingFollows, setIsLoadingFollows] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const { recentReactions, fetchRecentReactions, subscribeToReactions, isSubscribed, createReaction, computeHotspots, getCategoryScore, getTopCategories } = useReactionStore();
-  const { setCurrentTrack, addToQueue, currentTrack, isPlaying, togglePlay, progress, volume, setVolume } = usePlayerStore();
+  const { setCurrentTrack, addToQueue, currentTrack, isPlaying, togglePlay, progress, duration, seekTo, volume, setVolume } = usePlayerStore();
   const { currentUsername } = useUniverseStore();
-  const { hotPool } = useTrackPoolStore();
+  const { hotPool, recordReaction } = useTrackPoolStore();
 
   // Fetch reactions on mount
   useEffect(() => {
@@ -579,6 +650,59 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
       }
     }
   }, [isActive, fetchRecentReactions, subscribeToReactions, isSubscribed]);
+
+  // Fetch following list on mount
+  useEffect(() => {
+    const loadFollowing = async () => {
+      if (!currentUsername) return;
+      setIsLoadingFollows(true);
+      try {
+        const following = await followsAPI.getFollowing(currentUsername);
+        setFollowingList(new Set(following.map(u => u.toLowerCase())));
+      } catch (e) {
+        console.error('[Feed] Failed to load following:', e);
+      }
+      setIsLoadingFollows(false);
+    };
+    loadFollowing();
+  }, [currentUsername]);
+
+  // Handle follow/unfollow artist
+  const handleFollowArtist = useCallback(async (artistUsername: string) => {
+    if (!currentUsername) return;
+    const normalizedArtist = artistUsername.toLowerCase().replace(/\s+/g, '_');
+    const isFollowing = followingList.has(normalizedArtist);
+
+    // Optimistic update
+    const newFollowing = new Set(followingList);
+    if (isFollowing) {
+      newFollowing.delete(normalizedArtist);
+    } else {
+      newFollowing.add(normalizedArtist);
+    }
+    setFollowingList(newFollowing);
+
+    // Persist to Supabase
+    try {
+      if (isFollowing) {
+        await followsAPI.unfollow(currentUsername, normalizedArtist);
+      } else {
+        await followsAPI.follow(currentUsername, normalizedArtist);
+      }
+    } catch (e) {
+      // Revert on error
+      setFollowingList(followingList);
+      console.error('[Feed] Follow action failed:', e);
+    }
+  }, [currentUsername, followingList]);
+
+  // Handle seek to hotspot
+  const handleSeekToHotspot = useCallback((position: number) => {
+    // position is 0-100 percentage
+    const targetTime = (position / 100) * duration;
+    seekTo(targetTime);
+    console.log(`[Feed] Seeking to hotspot at ${position}% (${targetTime}s)`);
+  }, [duration, seekTo]);
 
   // Build feed from ALL tracks, boosted by reactions + For You algorithm
   const trackGroups = useMemo(() => {
@@ -641,8 +765,17 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
       };
     });
 
+    // Filter by feed mode
+    const filteredItems = feedMode === 'following'
+      ? feedItems.filter(item => {
+          // Check if artist is in following list
+          const artistHandle = item.trackArtist.toLowerCase().replace(/\s+/g, '_');
+          return followingList.has(artistHandle);
+        })
+      : feedItems;
+
     // Sort by FOR YOU score: pool score + reactions + category preference
-    return feedItems.sort((a, b) => {
+    return filteredItems.sort((a, b) => {
       // Primary: Pool score (user behavior learned from search/play)
       const aPoolBoost = (a.poolScore || 0) / 10; // 0-10 from pool
       const bPoolBoost = (b.poolScore || 0) / 10;
@@ -664,7 +797,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
       // Quaternary: Random shuffle for equal scores (variety)
       return Math.random() - 0.5;
     });
-  }, [recentReactions, getCategoryScore, hotPool]);
+  }, [recentReactions, getCategoryScore, hotPool, feedMode, followingList]);
 
   // Handle scroll snap
   const handleScroll = () => {
@@ -768,21 +901,62 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
 
   if (!isActive) return null;
 
-  // Empty state
+  // Empty state - different for Following vs For You
   if (trackGroups.length === 0) {
+    const isFollowingEmpty = feedMode === 'following';
     return (
       <motion.div
         className="absolute inset-0 bg-black flex flex-col items-center justify-center px-8"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
       >
-        <div className="w-24 h-24 rounded-full bg-purple-500/20 flex items-center justify-center mb-4">
-          <Zap className="w-12 h-12 text-purple-400" />
+        {/* Tab buttons still visible */}
+        <div className="absolute top-4 left-0 right-0 z-30">
+          <div className="flex items-center justify-center gap-6">
+            <button
+              className={`text-base font-semibold transition-all ${
+                feedMode === 'following' ? 'text-white font-bold border-b-2 border-white pb-0.5' : 'text-white/50'
+              }`}
+              onClick={() => setFeedMode('following')}
+            >
+              Following
+            </button>
+            <button
+              className={`text-base font-semibold transition-all ${
+                feedMode === 'forYou' ? 'text-white font-bold border-b-2 border-white pb-0.5' : 'text-white/50'
+              }`}
+              onClick={() => setFeedMode('forYou')}
+            >
+              For You
+            </button>
+          </div>
         </div>
-        <h3 className="text-white font-bold text-xl mb-2">No Vibes Yet</h3>
-        <p className="text-white/50 text-sm text-center">
-          Start playing music and react to fill your feed with community vibes!
+
+        <div className="w-24 h-24 rounded-full bg-purple-500/20 flex items-center justify-center mb-4">
+          {isFollowingEmpty ? (
+            <UserPlus className="w-12 h-12 text-pink-400" />
+          ) : (
+            <Zap className="w-12 h-12 text-purple-400" />
+          )}
+        </div>
+        <h3 className="text-white font-bold text-xl mb-2">
+          {isFollowingEmpty ? 'No Artists Followed' : 'No Vibes Yet'}
+        </h3>
+        <p className="text-white/50 text-sm text-center mb-4">
+          {isFollowingEmpty
+            ? 'Follow artists to see their tracks in your Following feed!'
+            : 'Start playing music and react to fill your feed with community vibes!'}
         </p>
+        {isFollowingEmpty && (
+          <motion.button
+            className="px-6 py-3 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 text-white font-bold"
+            onClick={() => setFeedMode('forYou')}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            Discover Artists
+          </motion.button>
+        )}
       </motion.div>
     );
   }
@@ -808,6 +982,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
         {trackGroups.map((group, index) => {
           const isThisTrack = currentTrack?.trackId === group.trackId || currentTrack?.id === group.trackId;
           const cardIsActive = isActive && index === currentIndex;
+          const artistHandle = group.trackArtist.toLowerCase().replace(/\s+/g, '_');
           return (
             <div key={group.trackId} className="h-full w-full snap-start snap-always">
               <FeedCard
@@ -820,6 +995,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
                 isActive={cardIsActive}
                 isPlaying={isPlaying && isThisTrack}
                 isThisTrack={isThisTrack}
+                isFollowingArtist={followingList.has(artistHandle)}
                 onPlay={() => handlePlay(group.trackId, group.trackTitle, group.trackArtist)}
                 onTogglePlay={togglePlay}
                 onReact={(type) => handleReact(group.trackId, group.trackTitle, group.trackArtist, type)}
@@ -833,6 +1009,8 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
                     addToQueue(track);
                     // Also record reaction for the OYÉ
                     handleReact(group.trackId, group.trackTitle, group.trackArtist, 'oye');
+                    // Record reaction in pool for scoring
+                    recordReaction(group.trackId);
                   }
                 }}
                 onAddToPlaylist={() => {
@@ -843,6 +1021,8 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
                   if (track) addToQueue(track);
                 }}
                 onShare={() => handleShare(group.trackId, group.trackTitle, group.trackArtist)}
+                onSeekToHotspot={handleSeekToHotspot}
+                onFollowArtist={() => handleFollowArtist(group.trackArtist)}
               />
             </div>
           );
@@ -852,8 +1032,35 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
       {/* Top Navigation - Following | For You */}
       <div className="absolute top-4 left-0 right-0 z-30">
         <div className="flex items-center justify-center gap-6">
-          <button className="text-white/50 text-base font-semibold opacity-50">Following</button>
-          <button className="text-white text-base font-bold border-b-2 border-white pb-0.5">For You</button>
+          <button
+            className={`text-base font-semibold transition-all ${
+              feedMode === 'following'
+                ? 'text-white font-bold border-b-2 border-white pb-0.5'
+                : 'text-white/50'
+            }`}
+            onClick={() => {
+              setFeedMode('following');
+              setCurrentIndex(0);
+            }}
+          >
+            Following
+            {followingList.size > 0 && (
+              <span className="ml-1 text-xs text-pink-400">({followingList.size})</span>
+            )}
+          </button>
+          <button
+            className={`text-base font-semibold transition-all ${
+              feedMode === 'forYou'
+                ? 'text-white font-bold border-b-2 border-white pb-0.5'
+                : 'text-white/50'
+            }`}
+            onClick={() => {
+              setFeedMode('forYou');
+              setCurrentIndex(0);
+            }}
+          >
+            For You
+          </button>
         </div>
         {/* Mute/Unmute button */}
         <button

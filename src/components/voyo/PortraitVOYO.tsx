@@ -261,7 +261,10 @@ export const PortraitVOYO = ({ onSearch, onDahub, onHome }: PortraitVOYOProps) =
           transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
           style={{ pointerEvents: voyoActiveTab === 'feed' ? 'auto' : 'none' }}
         >
-          <VoyoVerticalFeed isActive={voyoActiveTab === 'feed'} />
+          <VoyoVerticalFeed
+            isActive={voyoActiveTab === 'feed'}
+            onGoToPlayer={() => setVoyoTab('music')}
+          />
         </motion.div>
 
         {/* LAYER 3: CREATOR MODE (Bottom Sheet Overlay) */}
