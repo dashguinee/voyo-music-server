@@ -1,19 +1,18 @@
 /**
- * VideoSnippet - Embedded Video Player for Feed Cards
+ * VideoSnippet - YouTube iFrame Video for Feed Cards
  *
- * Fetches video stream from Piped API and displays as background
+ * Uses YouTube's native iframe embed (simple & reliable)
  * Video is MUTED - audio comes from our AudioPlayer engine
- * Syncs video position with audio playback
+ * Syncs video position with audio playback via postMessage API
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Film, WifiOff } from 'lucide-react';
-import { getVideoStreamUrl } from '../../../services/piped';
+import { Film, Play } from 'lucide-react';
 import { usePlayerStore } from '../../../store/playerStore';
 
 interface VideoSnippetProps {
-  trackId: string; // YouTube video ID
+  trackId: string; // YouTube video ID or VOYO ID
   isActive: boolean;
   isPlaying: boolean;
   isThisTrack: boolean;
@@ -31,184 +30,194 @@ export const VideoSnippet = ({
   onVideoReady,
   onVideoError,
 }: VideoSnippetProps) => {
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [hasError, setHasError] = useState(false);
-  const [showVideo, setShowVideo] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [showIframe, setShowIframe] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  const { currentTime, progress } = usePlayerStore();
+  const { progress, duration } = usePlayerStore();
 
   // Decode VOYO ID to YouTube ID if needed
-  const getYoutubeId = useCallback((id: string): string => {
-    if (!id.startsWith('vyo_')) return id;
+  const youtubeId = useMemo(() => {
+    if (!trackId.startsWith('vyo_')) return trackId;
 
-    const encoded = id.substring(4);
+    const encoded = trackId.substring(4);
     let base64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
     while (base64.length % 4 !== 0) base64 += '=';
 
     try {
       return atob(base64);
     } catch {
-      return id;
+      return trackId;
     }
-  }, []);
+  }, [trackId]);
 
-  // Fetch video stream URL when card becomes active
+  // Build YouTube embed URL with optimal params
+  const embedUrl = useMemo(() => {
+    const params = new URLSearchParams({
+      autoplay: '1',
+      mute: '1', // MUST be muted - audio from our engine
+      controls: '0',
+      disablekb: '1',
+      fs: '0',
+      iv_load_policy: '3', // Hide annotations
+      loop: '0',
+      modestbranding: '1',
+      playsinline: '1',
+      rel: '0',
+      showinfo: '0',
+      enablejsapi: '1', // Enable JS API for seeking
+      origin: window.location.origin,
+    });
+
+    return `https://www.youtube.com/embed/${youtubeId}?${params.toString()}`;
+  }, [youtubeId]);
+
+  // Load iframe when card becomes active
   useEffect(() => {
-    if (!isActive || videoUrl) return;
+    if (isActive && !showIframe) {
+      // Small delay to prevent loading during fast scroll
+      const timer = setTimeout(() => {
+        setShowIframe(true);
+        console.log(`[VideoSnippet] Loading YouTube iframe for ${youtubeId}`);
+      }, 300);
 
-    const fetchVideo = async () => {
-      setIsLoading(true);
-      setHasError(false);
+      return () => clearTimeout(timer);
+    }
+  }, [isActive, showIframe, youtubeId]);
 
-      try {
-        const youtubeId = getYoutubeId(trackId);
-        const url = await getVideoStreamUrl(youtubeId, '480p');
-
-        if (url) {
-          setVideoUrl(url);
-          console.log(`[VideoSnippet] Got video URL for ${youtubeId}`);
-        } else {
-          setHasError(true);
-          onVideoError?.();
-        }
-      } catch (error) {
-        console.error('[VideoSnippet] Failed to fetch video:', error);
-        setHasError(true);
-        onVideoError?.();
-      }
-
-      setIsLoading(false);
-    };
-
-    fetchVideo();
-  }, [isActive, trackId, videoUrl, getYoutubeId, onVideoError]);
-
-  // Control video playback based on audio state
+  // Control playback via postMessage
   useEffect(() => {
-    if (!videoRef.current || !videoUrl) return;
+    if (!iframeRef.current || !isLoaded) return;
+
+    const iframe = iframeRef.current;
 
     if (isPlaying && isThisTrack) {
-      videoRef.current.play().catch(() => {
-        // Autoplay blocked - that's fine, video is supplementary
-      });
+      iframe.contentWindow?.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
     } else {
-      videoRef.current.pause();
+      iframe.contentWindow?.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
     }
-  }, [isPlaying, isThisTrack, videoUrl]);
+  }, [isPlaying, isThisTrack, isLoaded]);
 
-  // Sync video position with audio (every 3 seconds to avoid constant seeking)
+  // Sync video position with audio
   useEffect(() => {
-    if (!videoRef.current || !isThisTrack || !isPlaying) return;
+    if (!iframeRef.current || !isThisTrack || !isLoaded || duration <= 0) return;
 
-    const video = videoRef.current;
-    const audioDuration = usePlayerStore.getState().duration;
+    const targetTime = (progress / 100) * duration;
 
-    if (audioDuration > 0) {
-      const targetTime = (progress / 100) * audioDuration;
-      const currentVideoTime = video.currentTime;
-
-      // Only seek if more than 2 seconds out of sync
-      if (Math.abs(currentVideoTime - targetTime) > 2) {
-        video.currentTime = targetTime;
-      }
+    // Only seek on significant progress changes (every ~5%)
+    if (Math.floor(progress / 5) !== Math.floor((progress - 1) / 5)) {
+      iframeRef.current.contentWindow?.postMessage(
+        JSON.stringify({
+          event: 'command',
+          func: 'seekTo',
+          args: [targetTime, true]
+        }),
+        '*'
+      );
     }
-  }, [progress, isThisTrack, isPlaying]);
+  }, [progress, duration, isThisTrack, isLoaded]);
 
-  // Handle video loaded
-  const handleVideoLoaded = () => {
-    setShowVideo(true);
+  // Handle iframe load
+  const handleIframeLoad = () => {
+    setIsLoaded(true);
     onVideoReady?.();
+    console.log(`[VideoSnippet] ✅ YouTube iframe loaded for ${youtubeId}`);
   };
-
-  // Handle video error
-  const handleVideoError = () => {
-    setHasError(true);
-    setShowVideo(false);
-    onVideoError?.();
-  };
-
-  // Show loading state
-  if (isLoading && isActive) {
-    return (
-      <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-        <motion.div
-          className="w-16 h-16 rounded-full border-4 border-purple-500/30 border-t-purple-500"
-          animate={{ rotate: 360 }}
-          transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-        />
-      </div>
-    );
-  }
-
-  // Show error/fallback state
-  if (hasError || !videoUrl) {
-    return (
-      <>
-        {/* Show thumbnail as fallback */}
-        {fallbackThumbnail && (
-          <motion.img
-            src={fallbackThumbnail}
-            alt="Track thumbnail"
-            className="absolute inset-0 w-full h-full object-cover"
-            animate={{
-              scale: isPlaying && isThisTrack ? [1, 1.02, 1] : 1,
-            }}
-            transition={{
-              duration: 4,
-              repeat: Infinity,
-              ease: 'easeInOut',
-            }}
-          />
-        )}
-        {/* Video unavailable indicator */}
-        {hasError && isActive && (
-          <div className="absolute top-4 left-4 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/60 text-white/60 text-xs">
-            <WifiOff className="w-3 h-3" />
-            <span>Video unavailable</span>
-          </div>
-        )}
-      </>
-    );
-  }
 
   return (
-    <>
-      {/* Fallback thumbnail (shows while video loads) */}
-      {!showVideo && fallbackThumbnail && (
-        <img
+    <div className="absolute inset-0 overflow-hidden bg-black">
+      {/* Fallback thumbnail (shows while iframe loads) */}
+      {fallbackThumbnail && (
+        <motion.img
           src={fallbackThumbnail}
           alt="Track thumbnail"
           className="absolute inset-0 w-full h-full object-cover"
+          animate={{
+            scale: isPlaying && isThisTrack ? [1, 1.02, 1] : 1,
+            opacity: isLoaded ? 0 : 1,
+          }}
+          transition={{
+            scale: { duration: 4, repeat: Infinity, ease: 'easeInOut' },
+            opacity: { duration: 0.5 },
+          }}
         />
       )}
 
-      {/* Video element */}
-      <motion.video
-        ref={videoRef}
-        src={videoUrl}
-        className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-500 ${
-          showVideo ? 'opacity-100' : 'opacity-0'
-        }`}
-        muted // Audio comes from our AudioPlayer
-        playsInline
-        loop={false}
-        preload="auto"
-        onLoadedData={handleVideoLoaded}
-        onError={handleVideoError}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: showVideo ? 1 : 0 }}
-      />
+      {/* YouTube iframe - only render when active */}
+      {showIframe && (
+        <motion.div
+          className="absolute inset-0"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: isLoaded ? 1 : 0 }}
+          transition={{ duration: 0.5 }}
+          style={{
+            // Scale up to hide YouTube controls at edges
+            transform: 'scale(1.2)',
+            transformOrigin: 'center center',
+          }}
+        >
+          <iframe
+            ref={iframeRef}
+            src={embedUrl}
+            className="absolute inset-0 w-full h-full pointer-events-none"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen={false}
+            onLoad={handleIframeLoad}
+            style={{
+              border: 'none',
+            }}
+          />
+        </motion.div>
+      )}
 
-      {/* Video playing indicator */}
-      {showVideo && isPlaying && isThisTrack && (
-        <div className="absolute top-4 left-4 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/60 text-white/80 text-xs">
-          <Film className="w-3 h-3 text-purple-400" />
-          <span>Video</span>
+      {/* Loading indicator */}
+      {isActive && showIframe && !isLoaded && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <motion.div
+            className="w-12 h-12 rounded-full border-3 border-purple-500/30 border-t-purple-500"
+            animate={{ rotate: 360 }}
+            transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+          />
         </div>
       )}
-    </>
+
+      {/* Video indicator badge */}
+      {isLoaded && isActive && (
+        <motion.div
+          className="absolute top-4 left-4 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/70 backdrop-blur-sm"
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+        >
+          <Film className="w-3 h-3 text-purple-400" />
+          <span className="text-white/90 text-xs font-medium">Video</span>
+          {isPlaying && isThisTrack && (
+            <motion.div
+              className="w-2 h-2 rounded-full bg-green-500"
+              animate={{ scale: [1, 1.2, 1] }}
+              transition={{ duration: 1, repeat: Infinity }}
+            />
+          )}
+        </motion.div>
+      )}
+
+      {/* Play button overlay when paused */}
+      {isLoaded && isActive && !isPlaying && (
+        <motion.div
+          className="absolute inset-0 flex items-center justify-center bg-black/30"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+        >
+          <motion.div
+            className="w-20 h-20 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center"
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <Play className="w-10 h-10 text-white ml-1" style={{ fill: 'white' }} />
+          </motion.div>
+        </motion.div>
+      )}
+    </div>
   );
 };
 
