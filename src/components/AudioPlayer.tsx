@@ -407,13 +407,25 @@ export const AudioPlayer = () => {
       return;
     }
 
-    // Destroy existing player and clean up DOM
+    // INSTANT SKIP: Reuse existing player with cueVideoById instead of destroying
     if (playerRef.current) {
       try {
-        playerRef.current.destroy();
-        playerRef.current = null;
+        console.log('🎵 [VOYO] Reusing iframe player for instant skip');
+        // Use type assertion since cueVideoById exists on YT player but not in our minimal type
+        (playerRef.current as any).cueVideoById(videoId);
+        if (isPlaying) {
+          playerRef.current.playVideo();
+        }
+        return; // Skip recreation
       } catch (e) {
-        // Ignore
+        // If cue fails, fall through to destroy and recreate
+        console.warn('[VOYO] Failed to reuse player, recreating:', e);
+        try {
+          playerRef.current.destroy();
+          playerRef.current = null;
+        } catch (destroyError) {
+          // Ignore
+        }
       }
     }
 
@@ -465,12 +477,12 @@ export const AudioPlayer = () => {
             nextTrack();
           } else if (ytState === 1) { // PLAYING
             setBufferHealth(100, 'healthy');
-            // FIX: Smooth volume fade-in to prevent click sound
-            // ALWAYS fade to 100% - AFRICAN BASS MODE
+            // FIX: Smooth volume fade-in to user's volume setting
             const player = playerRef.current;
             if (player) {
+              const playerState = usePlayerStore.getState();
+              const targetVol = playerState.volume; // Respect user volume
               let currentVol = 0;
-              const targetVol = 100; // Always max volume
               const fadeInterval = setInterval(() => {
                 currentVol = Math.min(currentVol + 10, targetVol);
                 try {
@@ -600,26 +612,33 @@ export const AudioPlayer = () => {
                   if (audioContextRef.current?.state === 'suspended') {
                     audioContextRef.current.resume();
                   }
-                  audioRef.current.play().then(() => {
-                    // With Web Audio enhancement, volume is controlled by gain node
-                    // Set audio element to 100% and let gain node handle boost
-                    audioRef.current!.volume = 1.0;
 
-                    // POOL ENGAGEMENT: Record play event (once per track)
-                    if (!hasRecordedPlayRef.current && currentTrack) {
-                      hasRecordedPlayRef.current = true;
-                      recordPoolEngagement(currentTrack.trackId, 'play');
-                      useTrackPoolStore.getState().recordPlay(currentTrack.trackId);
-                      // GEMINI CURATOR: Record track in listening session
-                      recordTrackInSession(currentTrack, 0, false, false);
-                      // OYO DJ: Announce track transition
-                      oyoOnTrackPlay(currentTrack, previousTrackRef.current || undefined);
-                      previousTrackRef.current = currentTrack;
-                      console.log(`[VOYO Pool] Recorded play: ${currentTrack.title}`);
-                    }
-                  }).catch(err => {
-                    console.warn('[VOYO] Cached playback failed:', err.message);
-                  });
+                  // FIX: Only play if not already playing
+                  const audio = audioRef.current;
+                  if (audio && audio.paused) {
+                    audio.play().then(() => {
+                      // With Web Audio enhancement, volume is controlled by gain node
+                      // Set audio element to 100% and let gain node handle boost
+                      audioRef.current!.volume = 1.0;
+
+                      // POOL ENGAGEMENT: Record play event (once per track)
+                      if (!hasRecordedPlayRef.current && currentTrack) {
+                        hasRecordedPlayRef.current = true;
+                        recordPoolEngagement(currentTrack.trackId, 'play');
+                        useTrackPoolStore.getState().recordPlay(currentTrack.trackId);
+                        // GEMINI CURATOR: Record track in listening session
+                        recordTrackInSession(currentTrack, 0, false, false);
+                        // OYO DJ: Announce track transition
+                        oyoOnTrackPlay(currentTrack, previousTrackRef.current || undefined);
+                        previousTrackRef.current = currentTrack;
+                        console.log(`[VOYO Pool] Recorded play: ${currentTrack.title}`);
+                      }
+                    }).catch(err => {
+                      if (err.name !== 'AbortError') {
+                        console.warn('[VOYO] Cached playback failed:', err.message);
+                      }
+                    });
+                  }
                 }
               }
             };
@@ -684,9 +703,11 @@ export const AudioPlayer = () => {
         // Switching FROM cached TO iframe (using original)
         console.log('🔄 TOGGLE: Switching to iframe playback');
 
-        // Stop cached audio
+        // FIX: Stop cached audio completely - pause and clear src to prevent bleed
         if (audioRef.current) {
           audioRef.current.pause();
+          audioRef.current.src = '';
+          audioRef.current.load(); // Reset element
         }
 
         // Initialize iframe player
@@ -695,8 +716,12 @@ export const AudioPlayer = () => {
         // Wait for iframe to be ready then seek
         setTimeout(() => {
           if (playerRef.current && currentPosition > 2) {
-            playerRef.current.seekTo(currentPosition, true);
-            if (isPlaying) playerRef.current.playVideo();
+            try {
+              playerRef.current.seekTo(currentPosition, true);
+              if (isPlaying) playerRef.current.playVideo();
+            } catch (e) {
+              // Player not ready yet
+            }
           }
         }, 500);
 
@@ -710,10 +735,12 @@ export const AudioPlayer = () => {
           return;
         }
 
-        // Stop iframe player
+        // FIX: Stop iframe player completely to prevent audio bleed
         if (playerRef.current) {
           try {
-            playerRef.current.pauseVideo();
+            playerRef.current.stopVideo(); // Use stopVideo instead of pauseVideo for complete stop
+            playerRef.current.destroy();
+            playerRef.current = null;
           } catch (e) {
             // Ignore
           }
@@ -735,7 +762,14 @@ export const AudioPlayer = () => {
               audioRef.current.currentTime = currentPosition;
             }
             if (isPlaying && audioRef.current) {
-              audioRef.current.play().catch(() => {});
+              // FIX: Only play if paused to avoid redundant play() calls
+              if (audioRef.current.paused) {
+                audioRef.current.play().catch(err => {
+                  if (err.name !== 'AbortError') {
+                    console.warn('🔄 TOGGLE: Play failed:', err.message);
+                  }
+                });
+              }
             }
           };
         }
@@ -852,12 +886,19 @@ export const AudioPlayer = () => {
               if (audioContextRef.current?.state === 'suspended') {
                 audioContextRef.current.resume();
               }
-              audioRef.current.play().then(() => {
-                audioRef.current!.volume = 1.0;
-                console.log('🎵 HOT-SWAP: ✅ Now playing boosted audio!');
-              }).catch(err => {
-                console.warn('🎵 HOT-SWAP: Playback failed:', err.message);
-              });
+
+              // FIX: Only play if not already playing
+              const audio = audioRef.current;
+              if (audio && audio.paused) {
+                audio.play().then(() => {
+                  audioRef.current!.volume = 1.0;
+                  console.log('🎵 HOT-SWAP: ✅ Now playing boosted audio!');
+                }).catch(err => {
+                  if (err.name !== 'AbortError') {
+                    console.warn('🎵 HOT-SWAP: Playback failed:', err.message);
+                  }
+                });
+              }
             }
           }
         };
@@ -870,24 +911,41 @@ export const AudioPlayer = () => {
   // Handle play/pause
   useEffect(() => {
     if (playbackMode === 'cached' && audioRef.current) {
+      const audio = audioRef.current;
       if (isPlaying) {
-        audioRef.current.play().catch(err => {
-          console.warn('[VOYO] Playback failed:', err.message);
-          // Common on mobile - user needs to interact first
-          // Don't spam errors, just log once
-        });
+        // FIX: Check if audio is already playing to avoid redundant calls
+        if (audio.paused) {
+          audio.play().catch(err => {
+            if (err.name !== 'AbortError') {
+              console.warn('[VOYO] Playback failed:', err.message);
+            }
+          });
+        }
       } else {
-        audioRef.current.pause();
+        // FIX: Check if audio is actually playing before pausing
+        if (!audio.paused) {
+          audio.pause();
+        }
       }
     } else if (playbackMode === 'iframe' && playerRef.current) {
       try {
+        const player = playerRef.current;
+        // FIX: Check if player has getPlayerState method before using it
+        const playerState = typeof player.getPlayerState === 'function' ? player.getPlayerState() : -1;
+
         if (isPlaying) {
-          playerRef.current.playVideo();
+          // Only play if not already playing (state 1 = playing)
+          if (playerState !== 1) {
+            player.playVideo();
+          }
         } else {
-          playerRef.current.pauseVideo();
+          // Only pause if currently playing or buffering (state 1 or 3)
+          if (playerState === 1 || playerState === 3) {
+            player.pauseVideo();
+          }
         }
       } catch (e) {
-        // Player not ready yet
+        // Player not ready yet - silently ignore
       }
     }
   }, [isPlaying, playbackMode]);
@@ -907,8 +965,8 @@ export const AudioPlayer = () => {
       }
     } else if (playbackMode === 'iframe' && playerRef.current) {
       try {
-        // YouTube: max volume (100) - no Web Audio enhancement for iframe
-        playerRef.current.setVolume(100);
+        // FIX: Apply user volume to YouTube iframe
+        playerRef.current.setVolume(volume);
       } catch (e) {
         // Player not ready yet
       }
@@ -1042,17 +1100,39 @@ export const AudioPlayer = () => {
     // Set action handlers
     navigator.mediaSession.setActionHandler('play', () => {
       if (playbackMode === 'cached' && audioRef.current) {
-        audioRef.current.play();
+        // FIX: Only play if paused
+        if (audioRef.current.paused) {
+          audioRef.current.play().catch(() => {});
+        }
       } else if (playbackMode === 'iframe' && playerRef.current) {
-        playerRef.current.playVideo();
+        try {
+          const playerState = typeof playerRef.current.getPlayerState === 'function' ? playerRef.current.getPlayerState() : -1;
+          // Only play if not already playing (state 1 = playing)
+          if (playerState !== 1) {
+            playerRef.current.playVideo();
+          }
+        } catch (e) {
+          // Player not ready
+        }
       }
     });
 
     navigator.mediaSession.setActionHandler('pause', () => {
       if (playbackMode === 'cached' && audioRef.current) {
-        audioRef.current.pause();
+        // FIX: Only pause if playing
+        if (!audioRef.current.paused) {
+          audioRef.current.pause();
+        }
       } else if (playbackMode === 'iframe' && playerRef.current) {
-        playerRef.current.pauseVideo();
+        try {
+          const playerState = typeof playerRef.current.getPlayerState === 'function' ? playerRef.current.getPlayerState() : -1;
+          // Only pause if playing or buffering (state 1 or 3)
+          if (playerState === 1 || playerState === 3) {
+            playerRef.current.pauseVideo();
+          }
+        } catch (e) {
+          // Player not ready
+        }
       }
     });
 

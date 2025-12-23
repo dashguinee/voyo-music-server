@@ -78,8 +78,9 @@ export const VideoMode = ({ onExit }: VideoModeProps) => {
 
   const [showControls, setShowControls] = useState(true);
   const [floatingReactions, setFloatingReactions] = useState<FloatingReaction[]>([]);
-  const [isMuted, setIsMuted] = useState(false);
-  const previousVolume = useRef(volume);
+  // FIX: Derive mute state from volume instead of separate state
+  const isMuted = volume === 0;
+  const previousVolume = useRef(volume > 0 ? volume : 80); // Default to 80 if currently muted
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const tapCountRef = useRef(0);
   const tapTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -166,15 +167,18 @@ export const VideoMode = ({ onExit }: VideoModeProps) => {
     }
   }, [nextTrack, prevTrack]);
 
-  // Toggle mute
+  // Toggle mute - FIX: Update ref before toggling
   const handleMuteToggle = useCallback(() => {
     if (isMuted) {
+      // Unmuting: restore previous volume
       setVolume(previousVolume.current);
     } else {
-      previousVolume.current = volume;
+      // Muting: save current volume first
+      if (volume > 0) {
+        previousVolume.current = volume;
+      }
       setVolume(0);
     }
-    setIsMuted(!isMuted);
   }, [isMuted, volume, setVolume]);
 
   if (!currentTrack) return null;

@@ -16,6 +16,7 @@ interface VideoSnippetProps {
   isActive: boolean;
   isPlaying: boolean;
   isThisTrack: boolean;
+  shouldPreload?: boolean; // Preload this video (for upcoming cards)
   fallbackThumbnail?: string;
   onVideoReady?: () => void;
   onVideoError?: () => void;
@@ -26,6 +27,7 @@ export const VideoSnippet = ({
   isActive,
   isPlaying,
   isThisTrack,
+  shouldPreload = false,
   fallbackThumbnail,
   onVideoReady,
   onVideoError,
@@ -72,18 +74,28 @@ export const VideoSnippet = ({
     return `https://www.youtube.com/embed/${youtubeId}?${params.toString()}`;
   }, [youtubeId]);
 
-  // Load iframe when card becomes active
+  // Load iframe when card becomes active OR when preloading next cards
   useEffect(() => {
     if (isActive && !showIframe) {
-      // Small delay to prevent loading during fast scroll
-      const timer = setTimeout(() => {
-        setShowIframe(true);
-        console.log(`[VideoSnippet] Loading YouTube iframe for ${youtubeId}`);
-      }, 300);
-
-      return () => clearTimeout(timer);
+      // Immediate load for active card (no delay - preloading handles smoothness)
+      setShowIframe(true);
+      console.log(`[VideoSnippet] Loading YouTube iframe for ${youtubeId}`);
     }
   }, [isActive, showIframe, youtubeId]);
+
+  // PRELOAD: Start loading iframe for upcoming cards
+  // This creates a buffer zone for smoother transitions
+  useEffect(() => {
+    if (shouldPreload && !isActive && !showIframe) {
+      // Preload iframe for next 2 cards
+      const preloadTimer = setTimeout(() => {
+        setShowIframe(true);
+        console.log(`[VideoSnippet] 🔄 Preloading YouTube iframe for ${youtubeId}`);
+      }, 300); // 300ms delay to stagger preloads
+
+      return () => clearTimeout(preloadTimer);
+    }
+  }, [shouldPreload, isActive, showIframe, youtubeId]);
 
   // Control playback via postMessage
   useEffect(() => {

@@ -5,12 +5,16 @@
  * 1. PRE-CACHE: Load next 3 tracks before user scrolls
  * 2. TEMP-CACHE: Keep last 5 tracks in memory for instant back-scroll
  * 3. AUTO-CLEANUP: Remove stale cache entries after 5 minutes
+ * 4. ADAPTIVE QUALITY: Adjust quality based on bandwidth
  *
  * Cache Types:
  * - Audio: Blob URLs from CDN streams
- * - Thumbnails: Image blob URLs
+ * - Thumbnails: Image blob URLs (adaptive quality)
  * - Video metadata: YouTube embed readiness
  */
+
+import { getCachedBandwidth } from '../utils/bandwidth';
+import type { ThumbnailQuality } from '../utils/bandwidth';
 
 // Cache configuration
 const PRECACHE_AHEAD = 3;      // Pre-cache 3 tracks ahead
@@ -187,13 +191,36 @@ class MediaCacheService {
 
   /**
    * Fetch and cache thumbnail as blob URL
+   * Uses adaptive quality based on bandwidth
    */
   private async fetchThumbnailBlob(trackId: string): Promise<string | undefined> {
-    // Try YouTube maxres first, then hq
-    const urls = [
-      `https://i.ytimg.com/vi/${trackId}/maxresdefault.jpg`,
-      `https://i.ytimg.com/vi/${trackId}/hqdefault.jpg`,
-    ];
+    // Get bandwidth recommendation
+    const bandwidth = await getCachedBandwidth();
+    const quality = bandwidth.recommendedThumbnailQuality;
+
+    // Build quality fallback chain based on detected bandwidth
+    const qualityMap: Record<ThumbnailQuality, string[]> = {
+      'default': [
+        `https://i.ytimg.com/vi/${trackId}/mqdefault.jpg`,
+        `https://i.ytimg.com/vi/${trackId}/default.jpg`,
+      ],
+      'medium': [
+        `https://i.ytimg.com/vi/${trackId}/mqdefault.jpg`,
+        `https://i.ytimg.com/vi/${trackId}/hqdefault.jpg`,
+      ],
+      'high': [
+        `https://i.ytimg.com/vi/${trackId}/hqdefault.jpg`,
+        `https://i.ytimg.com/vi/${trackId}/mqdefault.jpg`,
+      ],
+      'max': [
+        `https://i.ytimg.com/vi/${trackId}/maxresdefault.jpg`,
+        `https://i.ytimg.com/vi/${trackId}/hqdefault.jpg`,
+      ],
+    };
+
+    const urls = qualityMap[quality] || qualityMap['high'];
+
+    console.log(`[MediaCache] Loading thumbnail at ${quality} quality for ${trackId}`);
 
     for (const url of urls) {
       try {
@@ -273,10 +300,14 @@ class MediaCacheService {
 
   /**
    * Get cached thumbnail URL (blob or fallback to YouTube)
+   * Falls back to high quality if not cached
    */
   getThumbnailUrl(trackId: string): string {
     const cached = this.get(trackId);
-    return cached?.thumbnailUrl || `https://i.ytimg.com/vi/${trackId}/hqdefault.jpg`;
+    if (cached?.thumbnailUrl) return cached.thumbnailUrl;
+
+    // Fallback: return direct YouTube URL (browser will cache it)
+    return `https://i.ytimg.com/vi/${trackId}/hqdefault.jpg`;
   }
 
   /**

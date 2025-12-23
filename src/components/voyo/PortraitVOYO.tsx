@@ -158,12 +158,14 @@ export const PortraitVOYO = ({ onSearch, onDahub, onHome }: PortraitVOYOProps) =
   // Fade music when DJ is active
   useEffect(() => {
     if (djMode !== 'idle') {
+      // Store current volume before ducking (even if 0)
       originalVolumeRef.current = volume;
       setVolume(Math.max(10, volume * 0.3));
-    } else if (djMode === 'idle' && originalVolumeRef.current > 0) {
+    } else if (djMode === 'idle') {
+      // FIX: Always restore original volume, even if it was 0 (muted)
       setVolume(originalVolumeRef.current);
     }
-  }, [djMode]);
+  }, [djMode, volume, setVolume]);
 
   // Handle OYEE - Voice listen mode
   const handleListenMode = () => {

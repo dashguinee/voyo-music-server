@@ -109,7 +109,14 @@ export const PlaybackControls: React.FC<PlaybackControlsProps> = ({
         onMouseLeave={() => setShowVolumeSlider(false)}
       >
         <button
-          onClick={() => setVolume(volume === 0 ? 80 : 0)}
+          onClick={() => {
+            // FIX: Toggle slider on mobile (no hover support)
+            if (!compact) {
+              setShowVolumeSlider(!showVolumeSlider);
+            }
+            // Also toggle mute
+            setVolume(volume === 0 ? 80 : 0);
+          }}
           className="transition-colors"
           style={{ color: '#9ca3af' }}
           title={`Volume: ${volume}%`}
@@ -133,6 +140,14 @@ export const PlaybackControls: React.FC<PlaybackControlsProps> = ({
             onClick={(e) => {
               const rect = e.currentTarget.getBoundingClientRect();
               const x = e.clientX - rect.left;
+              const percentage = Math.max(0, Math.min(100, (x / rect.width) * 100));
+              setVolume(Math.round(percentage));
+            }}
+            onTouchMove={(e) => {
+              // FIX: Support touch drag for mobile
+              const touch = e.touches[0];
+              const rect = e.currentTarget.getBoundingClientRect();
+              const x = touch.clientX - rect.left;
               const percentage = Math.max(0, Math.min(100, (x / rect.width) * 100));
               setVolume(Math.round(percentage));
             }}

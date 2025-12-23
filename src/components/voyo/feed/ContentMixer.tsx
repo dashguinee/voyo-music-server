@@ -26,6 +26,7 @@ interface ContentMixerProps {
   isActive: boolean;
   isPlaying: boolean;
   isThisTrack: boolean;
+  shouldPreload?: boolean; // Preload for upcoming cards
   // Optional overrides
   forceContentType?: ContentType;
   tiktokId?: string;
@@ -76,6 +77,7 @@ export const ContentMixer = ({
   isActive,
   isPlaying,
   isThisTrack,
+  shouldPreload = false,
   forceContentType,
   tiktokId,
   gifUrl,
@@ -118,6 +120,7 @@ export const ContentMixer = ({
             isActive={isActive}
             isPlaying={isPlaying}
             isThisTrack={isThisTrack}
+            shouldPreload={shouldPreload}
             fallbackThumbnail={thumbnail}
           />
           <DynamicVignette

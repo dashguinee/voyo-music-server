@@ -14,6 +14,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Music2, Disc3 } from 'lucide-react';
+import { SmartImage } from '../../ui/SmartImage';
 
 // Display modes for static content
 export type ArtDisplayMode = 'oval' | 'disc' | 'fullscreen';
@@ -129,11 +130,13 @@ export const AnimatedArtCard = ({
             }}
           >
             {thumbnail ? (
-              <img
+              <SmartImage
                 src={thumbnail}
                 alt="Album art"
+                trackId={trackId}
                 className="w-full h-full object-cover"
                 onLoad={() => setImageLoaded(true)}
+                lazy={false}
               />
             ) : (
               <div className="w-full h-full bg-gradient-to-br from-purple-900 to-pink-900 flex items-center justify-center">
@@ -263,11 +266,13 @@ export const AnimatedArtCard = ({
               }}
             >
               {thumbnail ? (
-                <img
+                <SmartImage
                   src={thumbnail}
                   alt="Album art"
+                  trackId={trackId}
                   className="w-full h-full object-cover"
                   onLoad={() => setImageLoaded(true)}
+                  lazy={false}
                 />
               ) : (
                 <div className="w-full h-full bg-gradient-to-br from-purple-900 to-pink-900" />
@@ -327,11 +332,8 @@ export const AnimatedArtCard = ({
       {/* Full-screen zoomed album art - fills the viewport */}
       <div className="absolute inset-0 flex items-center justify-center">
         {thumbnail ? (
-          <motion.img
-            src={thumbnail}
-            alt="Album art"
-            className="min-w-full min-h-full object-cover"
-            onLoad={() => setImageLoaded(true)}
+          <motion.div
+            className="min-w-full min-h-full"
             initial={{ opacity: 0, scale: 1.1 }}
             animate={{
               opacity: imageLoaded ? 1 : 0,
@@ -344,10 +346,17 @@ export const AnimatedArtCard = ({
             style={{
               width: '120%',
               height: '120%',
-              objectFit: 'cover',
-              objectPosition: 'center',
             }}
-          />
+          >
+            <SmartImage
+              src={thumbnail}
+              alt="Album art"
+              trackId={trackId}
+              className="w-full h-full object-cover"
+              onLoad={() => setImageLoaded(true)}
+              lazy={false}
+            />
+          </motion.div>
         ) : (
           <div className="w-full h-full bg-gradient-to-br from-purple-900 to-pink-900 flex items-center justify-center">
             <Disc3 className="w-32 h-32 text-white/30" />

@@ -461,6 +461,8 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
     // POOL INTEGRATION: Add played search result to track pool for recommendations
     addSearchResultsToPool([track]);
     setCurrentTrack(track);
+    // FIX: Explicitly start playback when user selects search result
+    setTimeout(() => usePlayerStore.getState().togglePlay(), 100);
     onClose();
   }, [resultToTrack, setCurrentTrack, onClose]);
 

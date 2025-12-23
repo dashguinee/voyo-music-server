@@ -76,6 +76,8 @@ export const AlbumSection = ({ query, isVisible }: AlbumSectionProps) => {
 
     // Play first track, add rest to queue
     setCurrentTrack(voyoTracks[0]);
+    // FIX: Explicitly start playback when playing album
+    setTimeout(() => usePlayerStore.getState().togglePlay(), 100);
     if (voyoTracks.length > 1) {
       // Add tracks one by one to the queue
       voyoTracks.slice(1).forEach(track => addToQueue(track));
@@ -86,6 +88,8 @@ export const AlbumSection = ({ query, isVisible }: AlbumSectionProps) => {
   const handleTrackClick = useCallback((track: PipedTrack) => {
     const voyoTrack = pipedTrackToVoyoTrack(track, selectedAlbum?.name);
     setCurrentTrack(voyoTrack);
+    // FIX: Explicitly start playback when user clicks album track
+    setTimeout(() => usePlayerStore.getState().togglePlay(), 100);
   }, [selectedAlbum, setCurrentTrack]);
 
   // Add track to queue

@@ -224,8 +224,10 @@ export const ClassicMode = ({ onSwitchToVOYO, onSearch }: ClassicModeProps) => {
   const { currentTrack } = usePlayerStore();
 
   const handleTrackClick = (track: Track) => {
-    const { setCurrentTrack } = usePlayerStore.getState();
+    const { setCurrentTrack, togglePlay } = usePlayerStore.getState();
     setCurrentTrack(track);
+    // FIX: Explicitly start playback when user clicks track
+    setTimeout(() => togglePlay(), 100);
     setShowNowPlaying(true);
   };
 

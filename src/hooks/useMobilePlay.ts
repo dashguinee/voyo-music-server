@@ -51,13 +51,20 @@ export function useMobilePlay() {
       await unlockMobileAudio();
     }
 
-    if (isPlaying) {
+    // FIX: Get fresh state to avoid race conditions
+    const currentState = usePlayerStore.getState().isPlaying;
+
+    if (currentState) {
       // Pause - this always works
-      element.pause();
-      togglePlay();
+      try {
+        element.pause();
+        togglePlay();
+      } catch (err) {
+        // Fallback: still toggle state
+        togglePlay();
+      }
     } else {
       // Play - DIRECTLY in user gesture handler
-
       try {
         // Check if element has a source
         if (!element.src || element.src === '') {
@@ -65,25 +72,29 @@ export function useMobilePlay() {
           return;
         }
 
-        // Try to play directly
+        // Try to play directly - wait for promise to resolve
         await element.play();
 
-        // Update state after successful play
-        if (!usePlayerStore.getState().isPlaying) {
+        // Update state only after successful play
+        const newState = usePlayerStore.getState().isPlaying;
+        if (!newState) {
           togglePlay();
         }
 
       } catch (err: any) {
-
         if (err.name === 'NotAllowedError') {
           // Autoplay was blocked - try again on next tap
+          console.warn('[VOYO] Autoplay blocked - user interaction required');
+        } else if (err.name === 'AbortError') {
+          // Play was interrupted (user paused quickly) - ignore
+          return;
         }
 
         // Still toggle state so UI stays in sync
         togglePlay();
       }
     }
-  }, [isPlaying, isVideoMode, togglePlay]);
+  }, [isVideoMode, togglePlay]);
 
   /**
    * Force play (use when you're certain there's a valid source)

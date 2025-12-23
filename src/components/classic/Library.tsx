@@ -386,6 +386,8 @@ export const Library = ({ onTrackClick }: LibraryProps) => {
 
   const handleTrackClick = (track: Track) => {
     setCurrentTrack(track);
+    // FIX: Explicitly start playback when user clicks library track
+    setTimeout(() => usePlayerStore.getState().togglePlay(), 100);
     onTrackClick(track);
   };
 

@@ -2364,6 +2364,8 @@ const ReactionBar = memo(({
           if (tracks.length > 0) {
             const voyoTrack = pipedTrackToVoyoTrack(tracks[0], match.thumbnail);
             usePlayerStore.getState().setCurrentTrack(voyoTrack);
+            // FIX: Explicitly start playback after voice command
+            setTimeout(() => usePlayerStore.getState().togglePlay(), 100);
             setChatResponse(`🔥 Playing "${match.name}" by ${match.artist}`);
           } else {
             setChatResponse(`Found "${match.name}" - search to play!`);
@@ -3699,6 +3701,8 @@ export const VoyoPortraitPlayer = ({
     if (foundTrack) {
       // Play the track - this will also update NowPlaying
       setCurrentTrack(foundTrack);
+      // FIX: Explicitly start playback after punch tap
+      setTimeout(() => usePlayerStore.getState().togglePlay(), 100);
     } else {
       // Track not in current feeds - trigger search with the track title
       // This opens the search overlay with the track as query
@@ -4291,7 +4295,8 @@ export const VoyoPortraitPlayer = ({
       wasPlayingBeforeSkeep.current = false;
 
       // Clear the flag after a short delay (after onClick would have fired)
-      setTimeout(() => { wasSkeeping.current = false; }, 100);
+      // OPTIMIZED: 50ms instead of 100ms for faster skip response
+      setTimeout(() => { wasSkeeping.current = false; }, 50);
     }
   }, [isScrubbing, setPlaybackRate, handlePlayPause]);
 
@@ -4312,8 +4317,8 @@ export const VoyoPortraitPlayer = ({
   // Get actual history tracks (these are "played")
   const historyTracks = history.slice(-2).map(h => h.track).reverse();
 
-  // Get actual queue tracks
-  const queueTracks = queue.slice(0, 1).map(q => q.track);
+  // Get actual queue tracks (FIX 1: Show more queue items for better UX)
+  const queueTracks = queue.slice(0, 3).map(q => q.track);
 
   // Track IDs that have been played (for overlay)
   const playedTrackIds = new Set(history.map(h => h.track.id));
@@ -4356,6 +4361,8 @@ export const VoyoPortraitPlayer = ({
     setTeaserTrack(track);
     setIsTeaserPlaying(true);
     setCurrentTrack(track);
+    // FIX: Explicitly start playback for teaser
+    setTimeout(() => usePlayerStore.getState().togglePlay(), 100);
 
     // Auto-stop after 30 seconds
     teaserTimeoutRef.current = setTimeout(() => {
@@ -4480,7 +4487,11 @@ export const VoyoPortraitPlayer = ({
                 <div key={track.id + i} style={{ scrollSnapAlign: 'start', flexShrink: 0 }}>
                   <SmallCard
                     track={track}
-                    onTap={() => setCurrentTrack(track)}
+                    onTap={() => {
+                      setCurrentTrack(track);
+                      // FIX: Explicitly start playback when user taps history card
+                      setTimeout(() => usePlayerStore.getState().togglePlay(), 100);
+                    }}
                     isPlayed={true}
                   />
                 </div>
@@ -4520,7 +4531,11 @@ export const VoyoPortraitPlayer = ({
                 <div key={track.id + i} style={{ scrollSnapAlign: 'start', flexShrink: 0 }}>
                   <SmallCard
                     track={track}
-                    onTap={() => setCurrentTrack(track)}
+                    onTap={() => {
+                      setCurrentTrack(track);
+                      // FIX: Explicitly start playback when user taps queue card
+                      setTimeout(() => usePlayerStore.getState().togglePlay(), 100);
+                    }}
                     isPlayed={playedTrackIds.has(track.id)}
                   />
                 </div>

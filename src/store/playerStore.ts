@@ -28,6 +28,8 @@ interface PersistedState {
   currentTrackId?: string;
   currentTime?: number;
   voyoActiveTab?: VoyoTab;
+  queue?: Array<{ trackId: string; addedAt: string; source: 'manual' | 'auto' | 'roulette' | 'ai' }>;
+  history?: Array<{ trackId: string; playedAt: string; duration: number; oyeReactions: number }>;
 }
 
 function loadPersistedState(): PersistedState {
@@ -54,6 +56,48 @@ function getPersistedTrack(): Track {
     if (track) return track;
   }
   return TRACKS[0];
+}
+
+function getPersistedQueue(): QueueItem[] {
+  const { queue } = loadPersistedState();
+  if (!queue || queue.length === 0) {
+    // Default initial queue
+    return TRACKS.slice(1, 4).map((track) => ({
+      track,
+      addedAt: new Date().toISOString(),
+      source: 'auto' as const,
+    }));
+  }
+  // Hydrate queue items with full track objects
+  return queue
+    .map((item) => {
+      const track = TRACKS.find(t => t.id === item.trackId || t.trackId === item.trackId);
+      if (!track) return null;
+      return {
+        track,
+        addedAt: item.addedAt,
+        source: item.source,
+      };
+    })
+    .filter(Boolean) as QueueItem[];
+}
+
+function getPersistedHistory(): HistoryItem[] {
+  const { history } = loadPersistedState();
+  if (!history || history.length === 0) return [];
+  // Hydrate history items with full track objects
+  return history
+    .map((item) => {
+      const track = TRACKS.find(t => t.id === item.trackId || t.trackId === item.trackId);
+      if (!track) return null;
+      return {
+        track,
+        playedAt: item.playedAt,
+        duration: item.duration,
+        oyeReactions: item.oyeReactions,
+      };
+    })
+    .filter(Boolean) as HistoryItem[];
 }
 
 interface PlayerStore {
@@ -214,12 +258,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   boostProfile: 'boosted', // Default to BOOSTED (warm standard with protection)
   oyeBarBehavior: 'fade', // Default to FADE (signature always visible)
 
-  queue: TRACKS.slice(1, 4).map((track) => ({
-    track,
-    addedAt: new Date().toISOString(),
-    source: 'auto' as const,
-  })),
-  history: [],
+  // FIX 2: Persist queue and history across refreshes
+  queue: getPersistedQueue(),
+  history: getPersistedHistory(),
 
   // PERSONALIZED BELTS: Start with static tracks, then upgrade to pool-aware on first refresh
   // (Lazy init to avoid circular dependency during store creation)
@@ -260,7 +301,8 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     }
     set({
       currentTrack: track,
-      isPlaying: true,
+      // FIX: Don't auto-play - preserve current play state
+      // isPlaying: true, // REMOVED - was causing auto-play bug
       progress: 0,
       currentTime: 0,
       seekPosition: null // Clear seek position on track change
@@ -299,7 +341,16 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   },
 
   togglePlay: () => {
-    set((state) => ({ isPlaying: !state.isPlaying }));
+    set((state) => {
+      const newIsPlaying = !state.isPlaying;
+
+      // FIX: Update Media Session state immediately
+      if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = newIsPlaying ? 'playing' : 'paused';
+      }
+
+      return { isPlaying: newIsPlaying };
+    });
 
     // PORTAL SYNC: Update now_playing on play/pause
     setTimeout(async () => {
@@ -385,6 +436,12 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       }
       // POOL ENGAGEMENT: Record play for next track
       recordPoolEngagement(next.track.id, 'play');
+
+      // INSTANT SKIP: Prefetch the next track in queue for even faster loading
+      if (rest.length > 0 && rest[0].track.trackId) {
+        prefetchTrack(rest[0].track.trackId);
+      }
+
       set({
         currentTrack: next.track,
         queue: rest,
@@ -393,6 +450,21 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         currentTime: 0,
         seekPosition: null, // Clear seek position
       });
+
+      // FIX 3: Persist queue after consuming track
+      setTimeout(() => {
+        const state = get();
+        const current = loadPersistedState();
+        savePersistedState({
+          ...current,
+          queue: state.queue.map(q => ({
+            trackId: q.track.id,
+            addedAt: q.addedAt,
+            source: q.source,
+          })),
+        });
+      }, 100);
+
       return;
     }
 
@@ -449,6 +521,20 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
   prevTrack: () => {
     const state = get();
+
+    // SMART PREV: If played >3s, restart current track. Otherwise go to previous.
+    if (state.currentTime > 3) {
+      // Restart current track
+      set({
+        isPlaying: true,
+        progress: 0,
+        currentTime: 0,
+        seekPosition: 0, // Seek to start
+      });
+      return;
+    }
+
+    // Go to previous track from history
     if (state.history.length > 0) {
       const lastPlayed = state.history[state.history.length - 1];
       set({
@@ -458,6 +544,14 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         progress: 0,
         currentTime: 0,
         seekPosition: null, // Clear seek position
+      });
+    } else {
+      // No history - restart current track
+      set({
+        isPlaying: true,
+        progress: 0,
+        currentTime: 0,
+        seekPosition: 0,
       });
     }
   },
@@ -506,6 +600,20 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       return { queue: [...state.queue, newItem] };
     });
 
+    // FIX 3: Persist queue to localStorage
+    setTimeout(() => {
+      const state = get();
+      const current = loadPersistedState();
+      savePersistedState({
+        ...current,
+        queue: state.queue.map(q => ({
+          trackId: q.track.id,
+          addedAt: q.addedAt,
+          source: q.source,
+        })),
+      });
+    }, 100);
+
     // CLOUD SYNC: Sync queue to cloud (debounced)
     setTimeout(async () => {
       try {
@@ -524,9 +632,31 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     set((state) => ({
       queue: state.queue.filter((_, i) => i !== index),
     }));
+
+    // FIX 3: Persist queue after removal
+    setTimeout(() => {
+      const state = get();
+      const current = loadPersistedState();
+      savePersistedState({
+        ...current,
+        queue: state.queue.map(q => ({
+          trackId: q.track.id,
+          addedAt: q.addedAt,
+          source: q.source,
+        })),
+      });
+    }, 100);
   },
 
-  clearQueue: () => set({ queue: [] }),
+  clearQueue: () => {
+    set({ queue: [] });
+
+    // FIX 3: Persist empty queue
+    setTimeout(() => {
+      const current = loadPersistedState();
+      savePersistedState({ ...current, queue: [] });
+    }, 100);
+  },
 
   reorderQueue: (fromIndex, toIndex) => {
     set((state) => {
@@ -535,6 +665,20 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       newQueue.splice(toIndex, 0, removed);
       return { queue: newQueue };
     });
+
+    // FIX 3: Persist queue after reorder
+    setTimeout(() => {
+      const state = get();
+      const current = loadPersistedState();
+      savePersistedState({
+        ...current,
+        queue: state.queue.map(q => ({
+          trackId: q.track.id,
+          addedAt: q.addedAt,
+          source: q.source,
+        })),
+      });
+    }, 100);
   },
 
   // History Actions
@@ -550,6 +694,21 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         },
       ],
     }));
+
+    // FIX 3: Persist history to localStorage (keep last 50 items)
+    setTimeout(() => {
+      const state = get();
+      const current = loadPersistedState();
+      savePersistedState({
+        ...current,
+        history: state.history.slice(-50).map(h => ({
+          trackId: h.track.id,
+          playedAt: h.playedAt,
+          duration: h.duration,
+          oyeReactions: h.oyeReactions,
+        })),
+      });
+    }, 100);
 
     // CLOUD SYNC: Sync history to cloud (debounced)
     setTimeout(async () => {

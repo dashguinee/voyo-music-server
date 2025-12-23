@@ -36,6 +36,7 @@ import { VideoSnippet } from './VideoSnippet';
 import { ContentMixer, ContentType } from './ContentMixer';
 import { FloatingReactions, useFloatingReactions, useDoubleTap } from './FloatingReactions';
 import { useEngagementTracker } from './FeedTransitions';
+import { SmartImage } from '../../ui/SmartImage';
 
 // Snippet config
 const ENABLE_VIDEO_SNIPPETS = true; // Toggle video snippets on/off
@@ -454,6 +455,7 @@ interface FeedCardProps {
   isActive: boolean;
   isPlaying: boolean;
   isThisTrack: boolean; // Is this card's track the current track?
+  shouldPreload?: boolean; // Should preload video (for next 2 cards)
   isFollowingArtist?: boolean; // Is current user following this artist?
   onPlay: () => void;
   onTogglePlay: () => void;
@@ -482,6 +484,7 @@ const FeedCard = ({
   isActive,
   isPlaying,
   isThisTrack,
+  shouldPreload = false,
   isFollowingArtist = false,
   onPlay,
   onTogglePlay,
@@ -629,6 +632,7 @@ const FeedCard = ({
           isActive={isActive}
           isPlaying={isPlaying}
           isThisTrack={isThisTrack}
+          shouldPreload={shouldPreload}
           forceContentType={ENABLE_VIDEO_SNIPPETS ? undefined : 'animated_art'}
         />
 
@@ -759,10 +763,12 @@ const FeedCard = ({
                 isFollowingArtist ? 'border-pink-500' : 'border-white/40'
               }`}
             >
-              <img
+              <SmartImage
                 src={trackThumbnail || `https://ui-avatars.com/api/?name=${trackArtist}&background=8b5cf6&color=fff`}
                 alt={trackArtist}
+                trackId={trackId}
                 className="w-full h-full object-cover"
+                lazy={false}
               />
             </div>
             <div
@@ -877,6 +883,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [discoveryIndex, setDiscoveryIndex] = useState(0);
   const discoveredIdsRef = useRef<Set<string>>(new Set());
+  const discoveryQueueRef = useRef<Promise<void> | null>(null); // Prevent concurrent discoveries
 
   // Get current snippet config
   const snippetConfig = SNIPPET_MODES[snippetMode];
@@ -986,10 +993,12 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
   }, [duration, seekTo]);
 
   // 🔥 INFINITE SCROLL - Discover more tracks when near end
-  const discoverMoreTracks = useCallback(async () => {
-    if (isDiscovering) return;
+  const discoverMoreTracks = useCallback(async (): Promise<void> => {
+    // Prevent concurrent discoveries
+    if (isDiscovering || discoveryQueueRef.current) return;
 
-    setIsDiscovering(true);
+    const discoveryPromise: Promise<void> = (async (): Promise<void> => {
+      setIsDiscovering(true);
 
     // Smart query selection: cycle through but with some randomization for variety
     const baseIndex = discoveryIndex % DISCOVERY_QUERIES.length;
@@ -1007,8 +1016,8 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
         console.log('[Feed] No albums found, trying next query...');
         setDiscoveryIndex(prev => prev + 1);
         setIsDiscovering(false);
-        // Immediately retry with next query
-        setTimeout(() => discoverMoreTracks(), 100);
+        discoveryQueueRef.current = null;
+        // Let the effect trigger retry on next scroll
         return;
       }
 
@@ -1039,7 +1048,8 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
         console.log('[Feed] No new tracks found, trying next query...');
         setDiscoveryIndex(prev => prev + 1);
         setIsDiscovering(false);
-        setTimeout(() => discoverMoreTracks(), 100);
+        discoveryQueueRef.current = null;
+        // Let the effect trigger retry on next scroll
         return;
       }
 
@@ -1050,11 +1060,14 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
     } catch (error) {
       console.error('[Feed] Discovery failed:', error);
       setDiscoveryIndex(prev => prev + 1);
-      // Retry on error
-      setTimeout(() => discoverMoreTracks(), 500);
     }
 
     setIsDiscovering(false);
+    discoveryQueueRef.current = null;
+    })();
+
+    discoveryQueueRef.current = discoveryPromise;
+    return discoveryPromise;
   }, [isDiscovering, discoveryIndex, addManyToPool]);
 
   // Build feed from ALL tracks, boosted by reactions + For You algorithm
@@ -1094,14 +1107,23 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
 
     // Merge: pool tracks first (sorted by poolScore), then seed tracks not in pool
     const poolIds = new Set(poolTracks.map(t => t.id || t.trackId));
+    const seedFiltered = seedTracks.filter(t => !poolIds.has(t.id) && !poolIds.has(t.trackId));
     const allTracks = [
       ...poolTracks.sort((a, b) => (b.poolScore || 0) - (a.poolScore || 0)),
-      ...seedTracks.filter(t => !poolIds.has(t.id) && !poolIds.has(t.trackId))
+      ...seedFiltered
     ];
 
-    const feedItems = allTracks.map(track => {
+    // Track all IDs globally to prevent duplicates across entire feed
+    const allTrackIds = new Set<string>();
+
+    const feedItems = allTracks.reduce<Array<any>>((items, track) => {
       // IMPORTANT: Use trackId (YouTube ID) first, not internal id
       const trackId = track.trackId || track.id || '';
+
+      // Skip duplicates globally
+      if (allTrackIds.has(trackId)) return items;
+      allTrackIds.add(trackId);
+
       const reactionData = reactionsByTrack.get(trackId);
       const poolScore = 'poolScore' in track ? (track as any).poolScore : 0;
 
@@ -1111,11 +1133,12 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
         ? hotspots.reduce((a, b) => a.intensity > b.intensity ? a : b)
         : null;
 
-      return {
+      items.push({
         trackId,
         trackTitle: track.title,
         trackArtist: track.artist,
-        trackThumbnail: track.coverUrl || `https://voyo-music-api.fly.dev/cdn/art/${trackId}?quality=high`,
+        // Use cached thumbnail URL from mediaCache if available
+        trackThumbnail: track.coverUrl || mediaCache.getThumbnailUrl(trackId),
         reactions: reactionData?.reactions || [],
         nativeOyeScore: track.oyeScore || 0,
         hotScore: reactionData?.hotScore || 0,
@@ -1123,8 +1146,10 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
         dominantCategory: reactionData?.dominantCategory || 'afro-heat',
         poolScore, // Include pool score for sorting
         hottestPosition: hottestSpot?.position, // Position of hottest part (0-100)
-      };
-    });
+      });
+
+      return items;
+    }, []);
 
     // Filter by feed mode
     const filteredItems = feedMode === 'following'
@@ -1212,15 +1237,25 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
     }
   }, [currentIndex, trackGroups.length]);
 
-  // Handle scroll snap
+  // Handle scroll snap - debounced to prevent jank
+  const scrollDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleScroll = () => {
     if (!containerRef.current) return;
-    const scrollTop = containerRef.current.scrollTop;
-    const itemHeight = containerRef.current.clientHeight;
-    const newIndex = Math.round(scrollTop / itemHeight);
-    if (newIndex !== currentIndex && newIndex >= 0 && newIndex < trackGroups.length) {
-      setCurrentIndex(newIndex);
+
+    // Debounce scroll events
+    if (scrollDebounceRef.current) {
+      clearTimeout(scrollDebounceRef.current);
     }
+
+    scrollDebounceRef.current = setTimeout(() => {
+      if (!containerRef.current) return;
+      const scrollTop = containerRef.current.scrollTop;
+      const itemHeight = containerRef.current.clientHeight;
+      const newIndex = Math.round(scrollTop / itemHeight);
+      if (newIndex !== currentIndex && newIndex >= 0 && newIndex < trackGroups.length) {
+        setCurrentIndex(newIndex);
+      }
+    }, 50); // 50ms debounce
   };
 
   // Handle play - check pool first, then seed tracks
@@ -1229,6 +1264,11 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
     const poolTrack = hotPool.find(t => t.id === trackId || t.trackId === trackId);
     if (poolTrack) {
       setCurrentTrack(poolTrack);
+      // FIX: Explicitly start playback after setting track (setCurrentTrack no longer auto-plays)
+      if (!isPlaying) {
+        // Small delay to allow track to load
+        setTimeout(() => togglePlay(), 100);
+      }
       return;
     }
 
@@ -1236,6 +1276,10 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
     const seedTrack = TRACKS.find(t => t.id === trackId || t.trackId === trackId);
     if (seedTrack) {
       setCurrentTrack(seedTrack);
+      // FIX: Explicitly start playback after setting track
+      if (!isPlaying) {
+        setTimeout(() => togglePlay(), 100);
+      }
       return;
     }
 
@@ -1251,7 +1295,11 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
       oyeScore: 0,
       createdAt: new Date().toISOString(),
     });
-  }, [setCurrentTrack, hotPool]);
+    // FIX: Explicitly start playback after setting track
+    if (!isPlaying) {
+      setTimeout(() => togglePlay(), 100);
+    }
+  }, [setCurrentTrack, hotPool, isPlaying, togglePlay]);
 
   // Handle reaction - with track position for hotspot detection
   const handleReact = useCallback((trackId: string, trackTitle: string, trackArtist: string, type: ReactionType) => {
@@ -1391,13 +1439,11 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
         onScroll={handleScroll}
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
       >
-        {/* Preload next 2 thumbnails */}
-        {trackGroups.slice(currentIndex + 1, currentIndex + 3).map(g => (
-          <link key={`preload-${g.trackId}`} rel="preload" as="image" href={g.trackThumbnail} />
-        ))}
+        {/* Preload next 2-3 cards for smooth scrolling */}
         {trackGroups.map((group, index) => {
           const isThisTrack = currentTrack?.trackId === group.trackId || currentTrack?.id === group.trackId;
           const cardIsActive = isActive && index === currentIndex;
+          const isNextCard = index === currentIndex + 1 || index === currentIndex + 2; // Preload next 2
           const artistHandle = group.trackArtist.toLowerCase().replace(/\s+/g, '_');
           return (
             <div key={group.trackId} className="h-full w-full snap-start snap-always">
@@ -1414,6 +1460,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
                 isActive={cardIsActive}
                 isPlaying={isPlaying && isThisTrack}
                 isThisTrack={isThisTrack}
+                shouldPreload={isNextCard}
                 isFollowingArtist={followingList.has(artistHandle)}
                 onPlay={() => handlePlay(group.trackId, group.trackTitle, group.trackArtist)}
                 onTogglePlay={togglePlay}

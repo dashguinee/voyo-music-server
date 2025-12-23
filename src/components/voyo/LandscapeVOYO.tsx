@@ -332,12 +332,20 @@ export const LandscapeVOYO = ({ onVideoMode }: LandscapeVOYOProps) => {
       <div className="flex items-center justify-center gap-2 py-2">
         {/* Past tracks */}
         {pastTracks.map((track, i) => (
-          <TimelineCard key={`past-${i}`} track={track} onClick={() => setCurrentTrack(track)} />
+          <TimelineCard key={`past-${i}`} track={track} onClick={() => {
+            setCurrentTrack(track);
+            // FIX: Explicitly start playback
+            setTimeout(() => togglePlay(), 100);
+          }} />
         ))}
 
         {/* Show hot tracks as suggestions if no history */}
         {pastTracks.length === 0 && hotTracks.slice(0, 2).map((track, i) => (
-          <TimelineCard key={`suggest-${i}`} track={track} onClick={() => setCurrentTrack(track)} />
+          <TimelineCard key={`suggest-${i}`} track={track} onClick={() => {
+            setCurrentTrack(track);
+            // FIX: Explicitly start playback
+            setTimeout(() => togglePlay(), 100);
+          }} />
         ))}
 
         {/* Current track */}
@@ -347,7 +355,11 @@ export const LandscapeVOYO = ({ onVideoMode }: LandscapeVOYOProps) => {
 
         {/* Queue tracks */}
         {queueTracks.map((track, i) => (
-          <TimelineCard key={`queue-${i}`} track={track} onClick={() => setCurrentTrack(track)} />
+          <TimelineCard key={`queue-${i}`} track={track} onClick={() => {
+            setCurrentTrack(track);
+            // FIX: Explicitly start playback
+            setTimeout(() => togglePlay(), 100);
+          }} />
         ))}
 
         {/* Add button */}
@@ -439,7 +451,11 @@ export const LandscapeVOYO = ({ onVideoMode }: LandscapeVOYOProps) => {
           <span className="text-white/40 text-xs uppercase tracking-wider">HOT</span>
           <div className="flex gap-2">
             {hotTracks.slice(0, 4).map((track) => (
-              <MiniCard key={track.id} track={track} onClick={() => setCurrentTrack(track)} />
+              <MiniCard key={track.id} track={track} onClick={() => {
+                setCurrentTrack(track);
+                // FIX: Explicitly start playback
+                setTimeout(() => togglePlay(), 100);
+              }} />
             ))}
           </div>
         </div>
@@ -459,7 +475,11 @@ export const LandscapeVOYO = ({ onVideoMode }: LandscapeVOYOProps) => {
           <span className="text-white/40 text-xs uppercase tracking-wider">DISCOVERY</span>
           <div className="flex gap-2">
             {discoverTracks.slice(0, 4).map((track) => (
-              <MiniCard key={track.id} track={track} onClick={() => setCurrentTrack(track)} />
+              <MiniCard key={track.id} track={track} onClick={() => {
+                setCurrentTrack(track);
+                // FIX: Explicitly start playback
+                setTimeout(() => togglePlay(), 100);
+              }} />
             ))}
           </div>
         </div>
