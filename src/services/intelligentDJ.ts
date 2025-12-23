@@ -188,9 +188,10 @@ Find ${MAX_VIDEOS_PER_RUN} YouTube music videos that would PERFECTLY fit what th
 
 HOW TO FIND REAL YOUTUBE URLS:
 1. Think of the song: "Artist Name - Song Title"
-2. Search your knowledge for: "Artist Name Song Title youtube"
+2. You have Google Search - USE IT to find: "Artist Name Song Title official video youtube"
 3. The official video URL is usually the FIRST result
-4. Use that REAL URL - don't make one up
+4. Extract the real youtube.com/watch?v=XXXX URL from search results
+5. If you can't search, use your training data knowledge
 
 MUSIC FOCUS:
 - African music: Afrobeats, Amapiano, Afro-soul, Afro-pop, Highlife, Dancehall
@@ -240,6 +241,10 @@ async function callGeminiDJ(prompt: string): Promise<DJResponse | null> {
           topP: 0.95,
           maxOutputTokens: 2048,
         },
+        // Enable Google Search grounding - Gemini can SEARCH for real YouTube URLs!
+        tools: [{
+          googleSearch: {}
+        }],
         safetySettings: [
           { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
           { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
