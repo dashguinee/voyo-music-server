@@ -197,9 +197,71 @@ const ParticleField = () => {
 
 // ============================================
 // AURORA EFFECT - Dreamy Northern Lights
-// MOBILE OPTIMIZED: Pure CSS animations for smooth performance
+// MOBILE OPTIMIZED: Reduced blur on mobile for smooth performance
 // ============================================
 const AuroraEffect = () => {
+  // Detect mobile/Android for performance optimization
+  const isMobile = typeof window !== 'undefined' && (
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+    window.innerWidth < 768
+  );
+  const isAndroid = typeof window !== 'undefined' && /Android/i.test(navigator.userAgent);
+
+  // Mobile gets reduced blur (Android even more reduced due to GPU limitations)
+  const blurLevel = isAndroid ? 15 : isMobile ? 25 : 60;
+  const blurLevel2 = isAndroid ? 18 : isMobile ? 30 : 70;
+
+  // On Android, use only 2 layers instead of 4 for better performance
+  if (isAndroid) {
+    return (
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        {/* Simplified Aurora for Android - Single flowing gradient */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background: 'radial-gradient(ellipse at 50% 80%, rgba(147, 51, 234, 0.2) 0%, rgba(168, 85, 247, 0.12) 30%, rgba(236, 72, 153, 0.08) 50%, transparent 70%)',
+            animation: 'aurora-mobile 8s ease-in-out infinite',
+            willChange: 'transform',
+          }}
+        />
+
+        {/* Secondary glow layer */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background: 'radial-gradient(ellipse at 30% 60%, rgba(139, 92, 246, 0.15) 0%, transparent 50%)',
+            animation: 'aurora-mobile-secondary 10s ease-in-out infinite',
+            willChange: 'transform',
+          }}
+        />
+
+        <style>{`
+          @keyframes aurora-mobile {
+            0%, 100% {
+              transform: translateY(0%) scale(1);
+              opacity: 1;
+            }
+            50% {
+              transform: translateY(-5%) scale(1.05);
+              opacity: 0.85;
+            }
+          }
+
+          @keyframes aurora-mobile-secondary {
+            0%, 100% {
+              transform: translateX(0%) translateY(0%);
+              opacity: 0.8;
+            }
+            50% {
+              transform: translateX(5%) translateY(-3%);
+              opacity: 1;
+            }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
       {/* Aurora Layer 1 - Purple to Teal */}
@@ -207,7 +269,7 @@ const AuroraEffect = () => {
         className="absolute inset-0"
         style={{
           background: 'linear-gradient(135deg, rgba(147, 51, 234, 0.15) 0%, rgba(20, 184, 166, 0.1) 50%, transparent 100%)',
-          filter: 'blur(60px)',
+          filter: `blur(${blurLevel}px)`,
           transform: 'translateY(0%) scale(1.2)',
           animation: 'aurora-wave-1 12s ease-in-out infinite',
           willChange: 'transform, opacity',
@@ -219,7 +281,7 @@ const AuroraEffect = () => {
         className="absolute inset-0"
         style={{
           background: 'linear-gradient(225deg, rgba(236, 72, 153, 0.12) 0%, rgba(59, 130, 246, 0.08) 50%, transparent 100%)',
-          filter: 'blur(70px)',
+          filter: `blur(${blurLevel2}px)`,
           transform: 'translateY(0%) scale(1.1)',
           animation: 'aurora-wave-2 15s ease-in-out infinite',
           animationDelay: '2s',
@@ -227,31 +289,35 @@ const AuroraEffect = () => {
         }}
       />
 
-      {/* Aurora Layer 3 - Teal Accent */}
-      <div
-        className="absolute top-0 left-0 right-0 h-[70%]"
-        style={{
-          background: 'linear-gradient(180deg, rgba(20, 184, 166, 0.1) 0%, rgba(168, 85, 247, 0.08) 60%, transparent 100%)',
-          filter: 'blur(80px)',
-          transform: 'translateX(0%)',
-          animation: 'aurora-wave-3 18s ease-in-out infinite',
-          animationDelay: '4s',
-          willChange: 'transform, opacity',
-        }}
-      />
+      {/* Aurora Layer 3 - Teal Accent (Skip on mobile for perf) */}
+      {!isMobile && (
+        <div
+          className="absolute top-0 left-0 right-0 h-[70%]"
+          style={{
+            background: 'linear-gradient(180deg, rgba(20, 184, 166, 0.1) 0%, rgba(168, 85, 247, 0.08) 60%, transparent 100%)',
+            filter: 'blur(80px)',
+            transform: 'translateX(0%)',
+            animation: 'aurora-wave-3 18s ease-in-out infinite',
+            animationDelay: '4s',
+            willChange: 'transform, opacity',
+          }}
+        />
+      )}
 
-      {/* Aurora Layer 4 - Purple Curtain */}
-      <div
-        className="absolute bottom-0 left-0 right-0 h-[60%]"
-        style={{
-          background: 'linear-gradient(0deg, rgba(139, 92, 246, 0.12) 0%, rgba(236, 72, 153, 0.06) 50%, transparent 100%)',
-          filter: 'blur(90px)',
-          transform: 'translateX(0%)',
-          animation: 'aurora-wave-4 20s ease-in-out infinite',
-          animationDelay: '6s',
-          willChange: 'transform, opacity',
-        }}
-      />
+      {/* Aurora Layer 4 - Purple Curtain (Skip on mobile for perf) */}
+      {!isMobile && (
+        <div
+          className="absolute bottom-0 left-0 right-0 h-[60%]"
+          style={{
+            background: 'linear-gradient(0deg, rgba(139, 92, 246, 0.12) 0%, rgba(236, 72, 153, 0.06) 50%, transparent 100%)',
+            filter: 'blur(90px)',
+            transform: 'translateX(0%)',
+            animation: 'aurora-wave-4 20s ease-in-out infinite',
+            animationDelay: '6s',
+            willChange: 'transform, opacity',
+          }}
+        />
+      )}
 
       {/* Subtle shimmer overlay */}
       <div

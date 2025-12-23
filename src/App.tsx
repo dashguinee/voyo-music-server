@@ -98,18 +98,41 @@ const DynamicIsland = () => {
       triggerNewNotification(); // Wave for new notifications
     };
 
-    // TEST HELPER: Available in console for manual testing
-    // Usage: testNotification('music', 'Burna Boy', 'OYÉ on Higher')
-    (window as any).testNotification = (type: 'music' | 'message' | 'system', title: string, subtitle: string) => {
-      (window as any).pushNotification?.({
-        id: `test-${Date.now()}`,
-        type,
-        title,
-        subtitle
+    // Demo: Auto-trigger notifications to show the full flow
+    const demo1 = setTimeout(() => {
+      (window as any).pushNotification({
+        id: '1',
+        type: 'music',  // Purple dot
+        title: 'Burna Boy',
+        subtitle: 'Higher just dropped'
       });
-    };
+    }, 1000);
 
-    console.log('[DynamicIsland] Ready. Test with: testNotification("music", "Artist", "message")');
+    // Friend message after 8s (custom blue color)
+    const demo2 = setTimeout(() => {
+      (window as any).pushNotification({
+        id: '2',
+        type: 'message',  // Blue dot
+        title: 'Aziz',
+        subtitle: 'yo come check this out'
+      });
+    }, 8000);
+
+    // System notification after 15s
+    const demo3 = setTimeout(() => {
+      (window as any).pushNotification({
+        id: '3',
+        type: 'system',  // Red dot
+        title: 'VOYO',
+        subtitle: 'notification system ready'
+      });
+    }, 15000);
+
+    return () => {
+      clearTimeout(demo1);
+      clearTimeout(demo2);
+      clearTimeout(demo3);
+    };
   }, []);
 
   // NEW NOTIFICATION: wave → dark → fade
@@ -867,7 +890,7 @@ function App() {
       ? (saved as AppMode)
       : 'voyo';
   });
-  const [backgroundType, setBackgroundType] = useState<BackgroundType>('glow'); // Clean ambient glow
+  const [backgroundType, setBackgroundType] = useState<BackgroundType>('none'); // Clean dark - users discover effects via toggle
   const [isBackgroundPickerOpen, setIsBackgroundPickerOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const isLandscape = useOrientation();

@@ -22,7 +22,7 @@ import { Track } from '../types';
 // CONFIGURATION
 // ============================================
 
-const GEMINI_API_KEY = 'AIzaSyCZNktEq5m5iORr1ovqvTZBK6Yfm_5e_rE';
+const GEMINI_API_KEY = 'GEMINI_API_KEY_PLACEHOLDER';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
 // DJ Personalities

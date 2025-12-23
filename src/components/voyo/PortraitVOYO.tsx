@@ -21,7 +21,6 @@ import { VoyoVerticalFeed } from './feed/VoyoVerticalFeed';
 import { CreatorUpload } from './upload/CreatorUpload';
 import { VoyoPortraitPlayer } from './VoyoPortraitPlayer';
 import { Hub } from '../classic/Hub';
-import { OyoIsland } from './OyoIsland';
 
 // Quick DJ Prompts
 const DJ_PROMPTS = [
@@ -321,8 +320,6 @@ export const PortraitVOYO = ({ onSearch, onDahub, onHome }: PortraitVOYOProps) =
         onSubmit={handleDJCommand}
       />
 
-      {/* OYO Island - DJ Announcements & Voice Search */}
-      <OyoIsland />
     </>
   );
 };

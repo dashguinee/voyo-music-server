@@ -13,7 +13,7 @@ import { useState, useEffect, useRef, useCallback, memo, useMemo } from 'react';
 import { motion, AnimatePresence, useInView, TargetAndTransition } from 'framer-motion';
 import {
   Play, Pause, SkipForward, SkipBack, Zap, Flame, Plus, Maximize2, Film, Settings, Heart,
-  Shuffle, Repeat, Repeat1, Share2
+  Shuffle, Repeat, Repeat1, Share2, Mic
 } from 'lucide-react';
 import { usePlayerStore } from '../../store/playerStore';
 import { useIntentStore, VibeMode } from '../../store/intentStore';
@@ -32,6 +32,9 @@ import { useUniverseStore } from '../../store/universeStore';
 import { generateLyrics, getCurrentSegment, type EnrichedLyrics, type LyricsGenerationProgress } from '../../services/lyricsEngine';
 import { getVideoStreamUrl } from '../../services/piped';
 import { translateWord, type TranslationMatch } from '../../services/lexiconService';
+import { voiceSearch, recordFromMicrophone, isConfigured as isWhisperConfigured } from '../../services/whisperService';
+import { searchAlbums, getAlbumTracks } from '../../services/piped';
+import { pipedTrackToVoyoTrack } from '../../data/tracks';
 
 // ============================================
 // ISOLATED TIME COMPONENTS - Prevents full re-renders
@@ -2210,6 +2213,175 @@ const ReactionBar = memo(({
   const chatInputRef = useRef<HTMLInputElement>(null);
   const prevTriggerRef = useRef(activateChatTrigger);
 
+  // VOICE INPUT STATE - Type | Hold to speak | Mic for sing/hum
+  const [isVoiceMode, setIsVoiceMode] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [voiceCountdown, setVoiceCountdown] = useState<number | null>(null);
+  const [waveformLevels, setWaveformLevels] = useState<number[]>([0.3, 0.3, 0.3, 0.3, 0.3]);
+  const [voiceTranscript, setVoiceTranscript] = useState('');
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animationRef = useRef<number | null>(null);
+  const recognitionRef = useRef<any>(null);
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Start voice recording for DJ commands
+  const startVoiceRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      // Setup audio context for waveform visualization
+      audioContextRef.current = new AudioContext();
+      analyserRef.current = audioContextRef.current.createAnalyser();
+      const source = audioContextRef.current.createMediaStreamSource(stream);
+      source.connect(analyserRef.current);
+      analyserRef.current.fftSize = 32;
+
+      // Animate waveform bars
+      const updateWaveform = () => {
+        if (analyserRef.current) {
+          const data = new Uint8Array(analyserRef.current.frequencyBinCount);
+          analyserRef.current.getByteFrequencyData(data);
+          const levels = Array.from(data.slice(0, 5)).map(v => Math.max(0.2, v / 255));
+          setWaveformLevels(levels);
+        }
+        animationRef.current = requestAnimationFrame(updateWaveform);
+      };
+      updateWaveform();
+
+      // Setup speech recognition for live transcript
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        recognitionRef.current = new SpeechRecognition();
+        recognitionRef.current.continuous = true;
+        recognitionRef.current.interimResults = true;
+        recognitionRef.current.onresult = (event: any) => {
+          const result = Array.from(event.results)
+            .map((r: any) => r[0].transcript)
+            .join('');
+          setVoiceTranscript(result);
+        };
+        recognitionRef.current.start();
+      }
+
+      // Setup media recorder
+      mediaRecorderRef.current = new MediaRecorder(stream);
+      mediaRecorderRef.current.start();
+
+      setIsRecording(true);
+    } catch (err) {
+      console.error('Mic access denied:', err);
+      setIsVoiceMode(false);
+      setVoiceCountdown(null);
+      setChatResponse('Mic access denied');
+    }
+  };
+
+  // Stop voice recording
+  const stopVoiceRecording = () => {
+    if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    if (audioContextRef.current) audioContextRef.current.close();
+    if (recognitionRef.current) recognitionRef.current.stop();
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
+    }
+    setWaveformLevels([0.3, 0.3, 0.3, 0.3, 0.3]);
+  };
+
+  // Handle hold-to-speak: Hold mic to start voice command
+  const handleMicHoldStart = () => {
+    if (isProcessing) return;
+
+    // Start hold timer - 400ms to trigger voice mode
+    holdTimerRef.current = setTimeout(() => {
+      setIsVoiceMode(true);
+      setVoiceTranscript('');
+      setVoiceCountdown(3);
+      haptics.medium();
+
+      // Countdown 3-2-1
+      setTimeout(() => setVoiceCountdown(2), 1000);
+      setTimeout(() => setVoiceCountdown(1), 2000);
+      setTimeout(() => {
+        setVoiceCountdown(null);
+        startVoiceRecording();
+      }, 3000);
+    }, 400);
+  };
+
+  // Handle hold release - submit voice command
+  const handleMicHoldEnd = () => {
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+
+    // If was recording, stop and submit
+    if (isRecording) {
+      stopVoiceRecording();
+      setIsRecording(false);
+
+      // Submit the transcript as DJ command
+      if (voiceTranscript.trim()) {
+        handleChatSubmitWithText(voiceTranscript);
+      }
+      setVoiceTranscript('');
+      setIsVoiceMode(false);
+    }
+  };
+
+  // Handle mic tap - Shazam sing/hum feature
+  const handleMicTap = async () => {
+    if (isProcessing || isVoiceMode || isRecording) return;
+
+    if (!isWhisperConfigured()) {
+      setChatResponse('Voice search not configured');
+      return;
+    }
+
+    setIsProcessing(true);
+    setChatResponse('🎤 Listening... sing or hum!');
+    haptics.medium();
+
+    try {
+      // Record for 8 seconds
+      const audioBlob = await recordFromMicrophone(8000);
+      setChatResponse('🔄 Processing...');
+
+      // Voice search with Whisper
+      const result = await voiceSearch(audioBlob);
+
+      // Search for the song
+      const searchResults = await searchAlbums(result.query);
+      if (searchResults.length > 0) {
+        const match = searchResults[0];
+
+        // Get playable tracks and play
+        try {
+          const tracks = await getAlbumTracks(match.id);
+          if (tracks.length > 0) {
+            const voyoTrack = pipedTrackToVoyoTrack(tracks[0], match.thumbnail);
+            usePlayerStore.getState().setCurrentTrack(voyoTrack);
+            setChatResponse(`🔥 Playing "${match.name}" by ${match.artist}`);
+          } else {
+            setChatResponse(`Found "${match.name}" - search to play!`);
+          }
+        } catch {
+          setChatResponse(`Found "${match.name}" by ${match.artist}`);
+        }
+      } else {
+        setChatResponse(`Couldn't find that one. Try again!`);
+      }
+    } catch (error) {
+      console.error('Voice search error:', error);
+      setChatResponse('Voice search failed');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   // Access store for DJ commands
   const { addToQueue, currentTrack } = usePlayerStore();
 
@@ -2549,42 +2721,81 @@ const ReactionBar = memo(({
         })}
 
         {/* Chat input - appears in center when Wazzguán tapped */}
-        {/* PREMIUM STYLING: Muted stone/neutral tones with subtle purple accent */}
+        {/* Type | Hold to speak | Tap mic for sing/hum */}
         <AnimatePresence>
           {isChatMode && (
             <motion.div
               className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 bg-gradient-to-r from-stone-800/50 to-stone-900/40 backdrop-blur-xl rounded-full border border-stone-500/20 px-3 py-1.5 shadow-lg shadow-black/30"
               initial={{ opacity: 0, scale: 0.8, width: 80 }}
-              animate={{ opacity: 1, scale: 1, width: 220 }}
+              animate={{ opacity: 1, scale: 1, width: isRecording ? 180 : 220 }}
               exit={{ opacity: 0, scale: 0.8, width: 80 }}
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
             >
-              <input
-                ref={chatInputRef}
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleChatSubmit()}
-                placeholder="Tell the DJ..."
-                className="flex-1 bg-transparent text-white text-xs placeholder:text-stone-400 outline-none min-w-0"
-                disabled={isProcessing}
-              />
+              {/* Voice countdown */}
+              {voiceCountdown !== null ? (
+                <motion.div
+                  className="flex-1 flex items-center justify-center"
+                  key={voiceCountdown}
+                  initial={{ scale: 0.5, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                >
+                  <span className="text-lg font-bold text-white">{voiceCountdown}</span>
+                </motion.div>
+              ) : isRecording ? (
+                /* Recording with waveform */
+                <div className="flex-1 flex items-center justify-center gap-1">
+                  {waveformLevels.map((level, i) => (
+                    <motion.div
+                      key={i}
+                      className="w-1 bg-purple-400 rounded-full"
+                      animate={{ height: level * 20 }}
+                      transition={{ duration: 0.1 }}
+                    />
+                  ))}
+                  {voiceTranscript && (
+                    <span className="text-[10px] text-white/50 ml-2 truncate max-w-[80px]">{voiceTranscript}</span>
+                  )}
+                </div>
+              ) : (
+                /* Normal text input */
+                <input
+                  ref={chatInputRef}
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleChatSubmit()}
+                  placeholder="Tell the DJ..."
+                  className="flex-1 bg-transparent text-white text-xs placeholder:text-stone-400 outline-none min-w-0"
+                  disabled={isProcessing || isVoiceMode}
+                />
+              )}
+
+              {/* Mic button - Tap for sing/hum, Hold for voice command */}
               <motion.button
-                onClick={handleChatSubmit}
-                className="w-6 h-6 rounded-full bg-purple-600/60 flex items-center justify-center flex-shrink-0"
+                onPointerDown={handleMicHoldStart}
+                onPointerUp={handleMicHoldEnd}
+                onPointerLeave={handleMicHoldEnd}
+                onClick={!isVoiceMode && !isRecording ? handleMicTap : undefined}
+                className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  isRecording ? 'bg-red-500/80' : 'bg-purple-600/60'
+                }`}
                 whileTap={{ scale: 0.9 }}
-                disabled={isProcessing}
+                animate={isRecording ? { scale: [1, 1.1, 1] } : {}}
+                transition={isRecording ? { duration: 1, repeat: Infinity } : {}}
+                disabled={isProcessing && !isRecording}
               >
-                {isProcessing ? (
+                {isProcessing && !isRecording ? (
                   <motion.div
                     className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full"
                     animate={{ rotate: 360 }}
                     transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }}
                   />
                 ) : (
-                  <SkipForward size={12} className="text-white" fill="currentColor" />
+                  <Mic size={12} className="text-white" />
                 )}
               </motion.button>
+
+              {/* Close button */}
               <motion.button
                 onClick={handleChatClose}
                 className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-white/60 text-xs flex-shrink-0"
