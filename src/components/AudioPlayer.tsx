@@ -28,6 +28,7 @@ import { getYouTubeIdForIframe, prefetchTrack } from '../services/api';
 import { audioEngine } from '../services/audioEngine';
 import { recordPoolEngagement } from '../services/personalization';
 import { recordTrackInSession } from '../services/poolCurator';
+import { recordPlay as djRecordPlay } from '../services/intelligentDJ';
 import { onTrackPlay as oyoOnTrackPlay, onTrackSkip as oyoOnTrackSkip, onTrackComplete as oyoOnTrackComplete } from '../services/oyoDJ';
 
 type PlaybackMode = 'cached' | 'iframe';
@@ -502,8 +503,10 @@ export const AudioPlayer = () => {
               hasRecordedPlayRef.current = true;
               recordPoolEngagement(playingState.currentTrack.trackId, 'play');
               useTrackPoolStore.getState().recordPlay(playingState.currentTrack.trackId);
-              // GEMINI CURATOR: Record track in listening session
+              // POOL CURATOR: Record track in listening session
               recordTrackInSession(playingState.currentTrack, 0, false, false);
+              // INTELLIGENT DJ: Feed the AI with listening data
+              djRecordPlay(playingState.currentTrack, false, false);
               // OYO DJ: Announce track transition
               oyoOnTrackPlay(playingState.currentTrack, previousTrackRef.current || undefined);
               previousTrackRef.current = playingState.currentTrack;
@@ -626,8 +629,10 @@ export const AudioPlayer = () => {
                         hasRecordedPlayRef.current = true;
                         recordPoolEngagement(currentTrack.trackId, 'play');
                         useTrackPoolStore.getState().recordPlay(currentTrack.trackId);
-                        // GEMINI CURATOR: Record track in listening session
+                        // POOL CURATOR: Record track in listening session
                         recordTrackInSession(currentTrack, 0, false, false);
+                        // INTELLIGENT DJ: Feed the AI with listening data
+                        djRecordPlay(currentTrack, false, false);
                         // OYO DJ: Announce track transition
                         oyoOnTrackPlay(currentTrack, previousTrackRef.current || undefined);
                         previousTrackRef.current = currentTrack;
