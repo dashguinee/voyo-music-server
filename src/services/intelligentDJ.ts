@@ -207,10 +207,12 @@ RESPOND WITH VALID JSON ONLY:
 }
 
 IMPORTANT:
-- URLs must be REAL YouTube videos that exist
+- Focus on finding the RIGHT songs that match the vibe
+- Include artist name and song title EXACTLY as they appear on YouTube
+- URLs are helpful but we'll verify them - accuracy of artist/title matters more
 - Prefer official music videos or audio uploads
 - Include mix of familiar and discovery tracks
-- No age-restricted or unavailable content`;
+- Think about what would keep this listener engaged`;
 }
 
 /**
@@ -302,26 +304,72 @@ function suggestionToTrack(suggestion: DJSuggestion, youtubeId: string): Track {
 
 /**
  * Process DJ suggestions and add valid ones to pool
+ *
+ * SMART VERIFICATION:
+ * Gemini suggests artist + title → We search our backend → Use VERIFIED IDs
+ * This prevents hallucinated URLs from breaking the app
  */
 async function processSuggestions(suggestions: DJSuggestion[]): Promise<number> {
   const poolStore = useTrackPoolStore.getState();
   let added = 0;
 
   for (const suggestion of suggestions) {
-    // Extract YouTube ID from URL
-    const youtubeId = extractYouTubeId(suggestion.youtubeUrl);
+    // STEP 1: Try the URL Gemini gave us
+    const geminiId = extractYouTubeId(suggestion.youtubeUrl);
 
-    if (!youtubeId || !isValidYouTubeId(youtubeId)) {
-      console.warn(`[Intelligent DJ] Invalid URL: ${suggestion.youtubeUrl}`);
-      continue;
+    // STEP 2: ALWAYS verify via backend search (Gemini might hallucinate URLs)
+    // Search for "artist - title" to find the REAL YouTube ID
+    const searchQuery = `${suggestion.artist} ${suggestion.title}`;
+
+    try {
+      const searchResults = await searchMusic(searchQuery, 3);
+
+      if (searchResults.length > 0) {
+        // Use the VERIFIED result from our backend
+        const verified = searchResults[0];
+
+        const track: Track = {
+          id: `dj_${verified.voyoId}`,
+          title: verified.title || suggestion.title,
+          artist: verified.artist || suggestion.artist,
+          album: 'DJ Discovery',
+          trackId: verified.voyoId,
+          coverUrl: verified.thumbnail || getThumb(verified.voyoId),
+          duration: verified.duration || 0,
+          tags: ['dj-pick', 'discovery', 'verified'],
+          mood: 'afro',
+          region: 'NG',
+          oyeScore: verified.views || 0,
+          createdAt: new Date().toISOString(),
+        };
+
+        poolStore.addToPool(track, 'llm');
+        added++;
+
+        console.log(`[Intelligent DJ] ✅ VERIFIED: ${suggestion.artist} - ${suggestion.title}`);
+        console.log(`[Intelligent DJ]    → Found: ${verified.artist} - ${verified.title}`);
+      } else if (geminiId && isValidYouTubeId(geminiId)) {
+        // Fallback: Use Gemini's ID if search fails but ID looks valid
+        const track = suggestionToTrack(suggestion, geminiId);
+        poolStore.addToPool(track, 'llm');
+        added++;
+
+        console.log(`[Intelligent DJ] ⚠️ UNVERIFIED (using Gemini ID): ${suggestion.artist} - ${suggestion.title}`);
+      } else {
+        console.warn(`[Intelligent DJ] ❌ Could not verify: ${suggestion.artist} - ${suggestion.title}`);
+      }
+    } catch (error) {
+      // Search failed, try Gemini's ID as fallback
+      if (geminiId && isValidYouTubeId(geminiId)) {
+        const track = suggestionToTrack(suggestion, geminiId);
+        poolStore.addToPool(track, 'llm');
+        added++;
+        console.log(`[Intelligent DJ] ⚠️ Search failed, using Gemini ID: ${suggestion.artist} - ${suggestion.title}`);
+      }
     }
 
-    // Convert to track and add to pool
-    const track = suggestionToTrack(suggestion, youtubeId);
-    poolStore.addToPool(track, 'llm');
-    added++;
-
-    console.log(`[Intelligent DJ] ✅ Added: ${suggestion.artist} - ${suggestion.title}`);
+    // Small delay between searches to avoid hammering the API
+    await new Promise(r => setTimeout(r, 150));
   }
 
   return added;
