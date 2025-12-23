@@ -97,16 +97,16 @@ const DISCOVERY_QUERIES = [
 ];
 const DISCOVERY_THRESHOLD = 5; // Load more when 5 tracks from end
 
-// Snippet modes
+// Snippet modes - TEASE psychology: leave them wanting MORE
 const SNIPPET_MODES = {
   full: {
-    duration: 30, // 30 seconds for full preview
+    duration: 20, // 20 seconds - show the vibe, not the whole story
     label: 'Full',
     icon: '🎵',
-    description: 'Full 30s preview',
+    description: 'Full 20s preview',
   },
   extract: {
-    duration: 18, // 18 seconds base for hot extract (feels more natural)
+    duration: 10, // 10 seconds - hit the hook, cut before the drop
     label: 'Extract',
     icon: '🔥',
     description: 'Hot extract',
@@ -115,6 +115,7 @@ const SNIPPET_MODES = {
 
 // Varied durations to feel natural (not robotic)
 // Uses trackId as seed for consistent variation per track
+// TEASE PSYCHOLOGY: Shorter variance = more consistent tease effect
 const getVariedDuration = (baseDuration: number, trackId: string): number => {
   // Simple hash from trackId for consistent "random" variance
   let hash = 0;
@@ -122,8 +123,8 @@ const getVariedDuration = (baseDuration: number, trackId: string): number => {
     hash = ((hash << 5) - hash) + trackId.charCodeAt(i);
     hash = hash & hash; // Convert to 32bit integer
   }
-  const variance = (Math.abs(hash) % 11) - 5; // -5 to +5 seconds based on trackId
-  return Math.max(15, baseDuration + variance); // Never less than 15s
+  const variance = (Math.abs(hash) % 7) - 3; // -3 to +3 seconds based on trackId
+  return Math.max(8, baseDuration + variance); // Never less than 8s - quick tease minimum
 };
 
 type SnippetMode = keyof typeof SNIPPET_MODES;
@@ -577,21 +578,34 @@ const FeedCard = ({
     }
   }, [isActive, isThisTrack, isPlaying, onPlay, onTogglePlay, onSeekToHotspot, hottestPosition, snippetStarted]);
 
+  // Store latest callback ref to avoid timer cancellation when callback changes
+  const onSnippetEndRef = useRef(onSnippetEnd);
+  useEffect(() => {
+    onSnippetEndRef.current = onSnippetEnd;
+  }, [onSnippetEnd]);
+
   // Auto-advance timer - trigger after snippetDuration seconds
   useEffect(() => {
-    if (isActive && isPlaying && isThisTrack && snippetStarted && onSnippetEnd) {
+    // Only start timer if all conditions met and no timer already running
+    if (isActive && isPlaying && isThisTrack && snippetStarted && !snippetTimerRef.current) {
+      console.log(`[Feed] Starting ${snippetDuration}s timer for ${trackTitle}`);
       snippetTimerRef.current = setTimeout(() => {
         console.log(`[Feed] ${snippetMode === 'extract' ? 'Hot extract' : 'Snippet'} ended for ${trackTitle}, auto-advancing...`);
-        onSnippetEnd();
+        onSnippetEndRef.current?.();
+        snippetTimerRef.current = null;
       }, snippetDuration * 1000);
+    }
 
-      return () => {
+    // Cleanup when card becomes inactive or playback stops
+    return () => {
+      if (!isActive || !isPlaying || !isThisTrack) {
         if (snippetTimerRef.current) {
           clearTimeout(snippetTimerRef.current);
+          snippetTimerRef.current = null;
         }
-      };
-    }
-  }, [isActive, isPlaying, isThisTrack, snippetStarted, onSnippetEnd, trackTitle, snippetDuration, snippetMode]);
+      }
+    };
+  }, [isActive, isPlaying, isThisTrack, snippetStarted, trackTitle, snippetDuration, snippetMode]);
 
   // Count reactions
   const reactionCounts = useMemo(() => {
