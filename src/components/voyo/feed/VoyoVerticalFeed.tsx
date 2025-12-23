@@ -732,6 +732,7 @@ const FeedCard = ({
           isPlaying={isPlaying}
           isThisTrack={isThisTrack}
           shouldPreload={shouldPreload}
+          teaserStrategy={getTeaserStrategy(trackId)}
           forceContentType={ENABLE_VIDEO_SNIPPETS ? undefined : 'animated_art'}
         />
 

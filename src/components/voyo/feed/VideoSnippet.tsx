@@ -11,6 +11,9 @@ import { motion } from 'framer-motion';
 import { Film, Play } from 'lucide-react';
 import { usePlayerStore } from '../../../store/playerStore';
 
+// Teaser strategy determines video treatment
+type TeaserStrategy = 'entrance' | 'hotspot' | 'pre-hook' | 'middle';
+
 interface VideoSnippetProps {
   trackId: string; // YouTube video ID or VOYO ID
   isActive: boolean;
@@ -18,9 +21,43 @@ interface VideoSnippetProps {
   isThisTrack: boolean;
   shouldPreload?: boolean; // Preload this video (for upcoming cards)
   fallbackThumbnail?: string;
+  teaserStrategy?: TeaserStrategy; // Video treatment based on teaser strategy
   onVideoReady?: () => void;
   onVideoError?: () => void;
 }
+
+// Video treatments per strategy - cinematic feel
+const VIDEO_TREATMENTS: Record<TeaserStrategy, {
+  scale: [number, number];      // Start -> End scale
+  translateY: [string, string]; // Subtle vertical motion
+  duration: number;             // Animation duration
+  description: string;
+}> = {
+  entrance: {
+    scale: [1.0, 1.08],          // Slow zoom IN - building anticipation
+    translateY: ['0%', '-1%'],   // Slight upward drift
+    duration: 12,
+    description: 'Zoom in - anticipation',
+  },
+  hotspot: {
+    scale: [1.05, 1.02],         // Pulse/breathe - energy at hook
+    translateY: ['0%', '0%'],    // Stay centered on action
+    duration: 8,
+    description: 'Pulse - energy',
+  },
+  'pre-hook': {
+    scale: [1.1, 1.0],           // Zoom OUT - tension release incoming
+    translateY: ['1%', '0%'],    // Settle down
+    duration: 10,
+    description: 'Zoom out - tension',
+  },
+  middle: {
+    scale: [1.03, 1.06],         // Gentle drift - discovery
+    translateY: ['-0.5%', '0.5%'], // Pan motion
+    duration: 15,
+    description: 'Drift - discovery',
+  },
+};
 
 export const VideoSnippet = ({
   trackId,
@@ -29,9 +66,12 @@ export const VideoSnippet = ({
   isThisTrack,
   shouldPreload = false,
   fallbackThumbnail,
+  teaserStrategy = 'hotspot',
   onVideoReady,
   onVideoError,
 }: VideoSnippetProps) => {
+  // Get video treatment for this strategy
+  const treatment = VIDEO_TREATMENTS[teaserStrategy];
   const [isLoaded, setIsLoaded] = useState(false);
   const [showIframe, setShowIframe] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -150,13 +190,21 @@ export const VideoSnippet = ({
         />
       )}
 
-      {/* YouTube iframe - FULL SCREEN video fill */}
+      {/* YouTube iframe - FULL SCREEN video fill with cinematic treatment */}
       {showIframe && (
         <motion.div
           className="absolute inset-0 overflow-hidden"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: isLoaded ? 1 : 0 }}
-          transition={{ duration: 0.5 }}
+          initial={{ opacity: 0, scale: treatment.scale[0], y: treatment.translateY[0] }}
+          animate={{
+            opacity: isLoaded ? 1 : 0,
+            scale: isPlaying && isThisTrack ? treatment.scale : treatment.scale[0],
+            y: isPlaying && isThisTrack ? treatment.translateY : treatment.translateY[0],
+          }}
+          transition={{
+            opacity: { duration: 0.5 },
+            scale: { duration: treatment.duration, ease: 'easeInOut' },
+            y: { duration: treatment.duration, ease: 'easeInOut' },
+          }}
         >
           {/*
             Full screen video container
