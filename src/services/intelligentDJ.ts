@@ -186,33 +186,37 @@ CONTEXT:
 YOUR MISSION:
 Find ${MAX_VIDEOS_PER_RUN} YouTube music videos that would PERFECTLY fit what this person wants to hear next.
 
-RULES:
-1. Focus on African music: Afrobeats, Amapiano, Afro-soul, Afro-pop, Highlife, Dancehall
-2. If they loved certain artists, find more from those artists OR similar vibes
-3. If they're skipping a lot, try something different but still African
-4. Match the time of day energy (late night = chill, morning = uplifting)
-5. Return ACTUAL YouTube URLs - these must be real, playable videos
+HOW TO FIND REAL YOUTUBE URLS:
+1. Think of the song: "Artist Name - Song Title"
+2. Search your knowledge for: "Artist Name Song Title youtube"
+3. The official video URL is usually the FIRST result
+4. Use that REAL URL - don't make one up
+
+MUSIC FOCUS:
+- African music: Afrobeats, Amapiano, Afro-soul, Afro-pop, Highlife, Dancehall
+- If they loved certain artists, find more from those artists OR similar vibes
+- If they're skipping a lot, try something different but still African
+- Match the time of day energy (late night = chill, morning = uplifting)
 
 RESPOND WITH VALID JSON ONLY:
 {
   "vibe": "One sentence describing the vibe you're curating for",
   "suggestions": [
     {
-      "youtubeUrl": "https://www.youtube.com/watch?v=VIDEO_ID",
-      "title": "Song Title",
-      "artist": "Artist Name",
+      "youtubeUrl": "https://www.youtube.com/watch?v=REAL_VIDEO_ID",
+      "title": "Exact Song Title as on YouTube",
+      "artist": "Exact Artist Name",
       "reason": "Why this fits (one sentence)"
     }
   ]
 }
 
-IMPORTANT:
-- Focus on finding the RIGHT songs that match the vibe
-- Include artist name and song title EXACTLY as they appear on YouTube
-- URLs are helpful but we'll verify them - accuracy of artist/title matters more
-- Prefer official music videos or audio uploads
-- Include mix of familiar and discovery tracks
-- Think about what would keep this listener engaged`;
+CRITICAL - FINDING REAL URLS:
+- Search your training data for "Song Title Artist youtube" to find real URLs
+- The 11-character video ID at the end of youtube.com/watch?v= is what matters
+- Example: Burna Boy "Last Last" → search "Burna Boy Last Last youtube" → https://www.youtube.com/watch?v=VLR3yaus0Cg
+- DO NOT guess or fabricate video IDs - only use URLs you've actually seen
+- If you can't find the real URL, still include the song with your best guess - we verify it`;
 }
 
 /**
