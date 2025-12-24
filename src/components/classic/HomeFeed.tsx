@@ -160,9 +160,9 @@ interface VibeCardProps {
 
 const VibeCard = ({ vibe, onSelect }: VibeCardProps) => (
   <motion.button
-    className="flex-shrink-0 w-28 h-32 relative group"
+    className="flex-shrink-0 w-24 h-28 relative group"
     onClick={onSelect}
-    whileHover={{ scale: 1.08, y: -6 }}
+    whileHover={{ scale: 1.08, y: -4 }}
     whileTap={{ scale: 0.95 }}
   >
     {/* Deep shadow for 3D pop effect */}
@@ -220,13 +220,13 @@ const VibeCard = ({ vibe, onSelect }: VibeCardProps) => (
           <LottieIcon
             lottieUrl={vibe.lottie}
             fallbackEmoji={vibe.icon}
-            size={40}
+            size={32}
           />
         </motion.div>
 
         {/* Bold name */}
         <span
-          className="text-white font-black text-xs tracking-wide"
+          className="text-white font-black text-[10px] tracking-wide"
           style={{
             textShadow: '0 2px 8px rgba(0,0,0,0.4)',
             letterSpacing: '0.05em',
@@ -237,7 +237,7 @@ const VibeCard = ({ vibe, onSelect }: VibeCardProps) => (
 
         {/* Subtle description */}
         <span
-          className="text-white/80 text-[9px] font-medium mt-0.5"
+          className="text-white/80 text-[8px] font-medium mt-0.5"
           style={{ textShadow: '0 1px 4px rgba(0,0,0,0.3)' }}
         >
           {vibe.description}
@@ -426,13 +426,21 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub }: HomeFeedProps) => {
       )}
 
       {/* Browse by Vibes (matches MixBoard + database) */}
-      <div className="relative -mx-4 px-4 pt-6 pb-10">
-        {/* Gradient fade background - lower so card tops pop into dark */}
+      <div className="relative -mx-4 px-4 pt-4 pb-6">
+        {/* TOP fade - dark to purple */}
         <div
-          className="absolute left-0 right-0 bottom-0 pointer-events-none rounded-t-[32px]"
+          className="absolute left-0 right-0 top-0 pointer-events-none"
           style={{
-            height: '65%',
-            background: 'linear-gradient(to top, rgba(139, 92, 246, 0.4) 0%, rgba(139, 92, 246, 0.25) 40%, rgba(139, 92, 246, 0.08) 80%, transparent 100%)',
+            height: '45%',
+            background: 'linear-gradient(to bottom, transparent 0%, rgba(139, 92, 246, 0.1) 50%, rgba(139, 92, 246, 0.35) 100%)',
+          }}
+        />
+        {/* BOTTOM fade - purple to dark */}
+        <div
+          className="absolute left-0 right-0 bottom-0 pointer-events-none"
+          style={{
+            height: '45%',
+            background: 'linear-gradient(to bottom, rgba(139, 92, 246, 0.35) 0%, rgba(139, 92, 246, 0.1) 50%, transparent 100%)',
           }}
         />
         <div className="relative z-10">
