@@ -249,7 +249,7 @@ export const ClassicMode = ({ onSwitchToVOYO, onSearch }: ClassicModeProps) => {
           transition={{ duration: 0.2 }}
         >
           {activeTab === 'home' && (
-            <HomeFeed onTrackPlay={handleTrackClick} onSearch={onSearch} />
+            <HomeFeed onTrackPlay={handleTrackClick} onSearch={onSearch} onDahub={() => setActiveTab('hub')} />
           )}
           {activeTab === 'hub' && (
             <Hub />

@@ -245,10 +245,11 @@ const VibeCard = ({ vibe, onSelect }: VibeCardProps) => (
 interface HomeFeedProps {
   onTrackPlay: (track: Track) => void;
   onSearch: () => void;
+  onDahub: () => void;
   onArtistClick?: (artist: { name: string; tracks: Track[] }) => void;
 }
 
-export const HomeFeed = ({ onTrackPlay, onSearch }: HomeFeedProps) => {
+export const HomeFeed = ({ onTrackPlay, onSearch, onDahub }: HomeFeedProps) => {
   const { history, hotTracks, discoverTracks, refreshRecommendations } = usePlayerStore();
   const { hotPool } = useTrackPoolStore();
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -308,9 +309,10 @@ export const HomeFeed = ({ onTrackPlay, onSearch }: HomeFeedProps) => {
     <div className="flex flex-col h-full overflow-y-auto pb-32 scrollbar-hide">
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-3 sticky top-0 bg-[#0a0a0f]/95 backdrop-blur-lg z-10">
-        {/* Profile Avatar */}
+        {/* Profile Avatar → DAHUB */}
         <motion.button
           className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold"
+          onClick={onDahub}
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
         >
