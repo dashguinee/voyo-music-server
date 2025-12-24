@@ -203,7 +203,7 @@ async function saveToDatabase(verified: { voyoId: string; title: string; artist:
       createdAt: new Date().toISOString(),
     };
 
-    const saved = await saveVerifiedTrack(track, undefined, 'self-heal');
+    const saved = await saveVerifiedTrack(track, undefined, 'user_search');
     if (saved) {
       console.log(`[TrackVerifier] 💾 Saved to Central DB for future users!`);
     }
