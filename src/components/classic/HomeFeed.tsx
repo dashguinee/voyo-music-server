@@ -146,7 +146,7 @@ const TrackCard = ({ track, onPlay }: TrackCardProps) => {
 };
 
 // ============================================
-// VIBE CARD COMPONENT (matches MixBoard + database vibes)
+// VIBE CARD COMPONENT - Premium with paint splash effect
 // ============================================
 
 interface VibeCardProps {
@@ -156,14 +156,85 @@ interface VibeCardProps {
 
 const VibeCard = ({ vibe, onSelect }: VibeCardProps) => (
   <motion.button
-    className={`flex-shrink-0 w-32 h-36 rounded-2xl bg-gradient-to-br ${vibe.gradient} flex flex-col items-center justify-center shadow-lg p-3`}
+    className="flex-shrink-0 w-28 h-32 relative group"
     onClick={onSelect}
-    whileHover={{ scale: 1.05, y: -4 }}
+    whileHover={{ scale: 1.08, y: -6 }}
     whileTap={{ scale: 0.95 }}
   >
-    <span className="text-3xl mb-2">{vibe.icon}</span>
-    <span className="text-white font-bold text-sm mb-1">{vibe.name}</span>
-    <span className="text-white/70 text-[10px] text-center leading-tight">{vibe.description}</span>
+    {/* Glow effect behind card */}
+    <div
+      className={`absolute inset-0 rounded-3xl bg-gradient-to-br ${vibe.gradient} blur-xl opacity-40 group-hover:opacity-70 transition-opacity`}
+      style={{ transform: 'translateY(8px) scale(0.9)' }}
+    />
+
+    {/* Main card with organic blob shape */}
+    <div
+      className={`relative w-full h-full rounded-[28px] bg-gradient-to-br ${vibe.gradient} overflow-hidden shadow-2xl`}
+      style={{
+        boxShadow: `0 8px 32px ${vibe.color}44, inset 0 1px 0 rgba(255,255,255,0.2)`,
+      }}
+    >
+      {/* Paint splash texture overlay */}
+      <div
+        className="absolute inset-0 opacity-30"
+        style={{
+          background: `
+            radial-gradient(ellipse 80% 60% at 20% 80%, rgba(255,255,255,0.4) 0%, transparent 50%),
+            radial-gradient(ellipse 60% 80% at 80% 20%, rgba(255,255,255,0.3) 0%, transparent 50%),
+            radial-gradient(circle at 50% 50%, transparent 30%, rgba(0,0,0,0.15) 100%)
+          `,
+        }}
+      />
+
+      {/* Animated shimmer on hover */}
+      <motion.div
+        className="absolute inset-0 opacity-0 group-hover:opacity-100"
+        style={{
+          background: 'linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.3) 50%, transparent 60%)',
+        }}
+        initial={{ x: '-100%' }}
+        whileHover={{ x: '100%' }}
+        transition={{ duration: 0.6, ease: 'easeInOut' }}
+      />
+
+      {/* Content */}
+      <div className="relative z-10 h-full flex flex-col items-center justify-center p-2">
+        {/* Big emoji with shadow */}
+        <motion.span
+          className="text-4xl drop-shadow-lg mb-1"
+          style={{ textShadow: '0 4px 12px rgba(0,0,0,0.3)' }}
+          whileHover={{ scale: 1.2, rotate: [0, -10, 10, 0] }}
+          transition={{ duration: 0.4 }}
+        >
+          {vibe.icon}
+        </motion.span>
+
+        {/* Bold name */}
+        <span
+          className="text-white font-black text-xs tracking-wide"
+          style={{
+            textShadow: '0 2px 8px rgba(0,0,0,0.4)',
+            letterSpacing: '0.05em',
+          }}
+        >
+          {vibe.name}
+        </span>
+
+        {/* Subtle description */}
+        <span
+          className="text-white/80 text-[9px] font-medium mt-0.5"
+          style={{ textShadow: '0 1px 4px rgba(0,0,0,0.3)' }}
+        >
+          {vibe.description}
+        </span>
+      </div>
+
+      {/* Corner accent blob */}
+      <div
+        className="absolute -top-4 -right-4 w-12 h-12 rounded-full opacity-40"
+        style={{ background: 'rgba(255,255,255,0.3)', filter: 'blur(8px)' }}
+      />
+    </div>
   </motion.button>
 );
 
