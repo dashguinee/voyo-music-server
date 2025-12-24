@@ -100,6 +100,7 @@ export const VIBES: Vibe[] = [
     id: 'late-night',
     name: 'LATE NIGHT',
     icon: '🌙',
+    lottie: '/lottie/night-clear.json',
     color: '#1e3a8a',
     gradient: 'from-blue-950 via-indigo-900 to-slate-900',
     description: 'City Lights • Vibes',
