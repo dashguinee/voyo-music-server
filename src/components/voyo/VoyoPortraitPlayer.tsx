@@ -1225,6 +1225,8 @@ const SmallCard = memo(({ track, onTap, isPlayed }: { track: Track; onTap: () =>
           isPlayed ? 'opacity-60' : 'opacity-90 group-hover:opacity-100 group-hover:scale-105'
         }`}
         trackId={track.trackId}
+        artist={track.artist}
+        title={track.title}
         lazy={true}
       />
       {/* VOYO Brand Tint - fades on hover */}
@@ -1751,6 +1753,8 @@ const StreamCard = memo(({ track, onTap, isPlayed, onTeaser, modeColor, onQueueA
               isPlayed ? 'opacity-60' : 'opacity-90 group-hover:opacity-100'
             }`}
             trackId={track.trackId}
+            artist={track.artist}
+            title={track.title}
             lazy={true}
           />
           {/* VOYO Brand Tint - fades on hover */}
@@ -1821,6 +1825,8 @@ const BigCenterCard = memo(({ track, onExpandVideo, onShowLyrics }: { track: Tra
         alt={track.title}
         className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
         trackId={track.trackId}
+        artist={track.artist}
+        title={track.title}
         lazy={false}
       />
       {/* Lyrics hint icon */}
@@ -2871,6 +2877,8 @@ const FullscreenVideoPlayer = ({
           alt={track.title}
           className="w-full h-full object-contain"
           trackId={track.trackId}
+          artist={track.artist}
+          title={track.title}
           lazy={false}
         />
         {/* Play overlay */}

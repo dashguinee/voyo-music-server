@@ -17,6 +17,7 @@ import { useDownloadStore } from '../../store/downloadStore';
 import { usePreferenceStore } from '../../store/preferenceStore';
 import { usePlaylistStore } from '../../store/playlistStore';
 import { getYouTubeThumbnail, TRACKS } from '../../data/tracks';
+import { SmartImage } from '../ui/SmartImage';
 import { Track } from '../../types';
 import { getAudioStream } from '../../services/api';
 import { PlaylistModal } from '../playlist/PlaylistModal';
@@ -171,10 +172,13 @@ const SongRow = ({
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
       >
-        <img
+        <SmartImage
           src={getYouTubeThumbnail(track.trackId, 'medium')}
           alt={track.title}
           className="w-full h-full object-cover"
+          trackId={track.trackId}
+          artist={track.artist}
+          title={track.title}
         />
 
         {/* Hover Overlay with Play/Queue buttons - Desktop only */}

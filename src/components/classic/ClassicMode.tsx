@@ -17,6 +17,7 @@ import { Hub } from './Hub';
 import { NowPlaying } from './NowPlaying';
 import { usePlayerStore } from '../../store/playerStore';
 import { getYouTubeThumbnail } from '../../data/tracks';
+import { SmartImage } from '../ui/SmartImage';
 import { Track } from '../../types';
 
 type ClassicTab = 'home' | 'hub' | 'library';
@@ -45,12 +46,15 @@ const MiniPlayer = ({ onClick }: { onClick: () => void }) => {
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
       >
-        {/* Thumbnail */}
+        {/* Thumbnail - SmartImage with self-healing */}
         <div className="relative w-12 h-12 rounded-xl overflow-hidden">
-          <img
+          <SmartImage
             src={getYouTubeThumbnail(currentTrack.trackId, 'medium')}
             alt={currentTrack.title}
             className="w-full h-full object-cover"
+            trackId={currentTrack.trackId}
+            artist={currentTrack.artist}
+            title={currentTrack.title}
           />
         </div>
 

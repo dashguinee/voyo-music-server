@@ -19,6 +19,7 @@ import { Track } from '../types';
 import { searchAlbums, getAlbumTracks } from './piped';
 import { pipedTrackToVoyoTrack } from '../data/tracks';
 import { useTrackPoolStore } from '../store/trackPoolStore';
+import { safeAddManyToPool } from './trackVerifier';
 
 // Gemini API Configuration
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
@@ -309,11 +310,11 @@ export async function curateAndExpand(): Promise<number> {
           .slice(0, TRACKS_PER_QUERY)
           .map(pt => pipedTrackToVoyoTrack(pt, album.name));
 
-        // Add to pool with 'llm' source tag
-        poolStore.addManyToPool(voyoTracks, 'llm');
-        totalTracksAdded += voyoTracks.length;
+        // GATE: Validate each track before adding to pool
+        const added = await safeAddManyToPool(voyoTracks, 'llm');
+        totalTracksAdded += added;
 
-        console.log(`[Gemini Curator] Added ${voyoTracks.length} tracks from "${album.name}"`);
+        console.log(`[Gemini Curator] Added ${added}/${voyoTracks.length} validated tracks from "${album.name}"`);
       }
     } catch (error) {
       console.warn(`[Gemini Curator] Query failed: "${query}"`, error);
@@ -348,8 +349,9 @@ async function fallbackCuration(): Promise<number> {
     for (const album of albums) {
       const pipedTracks = await getAlbumTracks(album.id);
       const voyoTracks = pipedTracks.slice(0, 10).map(pt => pipedTrackToVoyoTrack(pt, album.name));
-      poolStore.addManyToPool(voyoTracks, 'related');
-      totalAdded += voyoTracks.length;
+      // GATE: Validate before adding
+      const added = await safeAddManyToPool(voyoTracks, 'related');
+      totalAdded += added;
     }
 
     return totalAdded;
@@ -420,8 +422,9 @@ RESPOND WITH VALID JSON ONLY:
     for (const album of albums) {
       const tracks = await getAlbumTracks(album.id);
       const voyoTracks = tracks.slice(0, 10).map(pt => pipedTrackToVoyoTrack(pt, album.name));
-      poolStore.addManyToPool(voyoTracks, 'llm');
-      total += voyoTracks.length;
+      // GATE: Validate before adding
+      const added = await safeAddManyToPool(voyoTracks, 'llm');
+      total += added;
     }
 
     return total;
@@ -437,8 +440,9 @@ RESPOND WITH VALID JSON ONLY:
       for (const album of albums) {
         const tracks = await getAlbumTracks(album.id);
         const voyoTracks = tracks.slice(0, 8).map(pt => pipedTrackToVoyoTrack(pt, album.name));
-        poolStore.addManyToPool(voyoTracks, 'llm');
-        totalAdded += voyoTracks.length;
+        // GATE: Validate before adding
+        const added = await safeAddManyToPool(voyoTracks, 'llm');
+        totalAdded += added;
       }
     } catch (e) {
       console.warn(`[Gemini Curator] Query failed: ${query}`);

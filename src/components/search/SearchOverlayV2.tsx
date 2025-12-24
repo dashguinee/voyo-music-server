@@ -11,6 +11,7 @@ import { usePlayerStore } from '../../store/playerStore';
 import { Track } from '../../types';
 import { searchMusic, SearchResult } from '../../services/api';
 import { getThumb } from '../../utils/thumbnail';
+import { SmartImage } from '../ui/SmartImage';
 import { TRACKS } from '../../data/tracks';
 import { searchCache } from '../../utils/searchCache';
 import { addSearchResultsToPool } from '../../services/personalization';
@@ -176,17 +177,16 @@ const TrackItem = memo(({
       onClick={() => !isDragging && onSelect(result)}
       whileHover={!isDragging ? { background: 'rgba(255,255,255,0.06)' } : {}}
     >
-      {/* Thumbnail */}
+      {/* Thumbnail - SmartImage with self-healing */}
       <div className="relative w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 bg-gradient-to-br from-purple-900/30 to-pink-900/20">
-        <img
+        <SmartImage
           src={result.thumbnail}
           alt={result.title}
           className="w-full h-full object-cover"
-          loading="lazy"
-          onError={(e) => {
-            const target = e.target as HTMLImageElement;
-            target.style.opacity = '0';
-          }}
+          trackId={result.voyoId}
+          artist={result.artist}
+          title={result.title}
+          lazy={true}
         />
         <motion.div
           className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"

@@ -12,6 +12,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Search, Bell, Play, RefreshCw } from 'lucide-react';
 import { getThumb } from '../../utils/thumbnail';
+import { SmartImage } from '../ui/SmartImage';
 import { TRACKS, VIBES, getHotTracks, Vibe } from '../../data/tracks';
 import { getUserTopTracks, getPoolAwareHotTracks } from '../../services/personalization';
 import { usePlayerStore } from '../../store/playerStore';
@@ -106,7 +107,6 @@ interface TrackCardProps {
 }
 
 const TrackCard = ({ track, onPlay }: TrackCardProps) => {
-  const [imageError, setImageError] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
   return (
@@ -119,11 +119,14 @@ const TrackCard = ({ track, onPlay }: TrackCardProps) => {
       whileTap={{ scale: 0.95 }}
     >
       <div className="relative w-32 h-32 rounded-xl overflow-hidden mb-2 bg-white/5">
-        <img
-          src={imageError ? '/placeholder-album.svg' : getThumb(track.trackId)}
+        {/* SmartImage with self-healing: if thumbnail fails, verifies and fixes */}
+        <SmartImage
+          src={getThumb(track.trackId)}
           alt={track.title}
           className="w-full h-full object-cover"
-          onError={() => setImageError(true)}
+          trackId={track.trackId}
+          artist={track.artist}
+          title={track.title}
         />
         {/* Play button overlay on hover */}
         {isHovered && (

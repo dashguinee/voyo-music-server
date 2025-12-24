@@ -12,6 +12,7 @@ import { Track } from '../types';
 import { searchMusic, SearchResult } from './api';
 import { useTrackPoolStore } from '../store/trackPoolStore';
 import { getThumb } from '../utils/thumbnail';
+import { safeAddToPool } from './trackVerifier';
 
 // Curator Configuration
 const CURATOR_TRIGGER_TRACKS = 5;  // Curate after every 5 tracks
@@ -104,12 +105,15 @@ export async function bootstrapPool(forceFresh: boolean = false): Promise<number
       const results = await searchMusic(query, TRACKS_PER_SEARCH);
       const tracks = results.map(searchResultToTrack);
 
+      // GATE: Validate each track BEFORE adding to pool
+      let addedFromQuery = 0;
       for (const track of tracks) {
-        poolStore.addToPool(track, 'trending');
+        const added = await safeAddToPool(track, 'trending');
+        if (added) addedFromQuery++;
       }
 
-      totalAdded += tracks.length;
-      console.log(`[Pool Curator] ✅ "${query}" → ${tracks.length} tracks`);
+      totalAdded += addedFromQuery;
+      console.log(`[Pool Curator] ✅ "${query}" → ${addedFromQuery}/${tracks.length} tracks (validated)`);
 
       // Small delay to avoid hammering the API
       await new Promise(r => setTimeout(r, 200));
@@ -259,17 +263,17 @@ export async function expandPool(): Promise<number> {
       const results = await searchMusic(query, TRACKS_PER_SEARCH);
       const tracks = results.map(searchResultToTrack);
 
+      // GATE: Validate each track BEFORE adding to pool
       for (const track of tracks) {
-        poolStore.addToPool(track, 'related');
+        const added = await safeAddToPool(track, 'related');
+        if (added) totalAdded++;
       }
-
-      totalAdded += tracks.length;
     } catch (error) {
       console.warn(`[Pool Curator] Expansion query failed: "${query}"`);
     }
   }
 
-  console.log(`[Pool Curator] ✅ Expanded pool with ${totalAdded} tracks`);
+  console.log(`[Pool Curator] ✅ Expanded pool with ${totalAdded} validated tracks`);
 
   triggerRecommendationRefresh();
 

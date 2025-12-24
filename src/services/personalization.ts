@@ -21,6 +21,7 @@ import { TrackPreference, usePreferenceStore } from '../store/preferenceStore';
 import { TRACKS } from '../data/tracks';
 import { useIntentStore, matchTrackToMode, VibeMode, MODE_KEYWORDS } from '../store/intentStore';
 import { useTrackPoolStore, PooledTrack } from '../store/trackPoolStore';
+import { safeAddManyToPool } from './trackVerifier';
 
 // ============================================
 // SCORING WEIGHTS
@@ -719,11 +720,11 @@ export function getPoolAwareDiscoveryTracks(
 /**
  * Add tracks to pool from search results
  * Call this when user searches and plays a track
+ * Validates each track before adding - no bad thumbnails enter
  */
-export function addSearchResultsToPool(tracks: Track[]): void {
-  const poolStore = useTrackPoolStore.getState();
-  poolStore.addManyToPool(tracks, 'search');
-  console.log(`[VOYO Pool] Added ${tracks.length} search results to pool`);
+export async function addSearchResultsToPool(tracks: Track[]): Promise<void> {
+  const added = await safeAddManyToPool(tracks, 'search');
+  console.log(`[VOYO Pool] Added ${added}/${tracks.length} validated search results to pool`);
 }
 
 /**

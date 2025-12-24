@@ -27,6 +27,7 @@ import { useReactionStore, Reaction, ReactionCategory, ReactionType, TrackHotspo
 import { usePlayerStore } from '../../../store/playerStore';
 import { useUniverseStore } from '../../../store/universeStore';
 import { useTrackPoolStore } from '../../../store/trackPoolStore';
+import { safeAddManyToPool } from '../../../services/trackVerifier';
 import { followsAPI } from '../../../lib/supabase';
 import { TRACKS, pipedTrackToVoyoTrack } from '../../../data/tracks';
 import { searchAlbums, getAlbumTracks } from '../../../services/piped';
@@ -891,7 +892,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
   const { recentReactions, fetchRecentReactions, subscribeToReactions, isSubscribed, createReaction, computeHotspots, getCategoryScore, getTopCategories, getHotspots } = useReactionStore();
   const { setCurrentTrack, addToQueue, currentTrack, isPlaying, togglePlay, progress, duration, seekTo, volume, setVolume } = usePlayerStore();
   const { currentUsername } = useUniverseStore();
-  const { hotPool, recordReaction, addManyToPool } = useTrackPoolStore();
+  const { hotPool, recordReaction } = useTrackPoolStore();
 
   // Fetch reactions on mount
   useEffect(() => {
@@ -1039,9 +1040,10 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
           return pipedTrackToVoyoTrack(pt, album.name);
         });
 
-        addManyToPool(voyoTracks, 'related');
-        totalAdded += voyoTracks.length;
-        console.log(`[Feed] ✅ Added ${voyoTracks.length} tracks from "${album.name}"`);
+        // GATE: Validate each track before adding to pool
+        const added = await safeAddManyToPool(voyoTracks, 'related');
+        totalAdded += added;
+        console.log(`[Feed] ✅ Added ${added}/${voyoTracks.length} validated tracks from "${album.name}"`);
       }
 
       if (totalAdded === 0) {
@@ -1068,7 +1070,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
 
     discoveryQueueRef.current = discoveryPromise;
     return discoveryPromise;
-  }, [isDiscovering, discoveryIndex, addManyToPool]);
+  }, [isDiscovering, discoveryIndex]);
 
   // Build feed from ALL tracks, boosted by reactions + For You algorithm
   const trackGroups = useMemo(() => {

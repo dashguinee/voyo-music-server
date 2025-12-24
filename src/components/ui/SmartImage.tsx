@@ -12,6 +12,7 @@ import {
   preloadImage,
 } from '../../utils/imageUtils';
 import { getCachedThumbnail, cacheThumbnail } from '../../hooks/useThumbnailCache';
+import { verifyTrack } from '../../services/trackVerifier';
 
 export interface SmartImageProps {
   src: string;
@@ -23,6 +24,9 @@ export interface SmartImageProps {
   lazy?: boolean; // Enable lazy loading
   onLoad?: () => void;
   onError?: () => void;
+  // Self-healing: If thumbnail fails and we have artist+title, verify and fix
+  artist?: string;
+  title?: string;
 }
 
 type LoadState = 'loading' | 'loaded' | 'error';
@@ -37,6 +41,8 @@ const SmartImageInner: React.FC<SmartImageProps> = ({
   lazy = true,
   onLoad,
   onError,
+  artist,
+  title,
 }) => {
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [currentSrc, setCurrentSrc] = useState<string>('');
@@ -159,14 +165,60 @@ const SmartImageInner: React.FC<SmartImageProps> = ({
         }
       }
 
-      // Step 5: Generate placeholder
+      // Step 5: Self-healing verification OR placeholder as last resort
       if (!cancelled) {
-        const placeholderSrc = generatePlaceholder(alt || 'Track', 400);
-        setCurrentSrc(placeholderSrc);
-        setLoadState('loaded');
-        hasLoadedRef.current = true;
-        prevSrcRef.current = srcKey;
-        onErrorRef.current?.();
+        // SELF-HEALING: If we have artist+title, try verification FIRST
+        // Keep showing loading skeleton while we verify - NO PLACEHOLDER SHOWN
+        if (artist && title && trackId) {
+          console.log(`[SmartImage] 🔧 Self-healing: ${artist} - ${title}`);
+          // Stay in loading state while we verify
+          setLoadState('loading');
+
+          verifyTrack(trackId, artist, title).then(async (newThumbnail) => {
+            if (cancelled) return;
+
+            if (newThumbnail) {
+              // Verification succeeded! Use the real thumbnail
+              console.log(`[SmartImage] ✅ Self-heal succeeded: ${artist} - ${title}`);
+              const success = await preloadImage(newThumbnail);
+              if (success && !cancelled) {
+                setCurrentSrc(newThumbnail);
+                setLoadState('loaded');
+                hasLoadedRef.current = true;
+                prevSrcRef.current = srcKey;
+                if (trackId) cacheThumbnail(trackId, newThumbnail);
+                onLoadRef.current?.();
+                return;
+              }
+            }
+
+            // Verification failed - NOW show placeholder as last resort
+            console.warn(`[SmartImage] ⚠️ Self-heal failed: ${artist} - ${title}`);
+            const placeholderSrc = generatePlaceholder(alt || 'Track', 400);
+            setCurrentSrc(placeholderSrc);
+            setLoadState('loaded');
+            hasLoadedRef.current = true;
+            prevSrcRef.current = srcKey;
+            onErrorRef.current?.();
+          }).catch(() => {
+            if (cancelled) return;
+            // Error during verification - show placeholder
+            const placeholderSrc = generatePlaceholder(alt || 'Track', 400);
+            setCurrentSrc(placeholderSrc);
+            setLoadState('loaded');
+            hasLoadedRef.current = true;
+            prevSrcRef.current = srcKey;
+            onErrorRef.current?.();
+          });
+        } else {
+          // No artist+title - can't self-heal, show placeholder immediately
+          const placeholderSrc = generatePlaceholder(alt || 'Track', 400);
+          setCurrentSrc(placeholderSrc);
+          setLoadState('loaded');
+          hasLoadedRef.current = true;
+          prevSrcRef.current = srcKey;
+          onErrorRef.current?.();
+        }
       }
     };
 
@@ -175,7 +227,7 @@ const SmartImageInner: React.FC<SmartImageProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [src, fallbackSrc, trackId, alt, isInView, currentSrc]);
+  }, [src, fallbackSrc, trackId, alt, isInView, currentSrc, artist, title]);
 
   return (
     <div ref={containerRef} className={`relative overflow-hidden ${className}`}>

@@ -18,6 +18,7 @@ import { searchMusic } from './api';
 import { useTrackPoolStore } from '../store/trackPoolStore';
 import { getThumb } from '../utils/thumbnail';
 import { encodeVoyoId } from '../utils/voyoId';
+import { safeAddToPool } from './trackVerifier';
 import centralDJ, {
   getTracksByMode,
   getTracksByVibe,
@@ -418,14 +419,10 @@ function suggestionToTrack(suggestion: DJSuggestion, youtubeId: string): Track {
  * Every verified track gets saved to Central DB → Next user gets it FREE
  */
 async function processSuggestions(suggestions: DJSuggestion[], dominantMode?: MixBoardMode): Promise<number> {
-  const poolStore = useTrackPoolStore.getState();
   let added = 0;
 
   for (const suggestion of suggestions) {
-    // STEP 1: Try the URL Gemini gave us
-    const geminiId = extractYouTubeId(suggestion.youtubeUrl);
-
-    // STEP 2: ALWAYS verify via backend search (Gemini might hallucinate URLs)
+    // STEP 1: ALWAYS verify via backend search (Gemini might hallucinate URLs)
     // Search for "artist - title" to find the REAL YouTube ID
     const searchQuery = `${suggestion.artist} ${suggestion.title}`;
 
@@ -451,45 +448,29 @@ async function processSuggestions(suggestions: DJSuggestion[], dominantMode?: Mi
           createdAt: new Date().toISOString(),
         };
 
-        poolStore.addToPool(track, 'llm');
-        added++;
+        // GATE: Validate thumbnail BEFORE adding to pool
+        const wasAdded = await safeAddToPool(track, 'llm');
+        if (wasAdded) {
+          added++;
 
-        // ============================================
-        // THE FLYWHEEL: Save to Central DB!
-        // ============================================
-        saveVerifiedTrack(track, undefined, 'gemini').then(saved => {
-          if (saved) {
-            console.log(`[Intelligent DJ] 💾 Saved to Central DB for future users!`);
-          }
-        }).catch(() => {});
+          // THE FLYWHEEL: Save to Central DB!
+          saveVerifiedTrack(track, undefined, 'gemini').then(saved => {
+            if (saved) {
+              console.log(`[Intelligent DJ] 💾 Saved to Central DB for future users!`);
+            }
+          }).catch(() => {});
 
-        console.log(`[Intelligent DJ] ✅ VERIFIED: ${suggestion.artist} - ${suggestion.title}`);
-        console.log(`[Intelligent DJ]    → Found: ${verified.artist} - ${verified.title}`);
-      } else if (geminiId && isValidYouTubeId(geminiId)) {
-        // Fallback: Use Gemini's ID if search fails but ID looks valid
-        const track = suggestionToTrack(suggestion, geminiId);
-        poolStore.addToPool(track, 'llm');
-        added++;
-
-        // Still save to Central DB (unverified)
-        saveVerifiedTrack(track, undefined, 'gemini').catch(() => {});
-
-        console.log(`[Intelligent DJ] ⚠️ UNVERIFIED (using Gemini ID): ${suggestion.artist} - ${suggestion.title}`);
+          console.log(`[Intelligent DJ] ✅ VERIFIED: ${suggestion.artist} - ${suggestion.title}`);
+        } else {
+          console.warn(`[Intelligent DJ] ❌ Thumbnail validation failed: ${suggestion.artist} - ${suggestion.title}`);
+        }
       } else {
+        // NO fallback to unverified Gemini IDs - we only accept verified tracks
         console.warn(`[Intelligent DJ] ❌ Could not verify: ${suggestion.artist} - ${suggestion.title}`);
       }
     } catch (error) {
-      // Search failed, try Gemini's ID as fallback
-      if (geminiId && isValidYouTubeId(geminiId)) {
-        const track = suggestionToTrack(suggestion, geminiId);
-        poolStore.addToPool(track, 'llm');
-        added++;
-
-        // Still save to Central DB
-        saveVerifiedTrack(track, undefined, 'gemini').catch(() => {});
-
-        console.log(`[Intelligent DJ] ⚠️ Search failed, using Gemini ID: ${suggestion.artist} - ${suggestion.title}`);
-      }
+      // Search failed - DO NOT use unverified Gemini IDs
+      console.warn(`[Intelligent DJ] ❌ Search failed for: ${suggestion.artist} - ${suggestion.title}`);
     }
 
     // Small delay between searches to avoid hammering the API
@@ -566,19 +547,23 @@ export async function runDJ(): Promise<number> {
     // We have enough tracks in Central DB - use them!
     console.log(`[Intelligent DJ] ✨ Using ${centralTracks.length} tracks from Central DB (no Gemini call!)`);
 
-    const poolStore = useTrackPoolStore.getState();
     const tracks = centralToTracks(centralTracks);
+    let addedCount = 0;
 
+    // GATE: Still validate each track from Central DB before adding
     for (const track of tracks) {
-      poolStore.addToPool(track, 'related');
+      const wasAdded = await safeAddToPool(track, 'related');
+      if (wasAdded) addedCount++;
     }
+
+    console.log(`[Intelligent DJ] ✨ Added ${addedCount}/${tracks.length} validated tracks from Central DB`);
 
     // Trigger recommendation refresh
     import('../store/playerStore').then(({ usePlayerStore }) => {
       usePlayerStore.getState().refreshRecommendations?.();
     }).catch(() => {});
 
-    return tracks.length;
+    return addedCount;
   }
 
   // ============================================
@@ -644,7 +629,6 @@ async function fallbackToSearch(context: ListeningContext): Promise<number> {
 
   try {
     const results = await searchMusic(query, 10);
-    const poolStore = useTrackPoolStore.getState();
 
     let added = 0;
     for (const result of results) {
@@ -663,8 +647,9 @@ async function fallbackToSearch(context: ListeningContext): Promise<number> {
         createdAt: new Date().toISOString(),
       };
 
-      poolStore.addToPool(track, 'related');
-      added++;
+      // GATE: Validate before adding
+      const wasAdded = await safeAddToPool(track, 'related');
+      if (wasAdded) added++;
     }
 
     return added;

@@ -35,6 +35,7 @@ import './utils/debugIntent';
 // TRACK POOL: Start pool maintenance for dynamic track management
 import { startPoolMaintenance } from './store/trackPoolStore';
 import { bootstrapPool } from './services/poolCurator';
+import { runStartupHeal } from './services/trackVerifier';
 
 // App modes
 type AppMode = 'classic' | 'voyo' | 'video';
@@ -930,6 +931,10 @@ function App() {
       if (count > 0) {
         console.log(`[VOYO] Pool bootstrapped with ${count} fresh tracks`);
       }
+
+      // SELF-HEAL: After bootstrap, verify all thumbnails are valid
+      // This ensures no user ever sees a placeholder
+      runStartupHeal();
     });
 
     // INITIAL REFRESH: Refresh recommendations on app load (after small delay for stores to hydrate)
