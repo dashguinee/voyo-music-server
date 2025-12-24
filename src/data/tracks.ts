@@ -73,11 +73,10 @@ export interface Vibe {
 export const VIBES: Vibe[] = [
   {
     id: 'afro-heat',
-    name: 'AFRO',
-    icon: '🌍',
-    lottie: 'https://assets9.lottiefiles.com/packages/lf20_bhebjzpu.json', // Spinning globe
-    color: '#ec4899',
-    gradient: 'from-pink-500 via-fuchsia-500 to-purple-500',
+    name: 'AFRO HEAT',
+    icon: '🔥',
+    color: '#f97316',
+    gradient: 'from-orange-500 via-red-500 to-amber-600',
     description: 'Afrobeats • Amapiano',
   },
   {
