@@ -73,19 +73,20 @@ export interface Vibe {
 export const VIBES: Vibe[] = [
   {
     id: 'afro-heat',
-    name: 'AFRO HEAT',
-    icon: '🔥',
-    color: '#f97316',
-    gradient: 'from-orange-500 via-red-500 to-amber-600',
+    name: 'AFRO',
+    icon: '🌍',
+    lottie: 'https://assets9.lottiefiles.com/packages/lf20_bhebjzpu.json', // Spinning globe
+    color: '#ec4899',
+    gradient: 'from-pink-500 via-fuchsia-500 to-purple-500',
     description: 'Afrobeats • Amapiano',
   },
   {
     id: 'chill-vibes',
     name: 'CHILL',
-    icon: '🍃',
+    icon: '💜',
     color: '#8b5cf6',
-    gradient: 'from-violet-500 via-purple-600 to-fuchsia-500',
-    description: 'Smooth • Mellow',
+    gradient: 'from-violet-500 via-purple-600 to-purple-700',
+    description: 'Relax & Be',
   },
   {
     id: 'party-mode',
@@ -94,24 +95,23 @@ export const VIBES: Vibe[] = [
     lottie: 'https://assets10.lottiefiles.com/packages/lf20_obhph3sh.json', // Party/confetti animation
     color: '#ec4899',
     gradient: 'from-pink-500 via-rose-500 to-orange-400',
-    description: 'Club • Dance floor',
+    description: 'Get on Da Dance Floor',
   },
   {
     id: 'late-night',
     name: 'LATE NIGHT',
-    icon: '🌙',
+    icon: '🏙️',
     color: '#3b82f6',
     gradient: 'from-indigo-600 via-blue-600 to-purple-700',
-    description: 'Moody • Atmospheric',
+    description: 'City Lights • Vibes',
   },
   {
     id: 'workout',
-    name: 'WORKOUT',
-    icon: '💪',
-    lottie: 'https://assets3.lottiefiles.com/packages/lf20_uwR49r.json', // Flexing arm/muscle animation
-    color: '#22c55e',
-    gradient: 'from-emerald-500 via-green-500 to-teal-500',
-    description: 'High tempo • Energy',
+    name: 'HYPE',
+    icon: '⚡',
+    color: '#f97316',
+    gradient: 'from-orange-400 via-orange-500 to-amber-500',
+    description: 'Pump it UP',
   },
 ];
 
