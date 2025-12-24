@@ -14,7 +14,7 @@ import { useDownloadStore } from '../../store/downloadStore';
 import { usePreferenceStore } from '../../store/preferenceStore';
 import { TRACKS } from '../../data/tracks';
 import { mediaCache } from '../../services/mediaCache';
-import { searchAlbums } from '../../services/api';
+import { searchMusic } from '../../services/api';
 
 interface VoyoSplashProps {
   onComplete: () => void;
@@ -61,7 +61,7 @@ export const VoyoSplash = ({ onComplete, minDuration = 2800 }: VoyoSplashProps) 
         // 3. Pre-fetch trending search results (warm up API cache)
         const trendingQueries = ['afrobeats', 'amapiano', 'burna boy'];
         const searchPromises = trendingQueries.map(query =>
-          searchAlbums(query).catch(() => [])
+          searchMusic(query).catch(() => [])
         );
         Promise.all(searchPromises).then(() => {
           console.log('🎵 SPLASH: ✅ Trending searches warmed up!');

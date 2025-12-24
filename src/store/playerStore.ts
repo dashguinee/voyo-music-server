@@ -122,7 +122,7 @@ interface PlayerStore {
   bufferHealth: number; // 0-100 percentage
   bufferStatus: BufferStatus;  // 'healthy' | 'warning' | 'emergency'
   prefetchStatus: Map<string, PrefetchStatus>; // trackId -> status
-  playbackSource: 'cached' | 'direct' | 'iframe' | null; // VOYO Boost indicator
+  playbackSource: 'cached' | 'direct' | 'iframe' | 'cdn' | null; // VOYO Boost indicator (cdn = background-capable streaming)
 
   // Boost Audio Preset - African Bass with speaker protection
   // 🟡 boosted (Yellow) - Standard warm boost (default)
@@ -220,7 +220,7 @@ interface PlayerStore {
   setNetworkQuality: (quality: NetworkQuality) => void;
   setStreamQuality: (quality: BitrateLevel) => void;
   setBufferHealth: (health: number, status: BufferStatus) => void;
-  setPlaybackSource: (source: 'cached' | 'direct' | 'iframe' | null) => void;
+  setPlaybackSource: (source: 'cached' | 'direct' | 'iframe' | 'cdn' | null) => void;
   setPrefetchStatus: (trackId: string, status: PrefetchStatus) => void;
   detectNetworkQuality: () => void;
   setBoostProfile: (profile: 'boosted' | 'calm' | 'voyex' | 'xtreme') => void;

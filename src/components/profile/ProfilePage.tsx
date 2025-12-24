@@ -12,7 +12,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Play, Pause, Music2, Radio, Lock, Unlock, Eye, Users,
-  ArrowLeft, User, Edit3, Heart, Share2, ExternalLink
+  ArrowLeft, User, Edit3, Heart, Share2, ExternalLink, QrCode, Copy, Check, X
 } from 'lucide-react';
 import { useUniverseStore } from '../../store/universeStore';
 import { usePlayerStore } from '../../store/playerStore';
@@ -47,6 +47,35 @@ export const ProfilePage = () => {
   const [pin, setPin] = useState('');
   const [pinError, setPinError] = useState('');
   const [loadingProfile, setLoadingProfile] = useState(true);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  // Generate profile URL
+  const profileUrl = `${window.location.origin}/${username}`;
+
+  // Copy to clipboard
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Native share
+  const handleShare = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `${profile?.displayName || username}'s VOYO`,
+          text: portalOpen ? 'Listen along with me on VOYO!' : 'Check out my VOYO profile',
+          url: profileUrl,
+        });
+      } catch {
+        // User cancelled or error
+      }
+    } else {
+      setShowShareModal(true);
+    }
+  };
 
   // Check if viewing own profile
   const isOwnProfile = currentUsername?.toLowerCase() === username?.toLowerCase();
@@ -269,6 +298,7 @@ export const ProfilePage = () => {
                   Enter PIN
                 </button>
                 <button
+                  onClick={handleShare}
                   className="px-5 py-2 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold text-sm flex items-center gap-2"
                 >
                   <Share2 className="w-4 h-4" />
@@ -494,6 +524,104 @@ export const ProfilePage = () => {
                   className="flex-1 py-3 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold disabled:opacity-50"
                 >
                   {isLoading ? 'Verifying...' : 'Unlock'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Share Modal with QR Code */}
+      <AnimatePresence>
+        {showShareModal && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center p-6"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            {/* Backdrop */}
+            <motion.div
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setShowShareModal(false)}
+            />
+
+            {/* Modal */}
+            <motion.div
+              className="relative w-full max-w-sm bg-gradient-to-b from-[#1a1a2e] to-[#0f0f16] rounded-3xl border border-purple-500/20 p-6"
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+            >
+              {/* Close button */}
+              <button
+                onClick={() => setShowShareModal(false)}
+                className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20"
+              >
+                <X className="w-4 h-4 text-white/70" />
+              </button>
+
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                  <QrCode className="w-8 h-8 text-white" />
+                </div>
+                <h2 className="text-xl font-bold text-white mb-1">Share Profile</h2>
+                <p className="text-white/50 text-sm">
+                  {portalOpen ? 'Invite friends to listen along!' : `Share @${username}'s profile`}
+                </p>
+              </div>
+
+              {/* QR Code */}
+              <div className="p-4 rounded-xl bg-white mx-auto w-48 h-48 mb-4">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(profileUrl)}&bgcolor=ffffff&color=7c3aed&format=svg`}
+                  alt="Profile QR Code"
+                  className="w-full h-full"
+                />
+              </div>
+
+              {/* URL Display */}
+              <div className="p-3 rounded-xl bg-black/30 border border-white/10 mb-4">
+                <div className="flex items-center justify-between">
+                  <code className="text-white/80 text-sm truncate flex-1 mr-2">
+                    voyomusic.com/{username}
+                  </code>
+                  <button
+                    onClick={() => handleCopy(profileUrl)}
+                    className="p-2 rounded-lg bg-white/10 hover:bg-white/20"
+                  >
+                    {copied ? (
+                      <Check className="w-4 h-4 text-green-400" />
+                    ) : (
+                      <Copy className="w-4 h-4 text-white/70" />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => handleCopy(profileUrl)}
+                  className="py-3 rounded-xl bg-white/10 text-white font-semibold flex items-center justify-center gap-2"
+                >
+                  <Copy className="w-4 h-4" />
+                  Copy Link
+                </button>
+                <button
+                  onClick={() => {
+                    if (navigator.share) {
+                      navigator.share({
+                        title: `${profile?.displayName || username}'s VOYO`,
+                        text: portalOpen ? 'Listen along with me!' : 'Check out my VOYO',
+                        url: profileUrl,
+                      });
+                    }
+                  }}
+                  className="py-3 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold flex items-center justify-center gap-2"
+                >
+                  <Share2 className="w-4 h-4" />
+                  Share
                 </button>
               </div>
             </motion.div>

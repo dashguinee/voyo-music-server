@@ -651,20 +651,65 @@ export const AudioPlayer = () => {
           return;
         }
 
-        // 2. NOT CACHED - Use IFrame for instant playback
-        // User can click "⚡ Boost HD" to download for next time
+        // 2. NOT CACHED - Try CDN audio streaming first (supports background playback)
+        // Falls back to iframe only if CDN fails
+        console.log('🎵 AudioPlayer: Trying CDN audio stream for background playback support');
 
-        // Stop audio element if it was playing previous cached track
-        if (audioRef.current) {
-          audioRef.current.pause();
-          audioRef.current.src = '';
+        // Stop iframe if it was playing previous track
+        if (playerRef.current) {
+          try {
+            playerRef.current.stopVideo();
+            playerRef.current.destroy();
+            playerRef.current = null;
+          } catch (e) {
+            // Ignore errors during cleanup
+          }
         }
 
-        setPlaybackMode('iframe');
-        setPlaybackSource('iframe');
+        const cdnStreamUrl = `${API_BASE}/cdn/stream/${currentTrack.trackId}?type=audio&quality=medium`;
 
-        const ytId = getYouTubeIdForIframe(currentTrack.trackId);
-        initIframePlayer(ytId);
+        // Try CDN audio stream first (enables background playback)
+        setPlaybackMode('cached'); // Use audio element, not iframe
+        setPlaybackSource('cdn');
+
+        if (audioRef.current) {
+          audioRef.current.src = cdnStreamUrl;
+          audioRef.current.load();
+
+          audioRef.current.oncanplaythrough = () => {
+            if (audioRef.current && isPlaying) {
+              audioRef.current.play().then(() => {
+                audioRef.current!.volume = volume;
+                // Record play event
+                if (!hasRecordedPlayRef.current && currentTrack) {
+                  hasRecordedPlayRef.current = true;
+                  recordPoolEngagement(currentTrack.trackId, 'play');
+                  useTrackPoolStore.getState().recordPlay(currentTrack.trackId);
+                  recordTrackInSession(currentTrack, 0, false, false);
+                  djRecordPlay(currentTrack, false, false);
+                  oyoOnTrackPlay(currentTrack, previousTrackRef.current || undefined);
+                  previousTrackRef.current = currentTrack;
+                }
+              }).catch(err => {
+                // CDN failed, fall back to iframe
+                console.warn('[VOYO] CDN stream failed, falling back to iframe:', err.message);
+                setPlaybackMode('iframe');
+                setPlaybackSource('iframe');
+                const ytId = getYouTubeIdForIframe(currentTrack.trackId);
+                initIframePlayer(ytId);
+              });
+            }
+          };
+
+          audioRef.current.onerror = () => {
+            // CDN failed, fall back to iframe
+            console.warn('[VOYO] CDN stream error, falling back to iframe');
+            setPlaybackMode('iframe');
+            setPlaybackSource('iframe');
+            const ytId = getYouTubeIdForIframe(currentTrack.trackId);
+            initIframePlayer(ytId);
+          };
+        }
 
       } catch (error: any) {
         // Check if aborted

@@ -822,8 +822,17 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
                   {isPortalOpen && portalUrl && (
                     <>
                       <div className="p-4 rounded-xl bg-white/5 border border-white/10 text-center">
-                        <div className="w-32 h-32 mx-auto bg-white rounded-xl flex items-center justify-center mb-3">
-                          <QrCode className="w-16 h-16 text-black/50" />
+                        <div className="w-40 h-40 mx-auto bg-white rounded-xl overflow-hidden flex items-center justify-center mb-3 p-2">
+                          <img
+                            src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(portalUrl)}&bgcolor=ffffff&color=7c3aed&format=svg`}
+                            alt="Portal QR Code"
+                            className="w-full h-full"
+                            onError={(e) => {
+                              // Fallback to icon if QR fails to load
+                              e.currentTarget.style.display = 'none';
+                              e.currentTarget.parentElement?.classList.add('qr-fallback');
+                            }}
+                          />
                         </div>
                         <p className="text-white/50 text-sm">Scan to join portal</p>
                       </div>
