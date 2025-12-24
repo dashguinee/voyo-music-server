@@ -45,7 +45,7 @@ const celebrities = [
     name: 'Burna Boy',
     avatar: CELEBRITY_AVATARS.burna,
     verified: true,
-    latestRelease: { title: 'Last Last', thumbnail: 'https://i.ytimg.com/vi/VLW1ieN9Cg8/maxresdefault.jpg' },
+    latestRelease: { title: 'Last Last', thumbnail: 'https://i.ytimg.com/vi/VLW1ieN9Cg8/hqdefault.jpg' },
     isLive: false,
   },
   {
@@ -53,7 +53,7 @@ const celebrities = [
     name: 'Wizkid',
     avatar: CELEBRITY_AVATARS.wizkid,
     verified: true,
-    latestRelease: { title: 'Essence', thumbnail: 'https://i.ytimg.com/vi/GqAYPiCWLgU/maxresdefault.jpg' },
+    latestRelease: { title: 'Essence', thumbnail: 'https://i.ytimg.com/vi/GqAYPiCWLgU/hqdefault.jpg' },
     isLive: true,
   },
   {
@@ -61,7 +61,7 @@ const celebrities = [
     name: 'Rema',
     avatar: CELEBRITY_AVATARS.rema,
     verified: true,
-    latestRelease: { title: 'Calm Down', thumbnail: 'https://i.ytimg.com/vi/WcIcVapfqXw/maxresdefault.jpg' },
+    latestRelease: { title: 'Calm Down', thumbnail: 'https://i.ytimg.com/vi/WcIcVapfqXw/hqdefault.jpg' },
     isLive: false,
   },
   {
@@ -69,7 +69,7 @@ const celebrities = [
     name: 'Tems',
     avatar: CELEBRITY_AVATARS.tems,
     verified: true,
-    latestRelease: { title: 'Free Mind', thumbnail: 'https://i.ytimg.com/vi/k0Hg9Xhdq-0/maxresdefault.jpg' },
+    latestRelease: { title: 'Free Mind', thumbnail: 'https://i.ytimg.com/vi/k0Hg9Xhdq-0/hqdefault.jpg' },
     isLive: false,
   },
 ];
@@ -91,7 +91,7 @@ const friends = [
     hasStory: true,
     isOnline: true,
     storyPreview: STORY_PREVIEWS.aziz,
-    nowPlaying: { title: 'Last Last', artist: 'Burna Boy', thumbnail: 'https://i.ytimg.com/vi/VLW1ieN9Cg8/maxresdefault.jpg' },
+    nowPlaying: { title: 'Last Last', artist: 'Burna Boy', thumbnail: 'https://i.ytimg.com/vi/VLW1ieN9Cg8/hqdefault.jpg' },
   },
   {
     id: 'kenza',
@@ -100,7 +100,7 @@ const friends = [
     hasStory: true,
     isOnline: true,
     storyPreview: STORY_PREVIEWS.kenza,
-    nowPlaying: { title: 'Essence', artist: 'Wizkid', thumbnail: 'https://i.ytimg.com/vi/GqAYPiCWLgU/maxresdefault.jpg' },
+    nowPlaying: { title: 'Essence', artist: 'Wizkid', thumbnail: 'https://i.ytimg.com/vi/GqAYPiCWLgU/hqdefault.jpg' },
   },
   {
     id: 'omar',
@@ -118,7 +118,7 @@ const friends = [
     hasStory: true,
     isOnline: true,
     storyPreview: STORY_PREVIEWS.sarah,
-    nowPlaying: { title: 'Calm Down', artist: 'Rema', thumbnail: 'https://i.ytimg.com/vi/WcIcVapfqXw/maxresdefault.jpg' },
+    nowPlaying: { title: 'Calm Down', artist: 'Rema', thumbnail: 'https://i.ytimg.com/vi/WcIcVapfqXw/hqdefault.jpg' },
   },
   {
     id: 'youssef',
@@ -137,19 +137,19 @@ const friendStories: Record<string, {
 }> = {
   'aziz': {
     content: [
-      { type: 'now_playing', track: { title: 'Last Last', artist: 'Burna Boy', thumbnail: 'https://i.ytimg.com/vi/VLW1ieN9Cg8/maxresdefault.jpg' } },
+      { type: 'now_playing', track: { title: 'Last Last', artist: 'Burna Boy', thumbnail: 'https://i.ytimg.com/vi/VLW1ieN9Cg8/hqdefault.jpg' } },
       { type: 'image', url: STORY_PREVIEWS.aziz },
     ]
   },
   'kenza': {
     content: [
-      { type: 'now_playing', track: { title: 'Essence', artist: 'Wizkid ft. Tems', thumbnail: 'https://i.ytimg.com/vi/GqAYPiCWLgU/maxresdefault.jpg' } },
+      { type: 'now_playing', track: { title: 'Essence', artist: 'Wizkid ft. Tems', thumbnail: 'https://i.ytimg.com/vi/GqAYPiCWLgU/hqdefault.jpg' } },
       { type: 'image', url: STORY_PREVIEWS.kenza },
     ]
   },
   'sarah': {
     content: [
-      { type: 'now_playing', track: { title: 'Calm Down', artist: 'Rema', thumbnail: 'https://i.ytimg.com/vi/WcIcVapfqXw/maxresdefault.jpg' } },
+      { type: 'now_playing', track: { title: 'Calm Down', artist: 'Rema', thumbnail: 'https://i.ytimg.com/vi/WcIcVapfqXw/hqdefault.jpg' } },
       { type: 'image', url: STORY_PREVIEWS.sarah },
     ]
   },
@@ -445,7 +445,7 @@ export const Hub = ({ onOpenProfile }: HubProps) => {
           <div className="flex items-center gap-2 z-10">
             {/* Current */}
             <div className="relative w-14 h-14 rounded-xl overflow-hidden shadow-lg ring-1 ring-white/[0.1]">
-              <img src="https://i.ytimg.com/vi/VLW1ieN9Cg8/maxresdefault.jpg" alt="" className="w-full h-full object-cover" />
+              <img src="https://i.ytimg.com/vi/VLW1ieN9Cg8/hqdefault.jpg" alt="" className="w-full h-full object-cover" />
               <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
               <div className="absolute top-1.5 left-1.5 flex gap-0.5">
                 {[...Array(3)].map((_, i) => (
@@ -460,7 +460,7 @@ export const Hub = ({ onOpenProfile }: HubProps) => {
             </div>
             {/* Next */}
             <div className="relative w-11 h-11 rounded-lg overflow-hidden opacity-50 ring-1 ring-white/[0.05]">
-              <img src="https://i.ytimg.com/vi/GqAYPiCWLgU/maxresdefault.jpg" alt="" className="w-full h-full object-cover" />
+              <img src="https://i.ytimg.com/vi/GqAYPiCWLgU/hqdefault.jpg" alt="" className="w-full h-full object-cover" />
             </div>
             {/* Account Icon */}
             <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center ml-1">
