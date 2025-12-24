@@ -6,7 +6,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform, PanInfo } from 'framer-motion';
-import { Search, X, Loader2, Music2, Clock, Play, Plus, ListPlus, Compass, Disc3 } from 'lucide-react';
+import { Search, X, Loader2, Music2, Clock, Play, Plus, ListPlus, Compass, Disc3, Sparkles } from 'lucide-react';
 import { usePlayerStore } from '../../store/playerStore';
 import { Track } from '../../types';
 import { searchMusic, SearchResult } from '../../services/api';
@@ -15,6 +15,7 @@ import { TRACKS } from '../../data/tracks';
 import { searchCache } from '../../utils/searchCache';
 import { addSearchResultsToPool } from '../../services/personalization';
 import { AlbumSection } from './AlbumSection';
+import { VibesSection } from './VibesSection';
 
 interface SearchOverlayProps {
   isOpen: boolean;
@@ -251,7 +252,7 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<'tracks' | 'albums'>('tracks');
+  const [activeTab, setActiveTab] = useState<'tracks' | 'albums' | 'vibes'>('tracks');
 
   // Portal zone state
   const [activeZone, setActiveZone] = useState<'queue' | 'discovery' | null>(null);
@@ -625,43 +626,57 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
                   {isSearching && <Loader2 className="w-5 h-5 text-purple-400 animate-spin" />}
                 </div>
 
-                {/* Tab Switcher */}
-                {query.length >= 3 && (
-                  <div className="flex gap-2 mt-3">
-                    <motion.button
-                      className="flex-1 py-2 rounded-xl text-sm font-medium transition-colors"
-                      style={{
-                        background: activeTab === 'tracks'
-                          ? 'linear-gradient(135deg, rgba(139,92,246,0.3) 0%, rgba(168,85,247,0.2) 100%)'
-                          : 'rgba(255,255,255,0.03)',
-                        border: `1px solid ${activeTab === 'tracks' ? 'rgba(139,92,246,0.4)' : 'rgba(255,255,255,0.08)'}`,
-                        color: activeTab === 'tracks' ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.5)',
-                      }}
-                      onClick={() => setActiveTab('tracks')}
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                    >
-                      <Music2 className="w-4 h-4 inline-block mr-1.5" />
-                      Tracks
-                    </motion.button>
-                    <motion.button
-                      className="flex-1 py-2 rounded-xl text-sm font-medium transition-colors"
-                      style={{
-                        background: activeTab === 'albums'
-                          ? 'linear-gradient(135deg, rgba(139,92,246,0.3) 0%, rgba(168,85,247,0.2) 100%)'
-                          : 'rgba(255,255,255,0.03)',
-                        border: `1px solid ${activeTab === 'albums' ? 'rgba(139,92,246,0.4)' : 'rgba(255,255,255,0.08)'}`,
-                        color: activeTab === 'albums' ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.5)',
-                      }}
-                      onClick={() => setActiveTab('albums')}
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                    >
-                      <Disc3 className="w-4 h-4 inline-block mr-1.5" />
-                      Albums
-                    </motion.button>
-                  </div>
-                )}
+                {/* Tab Switcher - Always show to access Vibes */}
+                <div className="flex gap-2 mt-3">
+                  <motion.button
+                    className="flex-1 py-2 rounded-xl text-sm font-medium transition-colors"
+                    style={{
+                      background: activeTab === 'tracks'
+                        ? 'linear-gradient(135deg, rgba(139,92,246,0.3) 0%, rgba(168,85,247,0.2) 100%)'
+                        : 'rgba(255,255,255,0.03)',
+                      border: `1px solid ${activeTab === 'tracks' ? 'rgba(139,92,246,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                      color: activeTab === 'tracks' ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.5)',
+                    }}
+                    onClick={() => setActiveTab('tracks')}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <Music2 className="w-4 h-4 inline-block mr-1.5" />
+                    Tracks
+                  </motion.button>
+                  <motion.button
+                    className="flex-1 py-2 rounded-xl text-sm font-medium transition-colors"
+                    style={{
+                      background: activeTab === 'albums'
+                        ? 'linear-gradient(135deg, rgba(139,92,246,0.3) 0%, rgba(168,85,247,0.2) 100%)'
+                        : 'rgba(255,255,255,0.03)',
+                      border: `1px solid ${activeTab === 'albums' ? 'rgba(139,92,246,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                      color: activeTab === 'albums' ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.5)',
+                    }}
+                    onClick={() => setActiveTab('albums')}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <Disc3 className="w-4 h-4 inline-block mr-1.5" />
+                    Albums
+                  </motion.button>
+                  <motion.button
+                    className="flex-1 py-2 rounded-xl text-sm font-medium transition-colors"
+                    style={{
+                      background: activeTab === 'vibes'
+                        ? 'linear-gradient(135deg, rgba(236,72,153,0.3) 0%, rgba(139,92,246,0.2) 100%)'
+                        : 'rgba(255,255,255,0.03)',
+                      border: `1px solid ${activeTab === 'vibes' ? 'rgba(236,72,153,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                      color: activeTab === 'vibes' ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.5)',
+                    }}
+                    onClick={() => setActiveTab('vibes')}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <Sparkles className="w-4 h-4 inline-block mr-1.5" />
+                    Vibes
+                  </motion.button>
+                </div>
               </div>
 
               {/* Results List */}
@@ -669,6 +684,11 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
                 {/* Album Section */}
                 {activeTab === 'albums' && (
                   <AlbumSection query={query} isVisible={true} />
+                )}
+
+                {/* Vibes Section */}
+                {activeTab === 'vibes' && (
+                  <VibesSection query={query} isVisible={true} />
                 )}
 
                 {/* Track Results */}
