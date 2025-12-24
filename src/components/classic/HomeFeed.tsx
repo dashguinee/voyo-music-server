@@ -203,12 +203,19 @@ const VibeCard = ({ vibe, onSelect }: VibeCardProps) => (
 
       {/* Content */}
       <div className="relative z-10 h-full flex flex-col items-center justify-center p-2">
-        {/* Animated Lottie icon with emoji fallback */}
+        {/* Animated Lottie icon with emoji fallback + gentle pulse for CHILL */}
         <motion.div
           className="drop-shadow-lg mb-1"
           style={{ filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.3))' }}
           whileHover={{ scale: 1.2, rotate: [0, -10, 10, 0] }}
-          transition={{ duration: 0.4 }}
+          animate={vibe.id === 'chill-vibes' && !vibe.lottie ? {
+            scale: [1, 1.1, 1],
+          } : {}}
+          transition={vibe.id === 'chill-vibes' && !vibe.lottie ? {
+            duration: 2,
+            repeat: Infinity,
+            ease: 'easeInOut',
+          } : { duration: 0.4 }}
         >
           <LottieIcon
             lottieUrl={vibe.lottie}
@@ -419,15 +426,24 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub }: HomeFeedProps) => {
       )}
 
       {/* Browse by Vibes (matches MixBoard + database) */}
-      <Shelf title="Browse by Vibes">
-        {vibes.map((vibe) => (
-          <VibeCard
-            key={vibe.id}
-            vibe={vibe}
-            onSelect={() => handleVibeSelect(vibe)}
-          />
-        ))}
-      </Shelf>
+      <div className="relative -mx-4 px-4 py-6">
+        {/* Gradient fade background - prominent at bottom, fades to top */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background: 'linear-gradient(to top, rgba(139, 92, 246, 0.25) 0%, rgba(139, 92, 246, 0.15) 30%, rgba(139, 92, 246, 0.05) 60%, transparent 100%)',
+          }}
+        />
+        <Shelf title="Browse by Vibes">
+          {vibes.map((vibe) => (
+            <VibeCard
+              key={vibe.id}
+              vibe={vibe}
+              onSelect={() => handleVibeSelect(vibe)}
+            />
+          ))}
+        </Shelf>
+      </div>
 
       {/* New Releases */}
       <Shelf title="New Releases">
