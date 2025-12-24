@@ -427,20 +427,12 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub }: HomeFeedProps) => {
 
       {/* Browse by Vibes (matches MixBoard + database) */}
       <div className="relative -mx-4 px-4 pt-6 pb-10">
-        {/* TOP fade - dark to purple (going down) */}
+        {/* Gradient fade background - lower so card tops pop into dark */}
         <div
-          className="absolute left-0 right-0 top-0 pointer-events-none"
+          className="absolute left-0 right-0 bottom-0 pointer-events-none rounded-t-[32px]"
           style={{
-            height: '50%',
-            background: 'linear-gradient(to bottom, transparent 0%, rgba(139, 92, 246, 0.08) 40%, rgba(139, 92, 246, 0.25) 80%, rgba(139, 92, 246, 0.4) 100%)',
-          }}
-        />
-        {/* BOTTOM fade - purple to dark (going down) */}
-        <div
-          className="absolute left-0 right-0 bottom-0 pointer-events-none"
-          style={{
-            height: '50%',
-            background: 'linear-gradient(to bottom, rgba(139, 92, 246, 0.4) 0%, rgba(139, 92, 246, 0.25) 20%, rgba(139, 92, 246, 0.08) 60%, transparent 100%)',
+            height: '65%',
+            background: 'linear-gradient(to top, rgba(139, 92, 246, 0.4) 0%, rgba(139, 92, 246, 0.25) 40%, rgba(139, 92, 246, 0.08) 80%, transparent 100%)',
           }}
         />
         <div className="relative z-10">
