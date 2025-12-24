@@ -147,9 +147,6 @@ export function OyoIsland({ visible, onHide, onActivity }: OyoIslandProps) {
     }
   }, [lyrics, currentTime]);
 
-  // Don't render if not visible
-  if (!visible) return null;
-
   // Voice search handler - THE SHAZAM KILLER
   const handleVoiceSearch = useCallback(async () => {
     if (!isWhisperConfigured()) {
@@ -308,6 +305,9 @@ export function OyoIsland({ visible, onHide, onActivity }: OyoIslandProps) {
     setMode('collapsed');
     // Timer will auto-start via useEffect
   }, []);
+
+  // Don't render if not visible
+  if (!visible) return null;
 
   // Render based on mode
   return (

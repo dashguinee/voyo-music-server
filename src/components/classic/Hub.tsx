@@ -10,10 +10,13 @@ import {
   Send, Heart, ChevronRight, BadgeCheck, Music2, User
 } from 'lucide-react';
 import { UniversePanel } from '../universe/UniversePanel';
+import { usePlayerStore } from '../../store/playerStore';
+import { getYouTubeThumbnail } from '../../data/tracks';
 
 // Premium avatar images
+// TODO: Replace dash with actual profile photo when available
 const AVATARS = {
-  dash: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=face',
+  dash: '/dash-profile.jpg', // Your profile - add image to public folder
   aziz: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=200&h=200&fit=crop&crop=face',
   kenza: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop&crop=face',
   omar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop&crop=face',
@@ -29,13 +32,13 @@ const STORY_PREVIEWS = {
   omar: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&h=600&fit=crop',
 };
 
-// Celebrity/Artist avatars for Following section
+// Artist avatars - use their track thumbnails (already verified working)
 const CELEBRITY_AVATARS = {
-  burna: 'https://images.unsplash.com/photo-1499714608240-22fc6ad53fb2?w=200&h=200&fit=crop&crop=face',
-  wizkid: 'https://images.unsplash.com/photo-1546456073-92b9f0a8d413?w=200&h=200&fit=crop&crop=face',
-  rema: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=200&h=200&fit=crop&crop=face',
-  tems: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=200&h=200&fit=crop&crop=face',
-  davido: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=face',
+  burna: 'https://i.ytimg.com/vi/421w1j87fEM/hqdefault.jpg', // Last Last (REAL)
+  wizkid: 'https://i.ytimg.com/vi/jipQpjUA_o8/hqdefault.jpg', // Essence
+  rema: 'https://i.ytimg.com/vi/WcIcVapfqXw/hqdefault.jpg', // Calm Down
+  tems: 'https://i.ytimg.com/vi/VDcEJE633rM/hqdefault.jpg', // Free Mind
+  davido: 'https://i.ytimg.com/vi/iL3IEkCs-NA/hqdefault.jpg', // Fall
 };
 
 // Celebrities/Artists the user follows
@@ -45,7 +48,7 @@ const celebrities = [
     name: 'Burna Boy',
     avatar: CELEBRITY_AVATARS.burna,
     verified: true,
-    latestRelease: { title: 'Last Last', thumbnail: 'https://i.ytimg.com/vi/eWD4715QJ0I/hqdefault.jpg' },
+    latestRelease: { title: 'Last Last', thumbnail: 'https://i.ytimg.com/vi/421w1j87fEM/hqdefault.jpg' },
     isLive: false,
   },
   {
@@ -91,7 +94,7 @@ const friends = [
     hasStory: true,
     isOnline: true,
     storyPreview: STORY_PREVIEWS.aziz,
-    nowPlaying: { title: 'Last Last', artist: 'Burna Boy', thumbnail: 'https://i.ytimg.com/vi/eWD4715QJ0I/hqdefault.jpg' },
+    nowPlaying: { title: 'Last Last', artist: 'Burna Boy', thumbnail: 'https://i.ytimg.com/vi/421w1j87fEM/hqdefault.jpg' },
   },
   {
     id: 'kenza',
@@ -137,7 +140,7 @@ const friendStories: Record<string, {
 }> = {
   'aziz': {
     content: [
-      { type: 'now_playing', track: { title: 'Last Last', artist: 'Burna Boy', thumbnail: 'https://i.ytimg.com/vi/eWD4715QJ0I/hqdefault.jpg' } },
+      { type: 'now_playing', track: { title: 'Last Last', artist: 'Burna Boy', thumbnail: 'https://i.ytimg.com/vi/421w1j87fEM/hqdefault.jpg' } },
       { type: 'image', url: STORY_PREVIEWS.aziz },
     ]
   },
@@ -366,9 +369,6 @@ interface HubProps {
   onOpenProfile?: () => void;
 }
 
-// User's current listening (for auto-fill note)
-const myNowPlaying = { title: 'Last Last', artist: 'Burna Boy' };
-
 export const Hub = ({ onOpenProfile }: HubProps) => {
   const [selectedFriend, setSelectedFriend] = useState<typeof friends[0] | null>(null);
   const [myNote, setMyNote] = useState('');
@@ -376,6 +376,11 @@ export const Hub = ({ onOpenProfile }: HubProps) => {
   const [noteInput, setNoteInput] = useState('');
   const [messageTab, setMessageTab] = useState<'all' | 'unread' | 'stories'>('all');
   const [isUniverseOpen, setIsUniverseOpen] = useState(false);
+
+  // Connect to real player state
+  const { currentTrack, queue } = usePlayerStore();
+  const myNowPlaying = currentTrack ? { title: currentTrack.title, artist: currentTrack.artist } : null;
+  const nextTrack = queue[0] || null;
 
   // Auto-fill note with what I'm listening to if empty
   const displayNote = myNote || (myNowPlaying ? `♪ ${myNowPlaying.title}` : '');
@@ -443,25 +448,35 @@ export const Hub = ({ onOpenProfile }: HubProps) => {
 
           {/* Timeline Preview - Right */}
           <div className="flex items-center gap-2 z-10">
-            {/* Current */}
-            <div className="relative w-14 h-14 rounded-xl overflow-hidden shadow-lg ring-1 ring-white/[0.1]">
-              <img src="https://i.ytimg.com/vi/eWD4715QJ0I/hqdefault.jpg" alt="" className="w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
-              <div className="absolute top-1.5 left-1.5 flex gap-0.5">
-                {[...Array(3)].map((_, i) => (
-                  <motion.div
-                    key={i}
-                    className="w-0.5 bg-white rounded-full shadow-sm"
-                    animate={{ height: [4, 10, 4] }}
-                    transition={{ duration: 0.5, repeat: Infinity, delay: i * 0.12, ease: "easeInOut" }}
-                  />
-                ))}
+            {/* Current Track */}
+            {currentTrack?.trackId ? (
+              <div className="relative w-14 h-14 rounded-xl overflow-hidden shadow-lg ring-1 ring-white/[0.1]">
+                <img src={getYouTubeThumbnail(currentTrack.trackId, 'medium')} alt="" className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+                <div className="absolute top-1.5 left-1.5 flex gap-0.5">
+                  {[...Array(3)].map((_, i) => (
+                    <motion.div
+                      key={i}
+                      className="w-0.5 bg-white rounded-full shadow-sm"
+                      animate={{ height: [4, 10, 4] }}
+                      transition={{ duration: 0.5, repeat: Infinity, delay: i * 0.12, ease: "easeInOut" }}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-            {/* Next */}
-            <div className="relative w-11 h-11 rounded-lg overflow-hidden opacity-50 ring-1 ring-white/[0.05]">
-              <img src="https://i.ytimg.com/vi/jipQpjUA_o8/hqdefault.jpg" alt="" className="w-full h-full object-cover" />
-            </div>
+            ) : (
+              <div className="w-14 h-14 rounded-xl bg-white/5 flex items-center justify-center ring-1 ring-white/[0.1]">
+                <Music2 className="w-6 h-6 text-white/30" />
+              </div>
+            )}
+            {/* Next in Queue */}
+            {nextTrack?.trackId ? (
+              <div className="relative w-11 h-11 rounded-lg overflow-hidden opacity-50 ring-1 ring-white/[0.05]">
+                <img src={getYouTubeThumbnail(nextTrack.trackId, 'medium')} alt="" className="w-full h-full object-cover" />
+              </div>
+            ) : (
+              <div className="w-11 h-11 rounded-lg bg-white/5 opacity-50 ring-1 ring-white/[0.05]" />
+            )}
             {/* Account Icon */}
             <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center ml-1">
               <User className="w-4 h-4 text-white/60" />

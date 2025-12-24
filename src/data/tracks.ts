@@ -238,8 +238,8 @@ export const TRACKS: Track[] = [
     title: 'Last Last',
     artist: 'Burna Boy',
     album: 'Love, Damini',
-    trackId: 'RQdxHi4_Pvc',
-    coverUrl: getThumbnailUrl('RQdxHi4_Pvc'),
+    trackId: '421w1j87fEM',
+    coverUrl: getThumbnailUrl('421w1j87fEM'),
     duration: 185,
     tags: ['afrobeats', 'heartbreak', 'party'],
     mood: 'heartbreak',
@@ -485,6 +485,23 @@ export const TRACKS: Track[] = [
     region: 'NG',
     oyeScore: 38000000,
     createdAt: '2019-09-05',
+  },
+  // ============================================
+  // PODCASTS / TALKS
+  // ============================================
+  {
+    id: 'podcast-1',
+    title: 'The Universal S',
+    artist: 'LEMMiNO',
+    album: 'VOYO Podcasts',
+    trackId: 'RQdxHi4_Pvc',
+    coverUrl: getThumbnailUrl('RQdxHi4_Pvc'),
+    duration: 1128,
+    tags: ['podcast', 'documentary', 'mystery', 'design'],
+    mood: 'chill',
+    region: 'GLOBAL',
+    oyeScore: 1000,
+    createdAt: '2024-12-25',
   },
 ];
 

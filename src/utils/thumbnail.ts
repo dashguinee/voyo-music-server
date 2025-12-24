@@ -19,6 +19,11 @@ const QUALITY_MAP: Record<ThumbnailQuality, string> = {
  * @param quality - Thumbnail quality level
  */
 export const getThumb = (trackId: string, quality: ThumbnailQuality = 'high'): string => {
+  // Guard against undefined/null trackId
+  if (!trackId) {
+    return '/placeholder-album.svg';
+  }
+
   // Decode VOYO ID if needed
   let ytId = trackId;
   if (trackId.startsWith('vyo_')) {
