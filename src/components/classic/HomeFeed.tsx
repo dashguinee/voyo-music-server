@@ -266,10 +266,12 @@ const VibeCard = ({ vibe, onSelect, index }: VibeCardProps) => (
           {vibe.id === 'late-night' && (
             <motion.div
               style={{ display: 'inline-block' }}
+              animate={{ opacity: [0.7, 1, 0.7] }}
+              transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
               whileHover={{ scale: 1.1 }}
             >
               <LottieIcon
-                lottieUrl="/lottie/night-clear.json"
+                lottieUrl="/lottie/night-mist.json"
                 fallbackEmoji="🌙"
                 size={48}
                 loop={true}
@@ -280,10 +282,10 @@ const VibeCard = ({ vibe, onSelect, index }: VibeCardProps) => (
             <motion.div
               style={{ display: 'inline-block' }}
               animate={{
-                scale: [1, 1.2, 1, 1.15, 1],
-                x: [-2, 2, -2, 2, 0],
+                scale: [1, 1.08, 1],
+                opacity: [0.9, 1, 0.9],
               }}
-              transition={{ duration: 0.6, repeat: Infinity, ease: 'easeInOut' }}
+              transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
             >
               ⚡
             </motion.div>
