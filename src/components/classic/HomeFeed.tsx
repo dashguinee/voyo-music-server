@@ -485,7 +485,7 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub }: HomeFeedProps) => {
   const hasPreferences = heavyRotation.length > 0;
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto pb-32 scrollbar-hide">
+    <div className="flex flex-col h-full overflow-y-auto pb-44 scrollbar-hide">
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-3 sticky top-0 bg-[#0a0a0f]/95 backdrop-blur-lg z-10">
         {/* Profile Avatar → DAHUB */}

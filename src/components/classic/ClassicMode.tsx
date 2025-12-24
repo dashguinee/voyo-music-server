@@ -8,7 +8,7 @@
  * - Library
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Home, Radio, Library as LibraryIcon, Users } from 'lucide-react';
 import { HomeFeed } from './HomeFeed';
@@ -30,6 +30,15 @@ interface ClassicModeProps {
 // Mini Player (shown at bottom when a track is playing)
 const MiniPlayer = ({ onClick }: { onClick: () => void }) => {
   const { currentTrack, isPlaying, togglePlay, progress } = usePlayerStore();
+  const [shouldScroll, setShouldScroll] = useState(false);
+  const titleRef = useRef<HTMLParagraphElement>(null);
+
+  // Check if title needs scrolling (longer than container)
+  useEffect(() => {
+    if (titleRef.current) {
+      setShouldScroll(titleRef.current.scrollWidth > titleRef.current.clientWidth);
+    }
+  }, [currentTrack?.title]);
 
   if (!currentTrack) return null;
 
@@ -41,13 +50,30 @@ const MiniPlayer = ({ onClick }: { onClick: () => void }) => {
       exit={{ y: 100, opacity: 0 }}
     >
       <motion.button
-        className="w-full flex items-center gap-3 p-3 rounded-2xl bg-gradient-to-r from-purple-900/90 to-pink-900/90 border border-white/10 backdrop-blur-lg shadow-xl"
+        className="w-full flex items-center gap-3 p-3 pr-4 rounded-2xl bg-gradient-to-r from-purple-900/95 to-pink-900/95 border border-white/10 backdrop-blur-xl shadow-2xl relative overflow-hidden"
         onClick={onClick}
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
       >
+        {/* Wave Progress Bar - Dynamic Island style fill */}
+        <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-white/5 overflow-hidden">
+          <motion.div
+            className="h-full relative"
+            style={{ width: `${progress}%` }}
+          >
+            {/* Gradient fill with glow */}
+            <div className="absolute inset-0 bg-gradient-to-r from-violet-500 via-purple-400 to-fuchsia-500" />
+            {/* Wave effect at the edge */}
+            <motion.div
+              className="absolute right-0 top-0 bottom-0 w-3 bg-gradient-to-l from-white/60 to-transparent"
+              animate={{ opacity: [0.4, 1, 0.4] }}
+              transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+            />
+          </motion.div>
+        </div>
+
         {/* Thumbnail - SmartImage with self-healing */}
-        <div className="relative w-12 h-12 rounded-xl overflow-hidden">
+        <div className="relative w-12 h-12 rounded-xl overflow-hidden flex-shrink-0">
           <SmartImage
             src={getYouTubeThumbnail(currentTrack.trackId, 'medium')}
             alt={currentTrack.title}
@@ -58,40 +84,80 @@ const MiniPlayer = ({ onClick }: { onClick: () => void }) => {
           />
         </div>
 
-        {/* Info */}
-        <div className="flex-1 min-w-0 text-left">
-          <p className="text-white font-medium text-sm truncate">{currentTrack.title}</p>
+        {/* Info with scrolling title */}
+        <div className="flex-1 min-w-0 text-left overflow-hidden">
+          <div className="overflow-hidden">
+            <p
+              ref={titleRef}
+              className={`text-white font-medium text-sm whitespace-nowrap ${shouldScroll ? 'animate-marquee' : 'truncate'}`}
+              style={shouldScroll ? {
+                animation: 'marquee 8s linear infinite',
+              } : {}}
+            >
+              {currentTrack.title}
+              {shouldScroll && <span className="mx-8">{currentTrack.title}</span>}
+            </p>
+          </div>
           <p className="text-white/50 text-xs truncate">{currentTrack.artist}</p>
         </div>
 
-        {/* Play/Pause */}
-        <motion.div
-          className="w-10 h-10 rounded-full bg-white flex items-center justify-center"
-          onClick={(e) => {
-            e.stopPropagation();
-            togglePlay();
-          }}
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
-        >
-          {isPlaying ? (
-            <div className="flex gap-1">
-              <div className="w-1 h-4 bg-black rounded-full" />
-              <div className="w-1 h-4 bg-black rounded-full" />
-            </div>
-          ) : (
-            <div className="w-0 h-0 border-l-[10px] border-l-black border-y-[6px] border-y-transparent ml-1" />
-          )}
-        </motion.div>
-
-        {/* Progress bar at bottom */}
-        <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/10 rounded-b-2xl overflow-hidden">
+        {/* Action Buttons */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Add to playlist */}
           <motion.div
-            className="h-full bg-purple-500"
-            style={{ width: `${progress}%` }}
-          />
+            className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center"
+            onClick={(e) => {
+              e.stopPropagation();
+              // TODO: Add to playlist
+            }}
+            whileHover={{ scale: 1.1, backgroundColor: 'rgba(255,255,255,0.2)' }}
+            whileTap={{ scale: 0.9 }}
+          >
+            <span className="text-white text-lg font-light">+</span>
+          </motion.div>
+
+          {/* OYÉ Button */}
+          <motion.div
+            className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center"
+            onClick={(e) => {
+              e.stopPropagation();
+              // TODO: OYÉ reaction
+            }}
+            whileHover={{ scale: 1.1, backgroundColor: 'rgba(255,255,255,0.2)' }}
+            whileTap={{ scale: 0.9 }}
+          >
+            <span className="text-sm">🔥</span>
+          </motion.div>
+
+          {/* Play/Pause */}
+          <motion.div
+            className="w-10 h-10 rounded-full bg-white flex items-center justify-center ml-1"
+            onClick={(e) => {
+              e.stopPropagation();
+              togglePlay();
+            }}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+          >
+            {isPlaying ? (
+              <div className="flex gap-1">
+                <div className="w-1 h-4 bg-black rounded-full" />
+                <div className="w-1 h-4 bg-black rounded-full" />
+              </div>
+            ) : (
+              <div className="w-0 h-0 border-l-[10px] border-l-black border-y-[6px] border-y-transparent ml-1" />
+            )}
+          </motion.div>
         </div>
       </motion.button>
+
+      {/* Marquee animation styles */}
+      <style>{`
+        @keyframes marquee {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+      `}</style>
     </motion.div>
   );
 };
