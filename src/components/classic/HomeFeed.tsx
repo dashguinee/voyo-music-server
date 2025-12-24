@@ -149,48 +149,6 @@ const TrackCard = ({ track, onPlay }: TrackCardProps) => {
   );
 };
 
-// ============================================
-// ROTATING NIGHT LOTTIE - Cycles through night animations
-// ============================================
-
-const NIGHT_LOTTIES = [
-  '/lottie/night-clear.json',
-  '/lottie/night-mist.json',
-  '/lottie/goodnight.json',
-];
-
-const RotatingNightLottie = () => {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [isTransitioning, setIsTransitioning] = useState(false);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setIsTransitioning(true);
-      setTimeout(() => {
-        setCurrentIndex((prev) => (prev + 1) % NIGHT_LOTTIES.length);
-        setIsTransitioning(false);
-      }, 500); // Fade out duration
-    }, 6000); // Change every 6 seconds
-
-    return () => clearInterval(interval);
-  }, []);
-
-  return (
-    <motion.div
-      style={{ display: 'inline-block' }}
-      animate={{ opacity: isTransitioning ? 0 : 1 }}
-      transition={{ duration: 0.5, ease: 'easeInOut' }}
-      whileHover={{ scale: 1.1 }}
-    >
-      <LottieIcon
-        lottieUrl={NIGHT_LOTTIES[currentIndex]}
-        fallbackEmoji="🌙"
-        size={48}
-        loop={true}
-      />
-    </motion.div>
-  );
-};
 
 // ============================================
 // VIBE CARD COMPONENT - Premium Glass Design
@@ -307,7 +265,17 @@ const VibeCard = ({ vibe, onSelect, index }: VibeCardProps) => (
             </div>
           )}
           {vibe.id === 'late-night' && (
-            <RotatingNightLottie />
+            <motion.div
+              style={{ display: 'inline-block' }}
+              whileHover={{ scale: 1.1 }}
+            >
+              <LottieIcon
+                lottieUrl="/lottie/night-clear.json"
+                fallbackEmoji="🌙"
+                size={48}
+                loop={true}
+              />
+            </motion.div>
           )}
           {vibe.id === 'workout' && (
             <motion.div
