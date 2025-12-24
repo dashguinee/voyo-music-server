@@ -1,12 +1,15 @@
 /**
  * VOYO Music - Premium Now Playing Experience
- * Spotify-inspired with video background + VOYO design language
+ * Clean audio player with Voyo Feed integration
  *
  * Features:
- * - FULL SCREEN VIDEO LOOP: Muted looped YouTube video
+ * - ALBUM ART BACKGROUND: Blurred cover art
  * - COMPACT CONTROLS: Bottom panel with all controls
- * - COMMUNITY VIBES: Collapsible comments section (replaces Explore)
+ * - VOYO FEED BUTTON: Opens full video feed experience
+ * - COMMUNITY VIBES: Collapsible comments section
  * - VOYO GRADIENT: Purple/pink design language
+ *
+ * The Loop: Player → Voyo Feed → Discover → Player
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
@@ -28,8 +31,6 @@ import {
   X,
   Share2,
   ListMusic,
-  Video,
-  Music,
   Zap
 } from 'lucide-react';
 import { usePlayerStore } from '../../store/playerStore';
@@ -37,170 +38,24 @@ import { usePreferenceStore } from '../../store/preferenceStore';
 import { getTrackThumbnailUrl } from '../../utils/imageHelpers';
 import { useMobilePlay } from '../../hooks/useMobilePlay';
 import { PlaylistModal } from '../playlist/PlaylistModal';
-import { useReactionStore, Reaction, ReactionCategory, TrackStats } from '../../store/reactionStore';
+import { useReactionStore, Reaction, TrackStats } from '../../store/reactionStore';
 import { useUniverseStore } from '../../store/universeStore';
-import { videoCacheService, CacheStatus } from '../../services/videoCacheService';
 
 // ============================================
-// VOYO ID DECODER
+// ALBUM ART BACKGROUND
 // ============================================
-const decodeVoyoId = (trackId: string): string => {
-  if (!trackId.startsWith('vyo_')) return trackId;
-  const encoded = trackId.substring(4);
-  let base64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
-  while (base64.length % 4 !== 0) base64 += '=';
-  try {
-    return atob(base64);
-  } catch {
-    return trackId;
-  }
-};
-
-// ============================================
-// THUMBNAIL BACKGROUND (When video is off)
-// ============================================
-const ThumbnailBackground = ({ coverUrl }: { coverUrl: string }) => (
+const AlbumArtBackground = ({ coverUrl }: { coverUrl: string }) => (
   <div className="absolute inset-0 overflow-hidden">
     <img
       src={coverUrl}
       alt="Album cover"
-      className="absolute w-full h-full object-cover scale-110 blur-sm"
+      className="absolute w-full h-full object-cover scale-110 blur-md"
     />
-    {/* Extra blur overlay for depth */}
-    <div className="absolute inset-0 bg-black/40" />
+    {/* Gradient overlay for depth */}
+    <div className="absolute inset-0 bg-black/50" />
   </div>
 );
 
-// ============================================
-// CACHED VIDEO BACKGROUND COMPONENT
-// Efficient: Downloads once, caches in IndexedDB, loops locally
-// ============================================
-const CachedVideoBackground = ({
-  trackId,
-  isPlaying,
-  showVideo,
-  fallbackUrl,
-  onCacheStatus,
-}: {
-  trackId: string;
-  isPlaying: boolean;
-  showVideo: boolean;
-  fallbackUrl: string;
-  onCacheStatus?: (status: CacheStatus) => void;
-}) => {
-  const youtubeId = useMemo(() => decodeVoyoId(trackId), [trackId]);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const [cacheStatus, setCacheStatus] = useState<CacheStatus>({
-    cached: false,
-    loading: false,
-    error: null,
-    progress: 0,
-  });
-
-  // Subscribe to cache status updates
-  useEffect(() => {
-    const unsubscribe = videoCacheService.subscribeToStatus(youtubeId, (status) => {
-      setCacheStatus(status);
-      onCacheStatus?.(status);
-    });
-    return unsubscribe;
-  }, [youtubeId, onCacheStatus]);
-
-  // Fetch or load cached video
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadVideo = async () => {
-      const url = await videoCacheService.getVideoUrl(youtubeId);
-      if (!cancelled && url) {
-        setVideoUrl(url);
-      }
-    };
-
-    if (showVideo) {
-      loadVideo();
-    }
-
-    return () => {
-      cancelled = true;
-    };
-  }, [youtubeId, showVideo]);
-
-  // Control playback
-  useEffect(() => {
-    if (videoRef.current) {
-      if (isPlaying) {
-        videoRef.current.play().catch(() => {});
-      } else {
-        videoRef.current.pause();
-      }
-    }
-  }, [isPlaying, videoUrl]);
-
-  if (!showVideo) return null;
-
-  // Show loading state or fallback thumbnail while caching
-  if (!videoUrl) {
-    return (
-      <div className="absolute inset-0 overflow-hidden">
-        {/* Fallback: Blurred thumbnail */}
-        <img
-          src={fallbackUrl}
-          alt="Loading video..."
-          className="absolute w-full h-full object-cover scale-110 blur-sm"
-        />
-        <div className="absolute inset-0 bg-black/40" />
-
-        {/* Cache progress indicator */}
-        {cacheStatus.loading && (
-          <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-50">
-            <div className="bg-black/80 backdrop-blur-sm rounded-full px-4 py-2 flex items-center gap-3">
-              <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
-              <span className="text-white/80 text-xs font-medium">
-                Caching video... {cacheStatus.progress}%
-              </span>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="absolute inset-0 overflow-hidden">
-      <video
-        ref={videoRef}
-        src={videoUrl}
-        className="absolute w-full h-full object-cover"
-        style={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          width: '177.78vh',
-          height: '100vh',
-          minWidth: '100%',
-          minHeight: '56.25vw',
-          transform: 'translate(-50%, -50%)',
-        }}
-        autoPlay
-        loop
-        muted
-        playsInline
-      />
-
-      {/* Cached indicator (subtle) */}
-      {cacheStatus.cached && (
-        <div className="absolute top-4 right-4 z-50">
-          <div className="bg-green-500/20 backdrop-blur-sm rounded-full px-2 py-1 flex items-center gap-1">
-            <div className="w-1.5 h-1.5 bg-green-400 rounded-full" />
-            <span className="text-green-400 text-[10px] font-medium">Cached</span>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
 
 // ============================================
 // FLOATING REACTIONS
@@ -418,7 +273,6 @@ export const NowPlaying = ({ isOpen, onClose }: NowPlayingProps) => {
   const { currentUsername } = useUniverseStore();
 
   // State
-  const [showVideo, setShowVideo] = useState(true);
   const [isShuffled, setIsShuffled] = useState(false);
   const [repeatMode, setRepeatMode] = useState<'off' | 'all' | 'one'>('off');
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
@@ -515,17 +369,8 @@ export const NowPlaying = ({ isOpen, onClose }: NowPlayingProps) => {
           exit={{ y: '100%' }}
           transition={{ type: 'spring', damping: 25, stiffness: 200 }}
         >
-          {/* BACKGROUND - Cached Video or Thumbnail */}
-          {showVideo ? (
-            <CachedVideoBackground
-              trackId={currentTrack.trackId}
-              isPlaying={isPlaying}
-              showVideo={showVideo}
-              fallbackUrl={getTrackThumbnailUrl(currentTrack, 'large')}
-            />
-          ) : (
-            <ThumbnailBackground coverUrl={getTrackThumbnailUrl(currentTrack, 'large')} />
-          )}
+          {/* BACKGROUND - Album Art */}
+          <AlbumArtBackground coverUrl={getTrackThumbnailUrl(currentTrack, 'large')} />
 
           {/* GRADIENT OVERLAYS - Black Contour Style */}
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent z-10" />
@@ -555,38 +400,6 @@ export const NowPlaying = ({ isOpen, onClose }: NowPlayingProps) => {
             {/* SPACER - Push content to bottom */}
             <div className="flex-1" />
 
-            {/* VIDEO/THUMBNAIL TOGGLE - Similar to Portrait Player */}
-            <div className="px-4 mb-4">
-              <div className="inline-flex items-center gap-2 px-2 py-1.5 rounded-full bg-black/60 backdrop-blur-sm border border-white/20">
-                {/* Video Option */}
-                <motion.button
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-all ${
-                    showVideo
-                      ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
-                      : 'text-white/50 hover:text-white/80'
-                  }`}
-                  onClick={() => setShowVideo(true)}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  <Video className="w-4 h-4" />
-                  <span className="text-xs font-semibold">Video</span>
-                </motion.button>
-
-                {/* Thumbnail Option */}
-                <motion.button
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-all ${
-                    !showVideo
-                      ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
-                      : 'text-white/50 hover:text-white/80'
-                  }`}
-                  onClick={() => setShowVideo(false)}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  <Music className="w-4 h-4" />
-                  <span className="text-xs font-semibold">Cover</span>
-                </motion.button>
-              </div>
-            </div>
 
             {/* TRACK INFO ROW */}
             <div className="flex items-center gap-4 px-4 mb-3">

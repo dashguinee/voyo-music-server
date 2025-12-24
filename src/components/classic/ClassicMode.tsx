@@ -8,9 +8,9 @@
  * - Library
  */
 
-import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Home, Radio, Library as LibraryIcon, Users, Zap, Plus } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { motion, AnimatePresence, PanInfo } from 'framer-motion';
+import { Home, Radio, Library as LibraryIcon, Users, Zap, Plus, ChevronLeft, ChevronRight } from 'lucide-react';
 import { HomeFeed } from './HomeFeed';
 import { Library } from './Library';
 import { Hub } from './Hub';
@@ -28,9 +28,11 @@ interface ClassicModeProps {
 }
 
 // Mini Player (shown at bottom when a track is playing)
+// Swipe left/right for next/prev, tap to open Voyo Player
 const MiniPlayer = ({ onClick }: { onClick: () => void }) => {
-  const { currentTrack, isPlaying, togglePlay, progress } = usePlayerStore();
+  const { currentTrack, isPlaying, togglePlay, progress, nextTrack, prevTrack } = usePlayerStore();
   const [shouldScroll, setShouldScroll] = useState(false);
+  const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
   const titleRef = useRef<HTMLParagraphElement>(null);
 
   // Check if title needs scrolling (longer than container)
@@ -39,6 +41,22 @@ const MiniPlayer = ({ onClick }: { onClick: () => void }) => {
       setShouldScroll(titleRef.current.scrollWidth > titleRef.current.clientWidth);
     }
   }, [currentTrack?.title]);
+
+  // Handle swipe gestures
+  const handleDragEnd = useCallback((event: any, info: PanInfo) => {
+    const threshold = 80;
+    if (info.offset.x < -threshold) {
+      // Swipe left = next track
+      setSwipeDirection('left');
+      nextTrack();
+      setTimeout(() => setSwipeDirection(null), 300);
+    } else if (info.offset.x > threshold) {
+      // Swipe right = previous track
+      setSwipeDirection('right');
+      prevTrack();
+      setTimeout(() => setSwipeDirection(null), 300);
+    }
+  }, [nextTrack, prevTrack]);
 
   if (!currentTrack) return null;
 
@@ -52,8 +70,16 @@ const MiniPlayer = ({ onClick }: { onClick: () => void }) => {
       <motion.div
         className="w-full flex items-center gap-3 p-3 pr-4 rounded-2xl bg-black/25 border border-white/10 backdrop-blur-xl shadow-2xl relative overflow-hidden cursor-pointer"
         onClick={onClick}
+        drag="x"
+        dragConstraints={{ left: 0, right: 0 }}
+        dragElastic={0.3}
+        onDragEnd={handleDragEnd}
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
+        animate={{
+          x: swipeDirection === 'left' ? -20 : swipeDirection === 'right' ? 20 : 0,
+        }}
+        transition={{ type: 'spring', damping: 20 }}
       >
         {/* Wave Progress Bar - VOYO gradient style */}
         <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-white/10 overflow-hidden rounded-full">
