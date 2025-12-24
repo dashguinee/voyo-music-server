@@ -39,6 +39,7 @@ import { useMobilePlay } from '../../hooks/useMobilePlay';
 import { PlaylistModal } from '../playlist/PlaylistModal';
 import { useReactionStore, Reaction, ReactionCategory, TrackStats } from '../../store/reactionStore';
 import { useUniverseStore } from '../../store/universeStore';
+import { videoCacheService, CacheStatus } from '../../services/videoCacheService';
 
 // ============================================
 // VOYO ID DECODER
@@ -71,56 +72,107 @@ const ThumbnailBackground = ({ coverUrl }: { coverUrl: string }) => (
 );
 
 // ============================================
-// VIDEO BACKGROUND COMPONENT
+// CACHED VIDEO BACKGROUND COMPONENT
+// Efficient: Downloads once, caches in IndexedDB, loops locally
 // ============================================
-const VideoBackground = ({
+const CachedVideoBackground = ({
   trackId,
   isPlaying,
-  showVideo
+  showVideo,
+  fallbackUrl,
+  onCacheStatus,
 }: {
   trackId: string;
   isPlaying: boolean;
   showVideo: boolean;
+  fallbackUrl: string;
+  onCacheStatus?: (status: CacheStatus) => void;
 }) => {
   const youtubeId = useMemo(() => decodeVoyoId(trackId), [trackId]);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [cacheStatus, setCacheStatus] = useState<CacheStatus>({
+    cached: false,
+    loading: false,
+    error: null,
+    progress: 0,
+  });
 
-  const embedUrl = useMemo(() => {
-    const params = new URLSearchParams({
-      autoplay: '1',
-      mute: '1',
-      loop: '1',
-      controls: '0',
-      showinfo: '0',
-      rel: '0',
-      modestbranding: '1',
-      playsinline: '1',
-      playlist: youtubeId,
-      enablejsapi: '1',
-      origin: window.location.origin,
-    });
-    return `https://www.youtube.com/embed/${youtubeId}?${params.toString()}`;
-  }, [youtubeId]);
-
+  // Subscribe to cache status updates
   useEffect(() => {
-    if (iframeRef.current?.contentWindow && isLoaded) {
-      const command = isPlaying ? 'playVideo' : 'pauseVideo';
-      iframeRef.current.contentWindow.postMessage(
-        JSON.stringify({ event: 'command', func: command }),
-        '*'
-      );
+    const unsubscribe = videoCacheService.subscribeToStatus(youtubeId, (status) => {
+      setCacheStatus(status);
+      onCacheStatus?.(status);
+    });
+    return unsubscribe;
+  }, [youtubeId, onCacheStatus]);
+
+  // Fetch or load cached video
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadVideo = async () => {
+      const url = await videoCacheService.getVideoUrl(youtubeId);
+      if (!cancelled && url) {
+        setVideoUrl(url);
+      }
+    };
+
+    if (showVideo) {
+      loadVideo();
     }
-  }, [isPlaying, isLoaded]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [youtubeId, showVideo]);
+
+  // Control playback
+  useEffect(() => {
+    if (videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.play().catch(() => {});
+      } else {
+        videoRef.current.pause();
+      }
+    }
+  }, [isPlaying, videoUrl]);
 
   if (!showVideo) return null;
 
+  // Show loading state or fallback thumbnail while caching
+  if (!videoUrl) {
+    return (
+      <div className="absolute inset-0 overflow-hidden">
+        {/* Fallback: Blurred thumbnail */}
+        <img
+          src={fallbackUrl}
+          alt="Loading video..."
+          className="absolute w-full h-full object-cover scale-110 blur-sm"
+        />
+        <div className="absolute inset-0 bg-black/40" />
+
+        {/* Cache progress indicator */}
+        {cacheStatus.loading && (
+          <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-50">
+            <div className="bg-black/80 backdrop-blur-sm rounded-full px-4 py-2 flex items-center gap-3">
+              <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+              <span className="text-white/80 text-xs font-medium">
+                Caching video... {cacheStatus.progress}%
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="absolute inset-0 overflow-hidden">
-      <iframe
-        ref={iframeRef}
-        src={embedUrl}
-        className="absolute w-full h-full"
+      <video
+        ref={videoRef}
+        src={videoUrl}
+        className="absolute w-full h-full object-cover"
         style={{
           position: 'absolute',
           top: '50%',
@@ -130,12 +182,22 @@ const VideoBackground = ({
           minWidth: '100%',
           minHeight: '56.25vw',
           transform: 'translate(-50%, -50%)',
-          pointerEvents: 'none',
         }}
-        allow="autoplay; encrypted-media"
-        allowFullScreen={false}
-        onLoad={() => setIsLoaded(true)}
+        autoPlay
+        loop
+        muted
+        playsInline
       />
+
+      {/* Cached indicator (subtle) */}
+      {cacheStatus.cached && (
+        <div className="absolute top-4 right-4 z-50">
+          <div className="bg-green-500/20 backdrop-blur-sm rounded-full px-2 py-1 flex items-center gap-1">
+            <div className="w-1.5 h-1.5 bg-green-400 rounded-full" />
+            <span className="text-green-400 text-[10px] font-medium">Cached</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -453,12 +515,13 @@ export const NowPlaying = ({ isOpen, onClose }: NowPlayingProps) => {
           exit={{ y: '100%' }}
           transition={{ type: 'spring', damping: 25, stiffness: 200 }}
         >
-          {/* BACKGROUND - Video or Thumbnail */}
+          {/* BACKGROUND - Cached Video or Thumbnail */}
           {showVideo ? (
-            <VideoBackground
+            <CachedVideoBackground
               trackId={currentTrack.trackId}
               isPlaying={isPlaying}
               showVideo={showVideo}
+              fallbackUrl={getTrackThumbnailUrl(currentTrack, 'large')}
             />
           ) : (
             <ThumbnailBackground coverUrl={getTrackThumbnailUrl(currentTrack, 'large')} />
