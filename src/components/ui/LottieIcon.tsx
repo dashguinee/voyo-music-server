@@ -4,8 +4,8 @@
  * Loads Lottie animation from URL, falls back to emoji on error
  */
 
-import { useState, useEffect } from 'react';
-import Lottie from 'lottie-react';
+import { useState, useEffect, useRef } from 'react';
+import Lottie, { LottieRefCurrentProps } from 'lottie-react';
 
 interface LottieIconProps {
   lottieUrl?: string;
@@ -14,6 +14,7 @@ interface LottieIconProps {
   className?: string;
   loop?: boolean;
   autoplay?: boolean;
+  speed?: number; // Animation speed multiplier (0.5 = half speed, 2 = double)
 }
 
 export function LottieIcon({
@@ -23,10 +24,19 @@ export function LottieIcon({
   className = '',
   loop = true,
   autoplay = true,
+  speed = 1,
 }: LottieIconProps) {
   const [animationData, setAnimationData] = useState<object | null>(null);
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(!!lottieUrl);
+  const lottieRef = useRef<LottieRefCurrentProps>(null);
+
+  // Set speed when ref is ready
+  useEffect(() => {
+    if (lottieRef.current && speed !== 1) {
+      lottieRef.current.setSpeed(speed);
+    }
+  }, [animationData, speed]);
 
   useEffect(() => {
     if (!lottieUrl) {
@@ -83,6 +93,7 @@ export function LottieIcon({
       }}
     >
       <Lottie
+        lottieRef={lottieRef}
         animationData={animationData}
         loop={loop}
         autoplay={autoplay}
