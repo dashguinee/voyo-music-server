@@ -154,6 +154,7 @@ export const AudioPlayer = () => {
   const currentProfileRef = useRef<BoostPreset>('boosted'); // Track current preset
 
   const [playbackMode, setPlaybackMode] = useState<PlaybackMode>('iframe');
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
   const {
     currentTrack,
@@ -168,6 +169,7 @@ export const AudioPlayer = () => {
     setDuration,
     setProgress,
     clearSeekPosition,
+    togglePlay,
     nextTrack,
     setBufferHealth,
     setPlaybackSource,
@@ -197,6 +199,93 @@ export const AudioPlayer = () => {
   useEffect(() => {
     initDownloads();
   }, [initDownloads]);
+
+  // === BACKGROUND PLAYBACK FIX #1: Visibility Change Handler ===
+  // Keep audio alive when app goes to background
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        // App went to background - ensure audio keeps playing
+        if (playbackMode === 'cached' && audioRef.current && !audioRef.current.paused) {
+          // Force audio context to stay active
+          audioRef.current.play().catch(() => {});
+
+          // Resume audio context if suspended (browser policy)
+          if (audioContextRef.current?.state === 'suspended') {
+            audioContextRef.current.resume();
+          }
+        }
+        // Note: IFrame playback will stop in background due to YouTube policy
+        // This is expected behavior - only CDN/cached tracks support background
+      } else if (document.visibilityState === 'visible') {
+        // App came back to foreground - AUTO-RESUME if we were playing
+        if (audioRef.current) {
+          // Resume audio context first (may be suspended by browser)
+          if (audioContextRef.current?.state === 'suspended') {
+            audioContextRef.current.resume();
+          }
+
+          // If store says we should be playing but audio is paused, resume
+          const { isPlaying: shouldBePlaying } = usePlayerStore.getState();
+          if (shouldBePlaying && audioRef.current.paused) {
+            console.log('[VOYO] Auto-resuming playback after returning from background');
+            audioRef.current.play().catch((err) => {
+              console.warn('[VOYO] Auto-resume failed:', err.message);
+            });
+          }
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [playbackMode]);
+
+  // === BACKGROUND PLAYBACK FIX #2: Wake Lock ===
+  // Prevent screen sleep during playback
+  useEffect(() => {
+    const requestWakeLock = async () => {
+      // Only request wake lock if playing
+      if (!isPlaying) {
+        // Release wake lock if we have one
+        if (wakeLockRef.current) {
+          try {
+            await wakeLockRef.current.release();
+            wakeLockRef.current = null;
+          } catch (err) {
+            // Ignore errors
+          }
+        }
+        return;
+      }
+
+      // Request wake lock (only supported in secure contexts)
+      if ('wakeLock' in navigator) {
+        try {
+          wakeLockRef.current = await navigator.wakeLock.request('screen');
+          console.log('🔒 [VOYO] Wake lock active - screen won\'t sleep');
+
+          // Re-acquire wake lock if released (e.g., screen lock/unlock)
+          wakeLockRef.current.addEventListener('release', () => {
+            console.log('🔓 [VOYO] Wake lock released');
+          });
+        } catch (err) {
+          // Wake lock not available (HTTP, old browser, etc.) - not critical
+          console.log('[VOYO] Wake lock not available:', err);
+        }
+      }
+    };
+
+    requestWakeLock();
+
+    // Cleanup: Release wake lock when component unmounts or playback stops
+    return () => {
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release().catch(() => {});
+        wakeLockRef.current = null;
+      }
+    };
+  }, [isPlaying]);
 
   // Load YouTube IFrame API
   useEffect(() => {
@@ -1141,6 +1230,31 @@ export const AudioPlayer = () => {
       artwork: [
         {
           src: `https://voyo-music-api.fly.dev/cdn/art/${currentTrack.trackId}?quality=high`,
+          sizes: '96x96',
+          type: 'image/jpeg'
+        },
+        {
+          src: `https://voyo-music-api.fly.dev/cdn/art/${currentTrack.trackId}?quality=high`,
+          sizes: '128x128',
+          type: 'image/jpeg'
+        },
+        {
+          src: `https://voyo-music-api.fly.dev/cdn/art/${currentTrack.trackId}?quality=high`,
+          sizes: '192x192',
+          type: 'image/jpeg'
+        },
+        {
+          src: `https://voyo-music-api.fly.dev/cdn/art/${currentTrack.trackId}?quality=high`,
+          sizes: '256x256',
+          type: 'image/jpeg'
+        },
+        {
+          src: `https://voyo-music-api.fly.dev/cdn/art/${currentTrack.trackId}?quality=high`,
+          sizes: '384x384',
+          type: 'image/jpeg'
+        },
+        {
+          src: `https://voyo-music-api.fly.dev/cdn/art/${currentTrack.trackId}?quality=high`,
           sizes: '512x512',
           type: 'image/jpeg'
         }
@@ -1149,40 +1263,18 @@ export const AudioPlayer = () => {
 
     // Set action handlers
     navigator.mediaSession.setActionHandler('play', () => {
-      if (playbackMode === 'cached' && audioRef.current) {
-        // FIX: Only play if paused
-        if (audioRef.current.paused) {
-          audioRef.current.play().catch(() => {});
-        }
-      } else if (playbackMode === 'iframe' && playerRef.current) {
-        try {
-          const playerState = typeof playerRef.current.getPlayerState === 'function' ? playerRef.current.getPlayerState() : -1;
-          // Only play if not already playing (state 1 = playing)
-          if (playerState !== 1) {
-            playerRef.current.playVideo();
-          }
-        } catch (e) {
-          // Player not ready
-        }
+      // Update store state - this will trigger the play effect
+      const storeState = usePlayerStore.getState();
+      if (!storeState.isPlaying) {
+        togglePlay();
       }
     });
 
     navigator.mediaSession.setActionHandler('pause', () => {
-      if (playbackMode === 'cached' && audioRef.current) {
-        // FIX: Only pause if playing
-        if (!audioRef.current.paused) {
-          audioRef.current.pause();
-        }
-      } else if (playbackMode === 'iframe' && playerRef.current) {
-        try {
-          const playerState = typeof playerRef.current.getPlayerState === 'function' ? playerRef.current.getPlayerState() : -1;
-          // Only pause if playing or buffering (state 1 or 3)
-          if (playerState === 1 || playerState === 3) {
-            playerRef.current.pauseVideo();
-          }
-        } catch (e) {
-          // Player not ready
-        }
+      // Update store state - this will trigger the pause effect
+      const storeState = usePlayerStore.getState();
+      if (storeState.isPlaying) {
+        togglePlay();
       }
     });
 
@@ -1205,10 +1297,56 @@ export const AudioPlayer = () => {
       prevTrack();
     });
 
+    // Seek handlers - enable scrubbing from lock screen
+    navigator.mediaSession.setActionHandler('seekto', (details) => {
+      if (details.seekTime !== undefined) {
+        const seekTime = details.seekTime;
+        if (playbackMode === 'cached' && audioRef.current) {
+          audioRef.current.currentTime = seekTime;
+        } else if (playbackMode === 'iframe' && playerRef.current) {
+          try {
+            playerRef.current.seekTo(seekTime, true);
+          } catch (e) {
+            // Player not ready
+          }
+        }
+      }
+    });
+
+    navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+      const seekOffset = details.seekOffset || 10; // Default 10 seconds
+      if (playbackMode === 'cached' && audioRef.current) {
+        audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - seekOffset);
+      } else if (playbackMode === 'iframe' && playerRef.current) {
+        try {
+          const currentTime = playerRef.current.getCurrentTime();
+          playerRef.current.seekTo(Math.max(0, currentTime - seekOffset), true);
+        } catch (e) {
+          // Player not ready
+        }
+      }
+    });
+
+    navigator.mediaSession.setActionHandler('seekforward', (details) => {
+      const seekOffset = details.seekOffset || 10; // Default 10 seconds
+      if (playbackMode === 'cached' && audioRef.current) {
+        const newTime = Math.min(audioRef.current.duration || 0, audioRef.current.currentTime + seekOffset);
+        audioRef.current.currentTime = newTime;
+      } else if (playbackMode === 'iframe' && playerRef.current) {
+        try {
+          const currentTime = playerRef.current.getCurrentTime();
+          const duration = playerRef.current.getDuration();
+          playerRef.current.seekTo(Math.min(duration, currentTime + seekOffset), true);
+        } catch (e) {
+          // Player not ready
+        }
+      }
+    });
+
     // Update playback state
     navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
 
-  }, [currentTrack, isPlaying, playbackMode, nextTrack]);
+  }, [currentTrack, isPlaying, playbackMode, togglePlay, nextTrack]);
 
   // === QUEUE PRE-BOOST ===
   // Like Spotify: Pre-cache upcoming tracks in background for instant playback
@@ -1273,6 +1411,19 @@ export const AudioPlayer = () => {
       setCurrentTime(el.currentTime);
       const progressPercent = (el.currentTime / el.duration) * 100;
       setProgress(progressPercent);
+
+      // Update Media Session position state (for lock screen seek bar)
+      if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession) {
+        try {
+          navigator.mediaSession.setPositionState({
+            duration: el.duration,
+            playbackRate: el.playbackRate,
+            position: el.currentTime
+          });
+        } catch (e) {
+          // Ignore - some browsers may not support all features
+        }
+      }
 
       // POOL ENGAGEMENT: Track progress for skip detection
       trackProgressRef.current = progressPercent;

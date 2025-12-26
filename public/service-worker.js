@@ -1,9 +1,11 @@
 /**
  * VOYO Music Service Worker
  * Handles caching and offline functionality
+ * BACKGROUND PLAYBACK: Enhanced to cache audio streams
  */
 
 const CACHE_NAME = 'voyo-v2';
+const AUDIO_CACHE_NAME = 'voyo-audio-v1';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -40,7 +42,51 @@ self.addEventListener('fetch', (event) => {
   // Skip non-GET requests
   if (event.request.method !== 'GET') return;
 
-  // Skip cross-origin requests (YouTube, API calls)
+  const url = new URL(event.request.url);
+
+  // === BACKGROUND PLAYBACK: Handle audio streaming requests ===
+  // Cache CDN audio streams and Piped API streams for background playback
+  const isAudioRequest =
+    url.pathname.includes('/cdn/stream') ||
+    url.hostname.includes('pipedapi') ||
+    event.request.destination === 'audio';
+
+  if (isAudioRequest) {
+    event.respondWith(
+      caches.open(AUDIO_CACHE_NAME).then(cache => {
+        return cache.match(event.request).then(cached => {
+          // If cached, return it
+          if (cached) {
+            console.log('[SW] Audio cache hit:', url.pathname);
+            return cached;
+          }
+
+          // Not cached - fetch from network
+          return fetch(event.request).then(response => {
+            // Only cache successful audio responses
+            if (response.ok && response.status === 200) {
+              // Clone before caching (response can only be read once)
+              cache.put(event.request, response.clone());
+              console.log('[SW] Audio cached:', url.pathname);
+            }
+            return response;
+          }).catch(error => {
+            // Network failed - check cache one more time
+            return cache.match(event.request).then(cachedFallback => {
+              if (cachedFallback) {
+                console.log('[SW] Audio network failed, using cache:', url.pathname);
+                return cachedFallback;
+              }
+              throw error;
+            });
+          });
+        });
+      })
+    );
+    return;
+  }
+
+  // Skip cross-origin requests (YouTube, other APIs)
   if (!event.request.url.startsWith(self.location.origin)) return;
 
   // Skip Vite dev server resources (HMR, react-refresh, etc.)
@@ -51,6 +97,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Standard caching for static assets
   event.respondWith(
     caches.match(event.request).then((cached) => {
       // Return cached version or fetch from network

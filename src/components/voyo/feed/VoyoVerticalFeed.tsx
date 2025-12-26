@@ -38,6 +38,7 @@ import { ContentMixer, ContentType } from './ContentMixer';
 import { FloatingReactions, useFloatingReactions, useDoubleTap } from './FloatingReactions';
 import { useEngagementTracker } from './FeedTransitions';
 import { SmartImage } from '../../ui/SmartImage';
+import { applyTreatment, getStartTime, getDuration } from '../../../services/feedAlgorithm';
 
 // Snippet config
 const ENABLE_VIDEO_SNIPPETS = true; // Toggle video snippets on/off
@@ -1129,11 +1130,29 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
       const reactionData = reactionsByTrack.get(trackId);
       const poolScore = 'poolScore' in track ? (track as any).poolScore : 0;
 
-      // Get hottest position for this track
+      // Get hotspots for this track
       const hotspots = getHotspots(trackId);
       const hottestSpot = hotspots.length > 0
         ? hotspots.reduce((a, b) => a.intensity > b.intensity ? a : b)
         : null;
+
+      // Apply intelligent feed treatment (start time, duration)
+      const treatedTrack = applyTreatment(track, hotspots);
+      const startSeconds = getStartTime(treatedTrack);
+      const durationSeconds = getDuration(treatedTrack);
+
+      // Convert start seconds to percentage for backward compatibility
+      const trackDuration = track.duration || 180;
+      const hottestPosition = hottestSpot?.position || (startSeconds / trackDuration) * 100;
+
+      // Debug: Log treatment decision
+      if (treatedTrack.feedMetadata) {
+        console.log(
+          `[Feed Treatment] ${track.title} by ${track.artist}:`,
+          `${treatedTrack.feedMetadata.treatment} @ ${Math.floor(startSeconds)}s for ${durationSeconds}s`,
+          `- ${treatedTrack.feedMetadata.reason}`
+        );
+      }
 
       items.push({
         trackId,
@@ -1147,7 +1166,11 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
         categoryBoost: reactionData?.categoryBoost || 50,
         dominantCategory: reactionData?.dominantCategory || 'afro-heat',
         poolScore, // Include pool score for sorting
-        hottestPosition: hottestSpot?.position, // Position of hottest part (0-100)
+        hottestPosition, // Position of hottest part (0-100) - now from feed algorithm
+        feedStartSeconds: startSeconds, // NEW: Absolute start time
+        feedDuration: durationSeconds, // NEW: How long to play
+        feedTreatment: treatedTrack.feedMetadata?.treatment, // NEW: Treatment type
+        feedReason: treatedTrack.feedMetadata?.reason, // NEW: Why this treatment
       });
 
       return items;
