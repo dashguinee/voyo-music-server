@@ -63,23 +63,15 @@ const CurrentTimeDisplay = memo(() => {
   );
 });
 
-// Progress slider that only re-renders when time/duration changes
+// Progress indicator - display only, no seeking (VOYO is a music player, not video player)
 const ProgressSlider = memo(({ isScrubbing }: { isScrubbing: boolean }) => {
   const currentTime = usePlayerStore((state) => state.currentTime);
   const duration = usePlayerStore((state) => state.duration);
-  const seekTo = usePlayerStore((state) => state.seekTo);
 
   return (
     <div className="flex-1 relative h-3 flex items-center">
       <div className="absolute left-0 right-0 h-[1px] bg-white/15 rounded-full" />
-      <input
-        type="range"
-        min="0"
-        max={duration || 100}
-        value={currentTime}
-        onChange={(e) => seekTo(parseFloat(e.target.value))}
-        className="absolute inset-0 w-full opacity-0 cursor-pointer z-10"
-      />
+      {/* No seek input - VOYO is music, not video. You feel it, you don't scrub it. */}
       <motion.div
         className="absolute w-[5px] h-[5px] rounded-full bg-red-500/90"
         animate={{
