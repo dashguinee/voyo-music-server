@@ -200,41 +200,21 @@ export const AudioPlayer = () => {
     initDownloads();
   }, [initDownloads]);
 
-  // === BACKGROUND PLAYBACK FIX #1: Visibility Change Handler ===
-  // Keep audio alive when app goes to background
+  // === BACKGROUND PLAYBACK: Protect cached audio when app goes to background ===
+  // IFrame handles itself. Cached audio needs protection from browser suspension.
   useEffect(() => {
     const handleVisibilityChange = () => {
-      const { isPlaying: shouldBePlaying } = usePlayerStore.getState();
-
-      if (document.visibilityState === 'hidden') {
-        // App went to background - FORCE audio to keep playing
-        // Browser may have already paused it, so always try to resume
-        if (playbackMode === 'cached' && audioRef.current && shouldBePlaying) {
-          // Resume audio context first (browser suspends this in background)
-          if (audioContextRef.current?.state === 'suspended') {
-            audioContextRef.current.resume();
-          }
-
-          // Force play - don't check if paused, browser may have paused it
-          audioRef.current.play().catch(() => {});
-
-          console.log('[VOYO] Background: Forcing audio to continue');
-        }
-      } else if (document.visibilityState === 'visible') {
-        // App came back to foreground - AUTO-RESUME if we were playing
+      // ONLY protect cached audio going to background
+      // NO auto-resume on visible - let playback continue naturally
+      if (document.visibilityState === 'hidden' && playbackMode === 'cached') {
+        const { isPlaying: shouldBePlaying } = usePlayerStore.getState();
         if (audioRef.current && shouldBePlaying) {
-          // Resume audio context first (may be suspended by browser)
+          // Resume audio context (browser suspends in background)
           if (audioContextRef.current?.state === 'suspended') {
             audioContextRef.current.resume();
           }
-
-          // Resume audio if paused
-          if (audioRef.current.paused) {
-            console.log('[VOYO] Foreground: Auto-resuming playback');
-            audioRef.current.play().catch((err) => {
-              console.warn('[VOYO] Auto-resume failed:', err.message);
-            });
-          }
+          // Keep audio playing
+          audioRef.current.play().catch(() => {});
         }
       }
     };
