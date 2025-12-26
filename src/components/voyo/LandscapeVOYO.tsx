@@ -298,46 +298,34 @@ interface InterceptorProps {
 const YouTubeInterceptor = ({ onVideoExtracted }: InterceptorProps) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [successAnimation, setSuccessAnimation] = useState(false);
 
   // Handle click on interceptor zone
   const handleInterceptClick = async (zone: 'top' | 'bottom') => {
     if (isProcessing) return;
 
     setIsProcessing(true);
-    setFeedback('Scanning...');
 
     try {
-      // For now, we'll use a simplified approach:
-      // Since we can't directly screenshot the iframe (CORS),
-      // we'll prompt user to manually identify or use the YouTube API
-
-      // In production, this would:
-      // 1. Use browser extension permissions to capture
-      // 2. Or use server-side puppeteer to screenshot
-      // 3. Or use YouTube's related videos API
-
-      // Simulated flow - show the concept
-      await new Promise(r => setTimeout(r, 800));
-
-      setFeedback('Looking up video...');
+      // Simulated flow - In production: OCR → Video Intelligence → Real video
       await new Promise(r => setTimeout(r, 600));
 
       // For demo: search for a related track from our catalog
-      // In production: OCR extracts title → search → add to queue
       const randomTrack = TRACKS[Math.floor(Math.random() * TRACKS.length)];
-
-      setFeedback(`Adding: ${randomTrack.title}`);
-      await new Promise(r => setTimeout(r, 400));
 
       onVideoExtracted(randomTrack.trackId, randomTrack.title);
 
-      setFeedback('Added to queue! 🔥');
-      setTimeout(() => setFeedback(null), 1500);
+      // Success animation
+      setSuccessAnimation(true);
+      setFeedback(`${randomTrack.title.slice(0, 25)}...`);
+      setTimeout(() => {
+        setSuccessAnimation(false);
+        setFeedback(null);
+      }, 2000);
 
     } catch (err) {
       console.error('[Interceptor] Error:', err);
-      setFeedback('Could not extract video');
+      setFeedback('Oops! Try again');
       setTimeout(() => setFeedback(null), 2000);
     } finally {
       setIsProcessing(false);
@@ -346,68 +334,95 @@ const YouTubeInterceptor = ({ onVideoExtracted }: InterceptorProps) => {
 
   return (
     <>
-      {/* Hidden canvas for screenshot capture */}
-      <canvas ref={canvasRef} className="hidden" />
+      {/* INTERCEPTOR ZONES - INTENTIONAL & BEAUTIFUL */}
+      {/* Not hiding - INVITING. Users WANT to tap these. */}
+      <div className="absolute right-0 top-0 bottom-0 w-[300px] z-15 pointer-events-none flex flex-col items-end justify-center gap-4 pr-4">
 
-      {/* INTERCEPTOR ZONES - Positioned over YouTube suggestions */}
-      {/* These appear on the RIGHT side where YouTube shows "Up Next" */}
-      <div className="absolute right-0 top-0 bottom-0 w-[280px] z-15 pointer-events-none">
-        {/* Top suggestion zone */}
+        {/* ADD TO QUEUE - Bouncing & Glowing */}
         <motion.button
-          className="absolute top-[15%] right-4 w-[240px] h-[140px] pointer-events-auto"
+          className="pointer-events-auto relative overflow-hidden"
           onClick={() => handleInterceptClick('top')}
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          style={{
-            background: 'transparent',
-            border: '2px solid rgba(147, 51, 234, 0.5)',
-            borderRadius: '12px',
-            boxShadow: isProcessing ? '0 0 20px rgba(147, 51, 234, 0.5)' : 'none',
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          animate={isProcessing ? {} : {
+            y: [0, -8, 0],
+          }}
+          transition={{
+            y: { duration: 2, repeat: Infinity, ease: "easeInOut" }
           }}
         >
-          <div className="absolute inset-0 flex items-center justify-center">
+          {/* Glow Effect */}
+          <motion.div
+            className="absolute inset-0 rounded-2xl"
+            animate={{
+              boxShadow: [
+                '0 0 20px rgba(147, 51, 234, 0.3)',
+                '0 0 40px rgba(147, 51, 234, 0.6)',
+                '0 0 20px rgba(147, 51, 234, 0.3)',
+              ]
+            }}
+            transition={{ duration: 2, repeat: Infinity }}
+          />
+
+          {/* Button Content */}
+          <div className="relative bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-3 rounded-2xl border-2 border-white/20">
             {isProcessing ? (
-              <Loader2 className="w-6 h-6 text-purple-400 animate-spin" />
+              <div className="flex items-center gap-2">
+                <Loader2 className="w-5 h-5 text-white animate-spin" />
+                <span className="text-white font-bold text-sm">Adding...</span>
+              </div>
+            ) : successAnimation ? (
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                className="flex items-center gap-2"
+              >
+                <span className="text-white font-bold text-sm">Added! 🔥</span>
+              </motion.div>
             ) : (
-              <div className="text-purple-400/60 text-xs font-medium">
-                Tap to add to queue
+              <div className="flex items-center gap-2">
+                <Plus className="w-5 h-5 text-white" />
+                <span className="text-white font-bold text-sm">Add to Queue</span>
               </div>
             )}
           </div>
         </motion.button>
 
-        {/* Bottom suggestion zone (playlist) */}
+        {/* UP NEXT - Subtle pulse */}
         <motion.button
-          className="absolute top-[45%] right-4 w-[240px] h-[120px] pointer-events-auto"
+          className="pointer-events-auto relative"
           onClick={() => handleInterceptClick('bottom')}
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          style={{
-            background: 'transparent',
-            border: '2px dashed rgba(147, 51, 234, 0.3)',
-            borderRadius: '12px',
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          animate={{
+            opacity: [0.7, 1, 0.7],
+          }}
+          transition={{
+            opacity: { duration: 3, repeat: Infinity, ease: "easeInOut" }
           }}
         >
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="text-purple-400/40 text-xs font-medium">
-              Tap for playlist
+          <div className="bg-black/40 backdrop-blur-sm px-5 py-2.5 rounded-xl border border-purple-500/50">
+            <div className="flex items-center gap-2">
+              <SkipForward className="w-4 h-4 text-purple-400" />
+              <span className="text-purple-300 font-medium text-sm">Up Next</span>
             </div>
           </div>
         </motion.button>
+
       </div>
 
-      {/* Feedback Toast */}
+      {/* Success Feedback Toast */}
       <AnimatePresence>
         {feedback && (
           <motion.div
-            className="absolute top-4 left-1/2 -translate-x-1/2 z-50"
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
+            className="absolute bottom-24 left-1/2 -translate-x-1/2 z-50"
+            initial={{ opacity: 0, y: 20, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
           >
-            <div className="bg-purple-600 text-white px-4 py-2 rounded-full text-sm font-medium shadow-lg flex items-center gap-2">
-              {isProcessing && <Loader2 className="w-4 h-4 animate-spin" />}
-              {feedback}
+            <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-5 py-2.5 rounded-full text-sm font-bold shadow-xl flex items-center gap-2">
+              <span>🎵</span>
+              <span>{feedback}</span>
             </div>
           </motion.div>
         )}
