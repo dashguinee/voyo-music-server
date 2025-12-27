@@ -19,6 +19,7 @@ import { getUserTopTracks, getPoolAwareHotTracks } from '../../services/personal
 import { usePlayerStore } from '../../store/playerStore';
 import { useTrackPoolStore } from '../../store/trackPoolStore';
 import { Track } from '../../types';
+import { TiviPlusCrossPromo } from '../voyo/TiviPlusCrossPromo';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -117,6 +118,109 @@ const Shelf = ({ title, onSeeAll, children }: ShelfProps) => (
     </div>
   </div>
 );
+
+// ============================================
+// CENTER-FOCUSED CAROUSEL - For New Releases
+// Center card big, sides smaller (like Landscape player selector)
+// ============================================
+
+interface CenterCarouselProps {
+  tracks: Track[];
+  onPlay: (track: Track) => void;
+}
+
+const CenterFocusedCarousel = ({ tracks, onPlay }: CenterCarouselProps) => {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [centerIndex, setCenterIndex] = useState(1); // Start with second item centered
+
+  const handleScroll = () => {
+    if (!scrollRef.current) return;
+    const container = scrollRef.current;
+    const scrollLeft = container.scrollLeft;
+    const cardWidth = 140; // Approximate card width + gap
+    const newIndex = Math.round(scrollLeft / cardWidth);
+    setCenterIndex(Math.min(Math.max(newIndex + 1, 0), tracks.length - 1));
+  };
+
+  return (
+    <div className="relative">
+      <div
+        ref={scrollRef}
+        className="flex gap-3 overflow-x-auto scrollbar-hide py-2"
+        style={{
+          scrollSnapType: 'x mandatory',
+          paddingLeft: 'calc(50% - 70px)', // Center first card
+          paddingRight: 'calc(50% - 70px)',
+        }}
+        onScroll={handleScroll}
+      >
+        {tracks.map((track, index) => {
+          const isCenter = index === centerIndex;
+          const distance = Math.abs(index - centerIndex);
+          const scale = isCenter ? 1 : Math.max(0.75, 1 - distance * 0.15);
+          const opacity = isCenter ? 1 : Math.max(0.5, 1 - distance * 0.25);
+
+          return (
+            <motion.button
+              key={track.id}
+              className="flex-shrink-0"
+              onClick={() => onPlay(track)}
+              style={{
+                scrollSnapAlign: 'center',
+                width: 130,
+              }}
+              animate={{
+                scale,
+                opacity,
+              }}
+              transition={{ duration: 0.2 }}
+              whileTap={{ scale: scale * 0.95 }}
+            >
+              <div
+                className="relative rounded-xl overflow-hidden mb-2 bg-white/5"
+                style={{
+                  width: 130,
+                  height: 130,
+                  boxShadow: isCenter ? '0 8px 30px rgba(139, 92, 246, 0.3)' : '0 4px 15px rgba(0,0,0,0.3)',
+                }}
+              >
+                <SmartImage
+                  src={getThumb(track.trackId)}
+                  alt={track.title}
+                  className="w-full h-full object-cover"
+                  trackId={track.trackId}
+                  artist={track.artist}
+                  title={track.title}
+                />
+                {isCenter && (
+                  <motion.div
+                    className="absolute inset-0 flex items-center justify-center bg-black/30"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                  >
+                    <div className="w-12 h-12 rounded-full bg-purple-500/90 flex items-center justify-center">
+                      <Play className="w-6 h-6 text-white ml-1" fill="white" />
+                    </div>
+                  </motion.div>
+                )}
+                {/* Glow ring for center */}
+                {isCenter && (
+                  <div className="absolute inset-0 rounded-xl ring-2 ring-purple-500/50" />
+                )}
+              </div>
+              <p className={`text-sm font-medium truncate ${isCenter ? 'text-white' : 'text-white/60'}`}>
+                {track.title}
+              </p>
+              <p className={`text-xs truncate ${isCenter ? 'text-white/70' : 'text-white/40'}`}>
+                {track.artist}
+              </p>
+            </motion.button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 
 // ============================================
 // TRACK CARD COMPONENT
@@ -613,7 +717,7 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub }: HomeFeedProps) => {
   const hasTrending = trending.length > 0;
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto pb-72 scrollbar-hide">
+    <div className="flex flex-col h-full overflow-y-auto pb-52 scrollbar-hide">
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-3 sticky top-0 bg-[#0a0a0f]/95 backdrop-blur-lg z-10">
         <motion.button
@@ -857,12 +961,16 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub }: HomeFeedProps) => {
         </div>
       </div>
 
-      {/* New Releases */}
-      <Shelf title="New Releases">
-        {newReleases.map((track) => (
-          <TrackCard key={track.id} track={track} onPlay={() => onTrackPlay(track)} />
-        ))}
-      </Shelf>
+      {/* TIVI+ Cross-Promo - "Take a Break with Family" */}
+      <TiviPlusCrossPromo />
+
+      {/* New Releases - Center-focused carousel */}
+      <div className="mb-6">
+        <div className="px-4 mb-3">
+          <h2 className="text-white font-bold text-lg">New Releases</h2>
+        </div>
+        <CenterFocusedCarousel tracks={newReleases} onPlay={onTrackPlay} />
+      </div>
 
       {/* Empty State */}
       {!hasHistory && !hasPreferences && (

@@ -914,6 +914,37 @@ function App() {
     setupMobileAudioUnlock();
   }, []);
 
+  // VOYO:PLAYTRACK - Listen for track play events from cross-promo sections
+  useEffect(() => {
+    const handlePlayTrack = (event: CustomEvent) => {
+      const { youtubeId, title, artist, thumbnail } = event.detail;
+      if (!youtubeId) return;
+
+      // Create a track object from the event data
+      const track = {
+        id: `voyo-${youtubeId}`,
+        trackId: youtubeId,
+        title: title || 'Unknown Track',
+        artist: artist || 'Unknown Artist',
+        coverUrl: thumbnail || `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`,
+        duration: 0,
+        mood: 'vibe' as const,
+        tags: ['cross-promo'],
+        oyeScore: 0,
+      };
+
+      // Play the track using the store
+      const { setCurrentTrack } = usePlayerStore.getState();
+      setCurrentTrack(track as any);
+      console.log('[VOYO] Playing cross-promo track:', title);
+    };
+
+    window.addEventListener('voyo:playTrack', handlePlayTrack as EventListener);
+    return () => {
+      window.removeEventListener('voyo:playTrack', handlePlayTrack as EventListener);
+    };
+  }, []);
+
   // NETWORK DETECTION: Detect network quality on app mount
   useEffect(() => {
     const { detectNetworkQuality } = usePlayerStore.getState();

@@ -1,447 +1,418 @@
 /**
- * TIVI+ Cross-Promo Section
+ * TIVI+ Cross-Promo Section - VOYO Homepage
  *
- * "Take a Break with Family" - Cross-ecosystem promotion
- * Shows content that YouTube doesn't have = breaks the illusion
+ * Purpose: Break the "YouTube skin" illusion by showing exclusive content
+ * Cross-promotes DASH WebTV (TIVI+) within the music app
  *
  * Sections:
- * 1. African Stories (Movies Carousel) - Exclusive content
- * 2. Trending on TIVI+ (Shows/Movies) - Cross-promo
- * 3. Big Teaser Video - Full-width preview
+ * 1. Featured Banner (Spider-Verse) - Hero teaser
+ * 2. Trending on TIVI+ - Movie posters (distinct from music cards)
+ * 3. Live TV - Billboard cards with carousel channel names (DASH WebTV style)
+ *    - +32,000+ channels shown in header
+ *    - Each card shows scrolling channel offerings
+ *    - More channels = faster carousel animation
+ * 4. BACK TO THE MUSIC divider
+ * 5. All Time Classics - Portal vinyl disks (small → large → fade) with thumbnails
+ * 6. West African Hits - Regular cards with static curated data (OG style)
  */
 
+import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Play, ExternalLink, Popcorn, Sparkles, Star, Tv, Music, Flame, Globe, Heart } from 'lucide-react';
+import { Play, ExternalLink, Tv, Radio, Sparkles, Star, Music } from 'lucide-react';
+import { TRACKS } from '../../data/tracks';
+import { Track } from '../../types';
 
 // ============================================
-// REAL CONTENT FROM DASH WEBTV (TIVI+)
-// TMDB posters - Unique content not on YouTube
+// TIVI+ CONTENT DATA
 // ============================================
 
-interface TiviContent {
-  id: string;
-  title: string;
-  subtitle?: string;
-  poster: string;
-  type: 'movie' | 'series' | 'documentary';
-  year?: number;
-  rating?: string;
-  isExclusive?: boolean;
-  streamId?: number | string;
-}
+const TIVI_PLUS_BASE = 'https://dash-webtv.vercel.app';
 
-// French Cinema = Unique content YouTube doesn't have
-const FRENCH_EXCLUSIVES: TiviContent[] = [
+// Trending Movies/Shows - Real TMDB posters
+const TRENDING_TIVI = [
+  { id: '184534', title: 'Spider-Verse', poster: 'https://image.tmdb.org/t/p/w500/8Vt6mWEReuy4Of61Lnj5Xj704m8.jpg', rating: '8.5' },
+  { id: '134971', title: 'The Dark Knight', poster: 'https://image.tmdb.org/t/p/w500/qJ2tW6WMUDux911r6m7haRef0WH.jpg', rating: '8.5' },
+  { id: '139211', title: 'Puss in Boots', poster: 'https://image.tmdb.org/t/p/w500/kuf6dutpsT0vSVehic3EZIqkOBt.jpg', rating: '8.6' },
+  { id: '77338', title: 'Intouchables', poster: 'https://image.tmdb.org/t/p/w500/i97FM40bOMKvKIo3hjQviETE5yf.jpg', rating: '8.3' },
+  { id: '134956', title: 'LOTR: Return', poster: 'https://image.tmdb.org/t/p/w500/rCzpDGLbOoPwLjy3OAm5NUPOTrC.jpg', rating: '8.5' },
+  { id: '101', title: 'Léon', poster: 'https://image.tmdb.org/t/p/w500/bxB2q91nKYp8JNzqE7t7TWBVupB.jpg', rating: '8.3' },
+];
+
+// Live TV Categories - Billboard style with channel offerings
+const LIVE_TV_CATEGORIES = [
   {
-    id: 'french_77338',
-    title: 'The Intouchables',
-    subtitle: 'French Comedy-Drama',
-    poster: 'https://image.tmdb.org/t/p/w500/i97FM40bOMKvKIo3hjQviETE5yf.jpg',
-    type: 'movie',
-    year: 2011,
-    rating: '8.3',
-    isExclusive: true,
-    streamId: 'french_77338',
+    id: 'sports', name: 'SPORTS', icon: '⚽', color: '#22c55e',
+    channels: ['BeIN Sports', 'TNT Sports', 'NFL Network', 'La Liga TV', 'ESPN', 'Sky Sports', 'DAZN', 'Eurosport', 'Fox Sports', 'NBA TV'],
   },
   {
-    id: 'french_101',
-    title: 'Léon: The Professional',
-    subtitle: 'French Action Thriller',
-    poster: 'https://image.tmdb.org/t/p/w500/bxB2q91nKYp8JNzqE7t7TWBVupB.jpg',
-    type: 'movie',
-    year: 1994,
-    rating: '8.3',
-    isExclusive: true,
-    streamId: 'french_101',
+    id: 'movies', name: 'MOVIES', icon: '🎬', color: '#a855f7',
+    channels: ['HBO', 'Cinemax', 'Showtime', 'Starz', 'AMC', 'TCM', 'Canal+', 'Sky Cinema', '57K+ titles'],
   },
   {
-    id: 'french_531428',
-    title: 'Portrait of a Lady on Fire',
-    subtitle: 'French Romance',
-    poster: 'https://image.tmdb.org/t/p/w500/2LquGwEhbg3soxSCs9VNyh5VJd9.jpg',
-    type: 'movie',
-    year: 2019,
-    rating: '8.1',
-    isExclusive: true,
-    streamId: 'french_531428',
+    id: 'series', name: 'SERIES', icon: '📺', color: '#ec4899',
+    channels: ['Netflix Originals', 'HBO Max', 'Apple TV+', 'Prime Video', 'Hulu', 'Disney+', '14K+ shows'],
   },
   {
-    id: 'french_46738',
-    title: 'Incendies',
-    subtitle: 'Canadian-French Drama',
-    poster: 'https://image.tmdb.org/t/p/w500/yH6DAQVgbyj72S66gN4WWVoTjuf.jpg',
-    type: 'movie',
-    year: 2010,
-    rating: '8.1',
-    isExclusive: true,
-    streamId: 'french_46738',
+    id: 'news', name: 'NEWS', icon: '🗞️', color: '#3b82f6',
+    channels: ['CNN', 'BBC World', 'Al Jazeera', 'France 24', 'Sky News', 'Euronews', 'DW', 'CNBC', 'Bloomberg'],
   },
   {
-    id: 'french_265177',
-    title: 'Mommy',
-    subtitle: 'Quebec Drama',
-    poster: 'https://image.tmdb.org/t/p/w500/uPDP0cHGOpkr47rdCdHWo4CyiPj.jpg',
-    type: 'movie',
-    year: 2014,
-    rating: '8.2',
-    isExclusive: true,
-    streamId: 'french_265177',
+    id: 'kids', name: 'KIDS', icon: '🎈', color: '#f472b6',
+    channels: ['Cartoon Network', 'Nickelodeon', 'Disney', 'Boomerang', 'Nick Jr', 'PBS Kids', 'Baby TV'],
   },
   {
-    id: 'french_29259',
-    title: 'Le Trou',
-    subtitle: 'French Prison Drama',
-    poster: 'https://image.tmdb.org/t/p/w500/xyZhiOz5NHVBUKlpioxjwajy7pm.jpg',
-    type: 'movie',
-    year: 1960,
-    rating: '8.3',
-    isExclusive: true,
-    streamId: 'french_29259',
+    id: 'docs', name: 'DOCS', icon: '🎥', color: '#06b6d4',
+    channels: ['Discovery', 'Nat Geo', 'History', 'Animal Planet', 'BBC Earth', 'Vice', 'Smithsonian'],
   },
 ];
 
-// Blockbuster & Family content
-const TRENDING_TIVI: TiviContent[] = [
-  {
-    id: '139211',
-    title: 'Puss in Boots: The Last Wish',
-    subtitle: 'Animated Adventure',
-    poster: 'https://image.tmdb.org/t/p/w600_and_h900_bestv2/kuf6dutpsT0vSVehic3EZIqkOBt.jpg',
-    type: 'movie',
-    year: 2022,
-    rating: '8.6',
-    streamId: 139211,
-  },
-  {
-    id: '134971',
-    title: 'The Dark Knight',
-    subtitle: 'Action Thriller',
-    poster: 'https://image.tmdb.org/t/p/w600_and_h900_bestv2/qJ2tW6WMUDux911r6m7haRef0WH.jpg',
-    type: 'movie',
-    year: 2008,
-    rating: '8.5',
-    streamId: 134971,
-  },
-  {
-    id: '184534',
-    title: 'Spider-Man: Across the Spider-Verse',
-    subtitle: 'Animated Action',
-    poster: 'https://image.tmdb.org/t/p/w600_and_h900_bestv2/8Vt6mWEReuy4Of61Lnj5Xj704m8.jpg',
-    type: 'movie',
-    year: 2023,
-    rating: '8.5',
-    streamId: 184534,
-  },
-  {
-    id: '30005',
-    title: 'Life Is Beautiful',
-    subtitle: 'Italian Drama',
-    poster: 'https://image.tmdb.org/t/p/w600_and_h900_bestv2/74hLDKjD5aGYOotO6esUVaeISa2.jpg',
-    type: 'movie',
-    year: 1997,
-    rating: '8.5',
-    streamId: 30005,
-  },
-  {
-    id: '134956',
-    title: 'LOTR: Return of the King',
-    subtitle: 'Epic Fantasy',
-    poster: 'https://image.tmdb.org/t/p/w600_and_h900_bestv2/rCzpDGLbOoPwLjy3OAm5NUPOTrC.jpg',
-    type: 'movie',
-    year: 2003,
-    rating: '8.5',
-    streamId: 134956,
-  },
-  {
-    id: '23781',
-    title: 'Raya and the Last Dragon',
-    subtitle: 'Animated Adventure',
-    poster: 'https://image.tmdb.org/t/p/w600_and_h900_bestv2/lPsD10PP4rgUGiGR4CCXA6iY0QQ.jpg',
-    type: 'movie',
-    year: 2021,
-    rating: '8.7',
-    streamId: 23781,
-  },
-];
+// Total channel count for header
+const TOTAL_LIVE_CHANNELS = '32,000+';
 
-// Featured teaser - Spider-Verse (Perfect for family break)
-const FEATURED_TEASER = {
-  id: '184534',
+// Featured Banner
+const FEATURED_BANNER = {
   title: 'Spider-Man: Across the Spider-Verse',
   subtitle: 'The Multiverse Awaits - Stream Now on TIVI+',
-  description: 'Miles Morales returns for the next chapter of the Spider-Verse saga. An epic adventure across infinite dimensions with stunning animation.',
-  poster: 'https://image.tmdb.org/t/p/w1280/8Vt6mWEReuy4Of61Lnj5Xj704m8.jpg',
-  backdropUrl: 'https://image.tmdb.org/t/p/w1280/4HodYYKEIsGOdinkGi2Ucz6X9i0.jpg',
-  streamId: 184534,
-  isExclusive: true,
+  backdrop: 'https://image.tmdb.org/t/p/w1280/4HodYYKEIsGOdinkGi2Ucz6X9i0.jpg',
+  streamId: '184534',
 };
 
-// ============================================
-// MUSIC CONTENT - "Back to the Music" sections
-// ============================================
-
-interface MusicTrack {
-  id: string;
-  title: string;
-  artist: string;
-  thumbnail: string;
-  youtubeId: string;
-  duration?: string;
-  isNew?: boolean;
-}
-
-// New Releases - Hot tracks right now
-const NEW_RELEASES: MusicTrack[] = [
-  {
-    id: 'nr-1',
-    title: 'Jerusalema',
-    artist: 'Master KG ft Nomcebo',
-    thumbnail: 'https://i.ytimg.com/vi/fUjLXk3Gvqo/maxresdefault.jpg',
-    youtubeId: 'fUjLXk3Gvqo',
-    isNew: true,
-  },
-  {
-    id: 'nr-2',
-    title: 'Ameno Amapiano',
-    artist: 'Goya Menor',
-    thumbnail: 'https://i.ytimg.com/vi/OZOP4SmQzNU/maxresdefault.jpg',
-    youtubeId: 'OZOP4SmQzNU',
-    isNew: true,
-  },
-  {
-    id: 'nr-3',
-    title: 'Essence',
-    artist: 'Wizkid ft Tems',
-    thumbnail: 'https://i.ytimg.com/vi/zLspGFCf-f4/maxresdefault.jpg',
-    youtubeId: 'zLspGFCf-f4',
-    isNew: true,
-  },
-  {
-    id: 'nr-4',
-    title: 'Water',
-    artist: 'Tyla',
-    thumbnail: 'https://i.ytimg.com/vi/FBsD0LD8ohs/maxresdefault.jpg',
-    youtubeId: 'FBsD0LD8ohs',
-    isNew: true,
-  },
-  {
-    id: 'nr-5',
-    title: 'Unavailable',
-    artist: 'Davido ft Musa Keys',
-    thumbnail: 'https://i.ytimg.com/vi/1M9ApWbI8sE/maxresdefault.jpg',
-    youtubeId: '1M9ApWbI8sE',
-    isNew: true,
-  },
-];
-
-// All Time Classics - Timeless African hits
-const ALL_TIME_CLASSICS: MusicTrack[] = [
-  {
-    id: 'atc-1',
-    title: 'Yeke Yeke',
-    artist: 'Mory Kanté',
-    thumbnail: 'https://i.ytimg.com/vi/xKELnaxRjR4/maxresdefault.jpg',
-    youtubeId: 'xKELnaxRjR4',
-  },
-  {
-    id: 'atc-2',
-    title: 'Africa',
-    artist: 'Salif Keita',
-    thumbnail: 'https://i.ytimg.com/vi/7Swa3hXE6hs/maxresdefault.jpg',
-    youtubeId: '7Swa3hXE6hs',
-  },
-  {
-    id: 'atc-3',
-    title: '7 Seconds',
-    artist: 'Youssou N\'Dour ft Neneh Cherry',
-    thumbnail: 'https://i.ytimg.com/vi/wqCpjFMvz-k/maxresdefault.jpg',
-    youtubeId: 'wqCpjFMvz-k',
-  },
-  {
-    id: 'atc-4',
-    title: 'Pata Pata',
-    artist: 'Miriam Makeba',
-    thumbnail: 'https://i.ytimg.com/vi/lNeP3AXS4Ks/maxresdefault.jpg',
-    youtubeId: 'lNeP3AXS4Ks',
-  },
-  {
-    id: 'atc-5',
-    title: 'Sweet Mother',
-    artist: 'Prince Nico Mbarga',
-    thumbnail: 'https://i.ytimg.com/vi/1Yxd9cnH-8A/maxresdefault.jpg',
-    youtubeId: '1Yxd9cnH-8A',
-  },
-];
-
-// West African Hits - Local favorites from Guinea, Senegal, Mali
-const WEST_AFRICAN_HITS: MusicTrack[] = [
-  {
-    id: 'wah-1',
-    title: 'Nanfulen',
-    artist: 'Sékouba Bambino',
-    thumbnail: 'https://i.ytimg.com/vi/QF0QYXL7nnA/maxresdefault.jpg',
-    youtubeId: 'QF0QYXL7nnA',
-  },
-  {
-    id: 'wah-2',
-    title: 'Diaraby Nene',
-    artist: 'Oumou Sangaré',
-    thumbnail: 'https://i.ytimg.com/vi/kqST5Y39H7I/maxresdefault.jpg',
-    youtubeId: 'kqST5Y39H7I',
-  },
-  {
-    id: 'wah-3',
-    title: 'Djadja',
-    artist: 'Aya Nakamura',
-    thumbnail: 'https://i.ytimg.com/vi/iPGgnzc34tY/maxresdefault.jpg',
-    youtubeId: 'iPGgnzc34tY',
-  },
-  {
-    id: 'wah-4',
-    title: 'Fatou',
-    artist: 'Fatoumata Diawara',
-    thumbnail: 'https://i.ytimg.com/vi/SRG5-FvV4J4/maxresdefault.jpg',
-    youtubeId: 'SRG5-FvV4J4',
-  },
-  {
-    id: 'wah-5',
-    title: 'Kelen',
-    artist: 'Petit Poucet',
-    thumbnail: 'https://i.ytimg.com/vi/8QxIIz1yEsA/maxresdefault.jpg',
-    youtubeId: '8QxIIz1yEsA',
-  },
+// West African Hits - Static curated data (OG style)
+const WEST_AFRICAN_HITS = [
+  { id: 'wa-1', title: 'Djadja', artist: 'Aya Nakamura', trackId: 'iPGgnzc34tY' },
+  { id: 'wa-2', title: 'Jerusalema', artist: 'Master KG ft. Nomcebo', trackId: 'fCZVL_8D048' },
+  { id: 'wa-3', title: 'Essence', artist: 'Wizkid ft. Tems', trackId: 'AjOwMYaXjLY' },
+  { id: 'wa-4', title: 'Love Nwantiti', artist: 'CKay', trackId: 'ioNng23DkIM' },
+  { id: 'wa-5', title: 'Peru', artist: 'Fireboy DML', trackId: 'RscdJXjBkTQ' },
+  { id: 'wa-6', title: 'Soso', artist: 'Omah Lay', trackId: 'hfm8S8yYSjo' },
 ];
 
 // ============================================
 // COMPONENTS
 // ============================================
 
-// Music Track Card - Square format for music
-const MusicCard = ({ track, onClick }: { track: MusicTrack; onClick?: () => void }) => (
+// Movie Poster Card - Distinct from music (taller, cleaner)
+const MoviePosterCard = ({ movie, onClick }: { movie: typeof TRENDING_TIVI[0]; onClick: () => void }) => (
   <motion.button
-    className="flex-shrink-0 relative rounded-xl overflow-hidden group"
-    style={{ width: 130, height: 130 }}
-    whileHover={{ scale: 1.05, y: -3 }}
-    whileTap={{ scale: 0.98 }}
+    className="flex-shrink-0 relative rounded-lg overflow-hidden shadow-lg"
+    style={{ width: 100, height: 150 }}
+    whileHover={{ scale: 1.05, y: -4 }}
+    whileTap={{ scale: 0.97 }}
     onClick={onClick}
   >
-    {/* Thumbnail */}
-    <img
-      src={track.thumbnail}
-      alt={track.title}
-      className="w-full h-full object-cover"
-      loading="lazy"
-    />
-
-    {/* Gradient overlay */}
-    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
-
-    {/* New badge */}
-    {track.isNew && (
-      <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-gradient-to-r from-green-500 to-emerald-500 rounded text-[7px] font-bold text-white">
-        NEW
-      </div>
-    )}
-
-    {/* Info */}
-    <div className="absolute bottom-0 left-0 right-0 p-2">
-      <p className="text-[10px] font-bold text-white truncate">{track.title}</p>
-      <p className="text-[8px] text-white/60 truncate">{track.artist}</p>
+    <img src={movie.poster} alt={movie.title} className="w-full h-full object-cover" loading="lazy" />
+    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+    <div className="absolute top-1.5 right-1.5 px-1.5 py-0.5 bg-black/70 backdrop-blur-sm rounded text-[8px] font-bold text-amber-400 flex items-center gap-0.5">
+      <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />
+      {movie.rating}
     </div>
-
-    {/* Hover play button */}
-    <motion.div
-      className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity"
-    >
-      <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
-        <Play className="w-5 h-5 text-white fill-white" />
-      </div>
-    </motion.div>
+    <div className="absolute bottom-0 left-0 right-0 p-2">
+      <p className="text-[9px] font-bold text-white truncate">{movie.title}</p>
+    </div>
   </motion.button>
 );
 
-const ContentCard = ({ content, onClick }: { content: TiviContent; onClick?: () => void }) => (
-  <motion.button
-    className="flex-shrink-0 relative rounded-xl overflow-hidden group"
-    style={{ width: 120, height: 180 }}
-    whileHover={{ scale: 1.05, y: -5 }}
-    whileTap={{ scale: 0.98 }}
-    onClick={onClick}
-  >
-    {/* Poster */}
-    <img
-      src={content.poster}
-      alt={content.title}
-      className="w-full h-full object-cover"
-      loading="lazy"
-    />
+// Live TV Billboard Card - DASH WebTV Experiences style with carousel channels
+const LiveTVBox = ({ category, onClick }: { category: typeof LIVE_TV_CATEGORIES[0]; onClick: () => void }) => {
+  // Create channel carousel text - more channels = faster animation
+  const channelText = category.channels.join(' • ');
+  const animationDuration = Math.max(8, 20 - category.channels.length); // More channels = faster
 
-    {/* Gradient overlay */}
-    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
-
-    {/* Rating badge */}
-    {content.rating && (
-      <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-black/70 backdrop-blur-sm rounded text-[9px] font-bold text-amber-400 flex items-center gap-0.5">
-        <span className="text-amber-500">★</span> {content.rating}
-      </div>
-    )}
-
-    {/* Exclusive badge */}
-    {content.isExclusive && (
-      <div className="absolute top-2 right-2 px-1 py-0.5 bg-gradient-to-r from-amber-500 to-orange-500 rounded text-[7px] font-bold text-black">
-        TIVI+
-      </div>
-    )}
-
-    {/* Info */}
-    <div className="absolute bottom-0 left-0 right-0 p-2">
-      <p className="text-[10px] font-bold text-white truncate">{content.title}</p>
-      <div className="flex items-center gap-1 mt-0.5">
-        {content.year && (
-          <span className="text-[8px] text-white/50">{content.year}</span>
-        )}
-        {content.subtitle && (
-          <span className="text-[8px] text-white/40 truncate">• {content.subtitle}</span>
-        )}
-      </div>
-    </div>
-
-    {/* Hover play button */}
-    <motion.div
-      className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity"
+  return (
+    <motion.button
+      className="flex-shrink-0 relative rounded-xl overflow-hidden"
+      style={{
+        width: 150,
+        height: 100,
+        background: `linear-gradient(135deg, ${category.color}20 0%, ${category.color}10 50%, transparent 100%)`,
+        border: `1px solid ${category.color}25`,
+      }}
+      whileHover={{
+        scale: 1.03,
+        y: -2,
+        boxShadow: `0 0 25px ${category.color}40, inset 0 0 20px ${category.color}10`,
+        borderColor: `${category.color}50`,
+      }}
+      whileTap={{ scale: 0.98 }}
+      onClick={onClick}
+      transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
     >
-      <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
-        <Play className="w-5 h-5 text-white fill-white" />
-      </div>
-    </motion.div>
-  </motion.button>
-);
+      {/* Radial glow background */}
+      <div
+        className="absolute inset-0 opacity-30"
+        style={{ background: `radial-gradient(circle at 30% 30%, ${category.color}30 0%, transparent 60%)` }}
+      />
 
-const SectionHeader = ({
-  icon: Icon,
-  title,
-  accent,
-  onSeeAll,
-}: {
-  icon: React.ElementType;
-  title: string;
-  accent: string;
-  onSeeAll?: () => void;
-}) => (
-  <div className="flex items-center justify-between mb-3">
+      {/* LIVE badge - top right */}
+      <div className="absolute top-2 right-2 z-10 flex items-center gap-1 px-1.5 py-0.5 rounded-full" style={{ background: 'linear-gradient(135deg, #FF006E 0%, #E50040 100%)' }}>
+        <motion.div
+          className="w-1 h-1 rounded-full bg-white"
+          animate={{ opacity: [1, 0.4, 1] }}
+          transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+        />
+        <span className="text-[6px] font-bold text-white tracking-wider">LIVE</span>
+      </div>
+
+      {/* Icon + Name - left aligned like DASH WebTV */}
+      <div className="absolute top-2.5 left-3 flex items-center gap-2">
+        <span className="text-xl">{category.icon}</span>
+        <span className="text-xs font-bold text-white">{category.name}</span>
+      </div>
+
+      {/* Carousel channels - scrolling text */}
+      <div className="absolute bottom-2.5 left-0 right-0 overflow-hidden">
+        <motion.div
+          className="whitespace-nowrap text-[8px] text-white/60 font-medium px-3"
+          animate={{ x: ['0%', '-50%'] }}
+          transition={{ duration: animationDuration, repeat: Infinity, ease: 'linear' }}
+        >
+          {channelText} • {channelText}
+        </motion.div>
+      </div>
+
+      {/* Status dots - DASH WebTV style */}
+      <div className="absolute bottom-7 left-3 flex gap-0.5">
+        {[...Array(5)].map((_, i) => (
+          <div
+            key={i}
+            className="w-1 h-1 rounded-full"
+            style={{ background: i < 4 ? category.color : `${category.color}40` }}
+          />
+        ))}
+      </div>
+    </motion.button>
+  );
+};
+
+// Time Tunnel Vinyl Carousel - Infinite scroll through time
+// Right = present (big), Left = past (small), loads more classics as you scroll
+const TimeTunnelCarousel = ({ initialTracks, allTracks, onPlay }: {
+  initialTracks: Track[];
+  allTracks: Track[];
+  onPlay: (track: Track) => void
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [cardPositions, setCardPositions] = useState<number[]>([]);
+  const [loadedTracks, setLoadedTracks] = useState<Track[]>(initialTracks);
+  const [loadIndex, setLoadIndex] = useState(initialTracks.length);
+  const rafRef = useRef<number>(0);
+
+  // Update card positions - throttled with RAF for smooth 60fps
+  const updatePositions = useCallback(() => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+
+    rafRef.current = requestAnimationFrame(() => {
+      if (!containerRef.current) return;
+      const container = containerRef.current;
+      const containerRect = container.getBoundingClientRect();
+      const containerWidth = containerRect.width;
+
+      const positions: number[] = [];
+      const cards = container.querySelectorAll('[data-vinyl-card]');
+      cards.forEach((card) => {
+        const cardRect = card.getBoundingClientRect();
+        const cardCenter = cardRect.left + cardRect.width / 2 - containerRect.left;
+        const progress = Math.max(0, Math.min(1, cardCenter / containerWidth));
+        positions.push(progress);
+      });
+      setCardPositions(positions);
+
+      // Check for infinite scroll
+      const { scrollLeft, scrollWidth, clientWidth } = container;
+      if (scrollLeft + clientWidth > scrollWidth * 0.75 && loadIndex < allTracks.length) {
+        const nextBatch = allTracks.slice(loadIndex, loadIndex + 5);
+        if (nextBatch.length > 0) {
+          setLoadedTracks(prev => [...prev, ...nextBatch]);
+          setLoadIndex(prev => prev + 5);
+        }
+      }
+    });
+  }, [loadIndex, allTracks]);
+
+  useEffect(() => {
+    updatePositions();
+    const container = containerRef.current;
+    if (container) {
+      container.addEventListener('scroll', updatePositions, { passive: true });
+      window.addEventListener('resize', updatePositions);
+      return () => {
+        container.removeEventListener('scroll', updatePositions);
+        window.removeEventListener('resize', updatePositions);
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      };
+    }
+  }, [updatePositions]);
+
+  return (
+    <div
+      ref={containerRef}
+      className="flex items-end gap-1 overflow-x-auto scrollbar-hide"
+      style={{ paddingLeft: 16, paddingRight: 16 }}
+    >
+      {loadedTracks.map((track, index) => (
+        <VinylCard
+          key={track.id}
+          track={track}
+          progress={cardPositions[index] ?? index / Math.max(1, loadedTracks.length - 1)}
+          onClick={() => onPlay(track)}
+        />
+      ))}
+      {/* Loading indicator */}
+      {loadIndex < allTracks.length && (
+        <div className="flex-shrink-0 flex items-center justify-center w-10 h-20 opacity-20">
+          <span className="text-xs text-white/40">•••</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Single Vinyl Card - uses CSS transforms for smooth scaling (no layout thrashing)
+const VinylCard = ({ track, progress, onClick }: { track: Track; progress: number; onClick: () => void }) => {
+  const thumbnailUrl = track.coverUrl || `https://i.ytimg.com/vi/${track.trackId}/hqdefault.jpg`;
+
+  // Scale and opacity based on viewport position
+  const scale = 0.4 + progress * 0.6; // 0.4 → 1.0
+  const opacity = 0.3 + progress * 0.7; // 0.3 → 1.0
+
+  // Fixed base size - use CSS transform for scaling (GPU accelerated, no reflow)
+  const baseSize = 85;
+
+  // Ultra smooth spin
+  const rotationDuration = 30 + progress * 40; // 30s → 70s
+
+  return (
+    <div
+      data-vinyl-card
+      className="flex-shrink-0 flex flex-col items-center"
+      style={{
+        width: baseSize + 15,
+        willChange: 'transform, opacity',
+      }}
+    >
+      <motion.button
+        className="relative flex flex-col items-center origin-bottom"
+        style={{
+          transform: `scale(${scale})`,
+          opacity,
+          willChange: 'transform, opacity',
+        }}
+        whileHover={{ scale: scale * 1.08 }}
+        whileTap={{ scale: scale * 0.95 }}
+        onClick={onClick}
+      >
+        {/* Vinyl disk - fixed size, scaled by parent */}
+        <motion.div
+          className="relative rounded-full"
+          style={{
+            width: baseSize,
+            height: baseSize,
+            background: 'conic-gradient(from 0deg, #1a1a1a, #252525, #1a1a1a, #252525, #1a1a1a)',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.5), inset 0 0 15px rgba(0,0,0,0.4)',
+          }}
+          animate={{ rotate: -360 }}
+          transition={{
+            duration: rotationDuration,
+            repeat: Infinity,
+            ease: 'linear',
+          }}
+        >
+          {/* Vinyl grooves */}
+          <div className="absolute rounded-full border border-white/10" style={{ inset: 7 }} />
+          <div className="absolute rounded-full border border-white/5" style={{ inset: 14 }} />
+          <div className="absolute rounded-full border border-white/5" style={{ inset: 21 }} />
+          {/* Center thumbnail */}
+          <div
+            className="absolute rounded-full overflow-hidden"
+            style={{
+              inset: 24,
+              boxShadow: 'inset 0 0 8px rgba(0,0,0,0.7)',
+            }}
+          >
+            <img
+              src={thumbnailUrl}
+              alt={track.title}
+              className="w-full h-full object-cover"
+              style={{
+                filter: `sepia(${0.2 - progress * 0.15}) brightness(${0.7 + progress * 0.3})`,
+              }}
+              loading="lazy"
+            />
+            {/* Center hole */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-2 h-2 rounded-full bg-black border border-white/20" />
+            </div>
+          </div>
+          {/* Shine */}
+          <div className="absolute inset-0 rounded-full" style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 40%)' }} />
+        </motion.div>
+        {/* Title */}
+        <div className="mt-2 text-center w-full">
+          <p
+            className="text-[10px] font-bold truncate"
+            style={{ color: `rgba(255, 250, 240, ${0.5 + progress * 0.5})` }}
+          >
+            {track.title}
+          </p>
+          <p
+            className="text-[8px] truncate"
+            style={{ color: `rgba(255, 250, 240, ${0.3 + progress * 0.3})` }}
+          >
+            {track.artist}
+          </p>
+        </div>
+      </motion.button>
+    </div>
+  );
+};
+
+// West African Hit Card - OG style: square card, song name only, shadow behind text
+const WestAfricanCard = ({ hit, onClick }: { hit: typeof WEST_AFRICAN_HITS[0]; onClick: () => void }) => {
+  const thumbnailUrl = `https://i.ytimg.com/vi/${hit.trackId}/hqdefault.jpg`;
+
+  return (
+    <motion.button
+      className="flex-shrink-0"
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
+      onClick={onClick}
+    >
+      <div className="relative w-28 h-28 rounded-xl overflow-hidden bg-white/5">
+        <img
+          src={thumbnailUrl}
+          alt={hit.title}
+          className="w-full h-full object-cover"
+          loading="lazy"
+        />
+        {/* Gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+        {/* Song name with shadow/glow behind */}
+        <div className="absolute bottom-0 left-0 right-0 p-2">
+          <p
+            className="text-[11px] font-bold text-white truncate"
+            style={{ textShadow: '0 2px 8px rgba(0,0,0,0.9), 0 0 20px rgba(0,0,0,0.7)' }}
+          >
+            {hit.title}
+          </p>
+        </div>
+      </div>
+    </motion.button>
+  );
+};
+
+// Section Header
+const SectionHeader = ({ icon: Icon, title, color, onSeeAll }: { icon: React.ElementType; title: string; color: string; onSeeAll?: () => void }) => (
+  <div className="flex items-center justify-between mb-3 px-4">
     <div className="flex items-center gap-2">
-      <div className={`p-1.5 rounded-lg ${accent}`}>
-        <Icon className="w-4 h-4 text-white" />
+      <div className="p-1.5 rounded-lg" style={{ background: color }}>
+        <Icon className="w-3.5 h-3.5 text-white" />
       </div>
       <span className="text-sm font-bold text-white">{title}</span>
     </div>
     {onSeeAll && (
-      <button
-        onClick={onSeeAll}
-        className="flex items-center gap-1 text-[10px] text-white/50 hover:text-white/80 transition-colors"
-      >
-        <span>See all on TIVI+</span>
-        <ExternalLink className="w-3 h-3" />
+      <button onClick={onSeeAll} className="flex items-center gap-1 text-[9px] text-white/40 hover:text-white/70 transition-colors">
+        <span>Open TIVI+</span>
+        <ExternalLink className="w-2.5 h-2.5" />
       </button>
     )}
   </div>
@@ -451,248 +422,178 @@ const SectionHeader = ({
 // MAIN COMPONENT
 // ============================================
 
-// TIVI+ App deep link URL
-const TIVI_PLUS_BASE = 'https://dash-webtv.vercel.app';
-
 export const TiviPlusCrossPromo = () => {
-  const handleContentClick = (content: TiviContent) => {
-    // Deep link to TIVI+ with stream ID
-    const tiviPlusUrl = content.streamId
-      ? `${TIVI_PLUS_BASE}/watch/${content.streamId}`
-      : `${TIVI_PLUS_BASE}/browse`;
-    window.open(tiviPlusUrl, '_blank');
+  // hotPool removed - West African Hits now uses static curated data
+
+  // ALL classics for infinite scroll - sorted by timelessness
+  const allClassicsTracks = useMemo(() => {
+    // All tracks sorted by oyeScore (most timeless first = oldest classics)
+    return [...TRACKS]
+      .filter(t => !t.tags?.includes('mix'))
+      .sort((a, b) => b.oyeScore - a.oyeScore); // Highest score = most timeless
+  }, []);
+
+  // Initial tracks to show (first 8)
+  const initialClassicsTracks = useMemo(() => {
+    return allClassicsTracks.slice(0, 8);
+  }, [allClassicsTracks]);
+
+  // West African Hits now uses static WEST_AFRICAN_HITS data (OG style)
+
+  const handleMovieClick = (movieId: string) => {
+    window.open(`${TIVI_PLUS_BASE}/watch/${movieId}`, '_blank');
   };
 
-  const handleTeaserClick = () => {
-    // Deep link to featured movie
-    const tiviPlusUrl = `${TIVI_PLUS_BASE}/watch/${FEATURED_TEASER.streamId}`;
-    window.open(tiviPlusUrl, '_blank');
+  const handleLiveTVClick = (categoryId: string) => {
+    window.open(`${TIVI_PLUS_BASE}/live?category=${categoryId}`, '_blank');
   };
 
-  const handleMusicClick = (track: MusicTrack) => {
-    // Dispatch event to play this track in VOYO
-    // Uses the existing player system
+  const handleMusicClick = (track: Track) => {
     window.dispatchEvent(new CustomEvent('voyo:playTrack', {
       detail: {
-        youtubeId: track.youtubeId,
+        youtubeId: track.trackId,
         title: track.title,
         artist: track.artist,
-        thumbnail: track.thumbnail,
+        thumbnail: track.coverUrl || `https://i.ytimg.com/vi/${track.trackId}/hqdefault.jpg`,
       }
     }));
   };
 
   return (
-    <motion.div
-      className="mt-6 px-4"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay: 0.2 }}
-    >
-      {/* Section Divider */}
-      <div className="flex items-center gap-3 mb-4">
-        <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+    <div className="mt-4">
+      {/* ========== TIVI+ SECTION ========== */}
+
+      {/* Section Divider - Take a Break */}
+      <div className="flex items-center gap-3 mb-4 px-4">
+        <div className="flex-1 h-px bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" />
         <motion.div
-          className="flex items-center gap-2 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/20"
           animate={{ scale: [1, 1.02, 1] }}
-          transition={{ duration: 3, repeat: Infinity }}
+          transition={{ duration: 4, repeat: Infinity }}
         >
-          <Popcorn className="w-4 h-4 text-amber-400" />
-          <span className="text-[10px] font-bold text-amber-300 tracking-wider">
-            TAKE A BREAK WITH FAMILY
-          </span>
+          <Tv className="w-3.5 h-3.5 text-amber-400" />
+          <span className="text-[9px] font-bold text-amber-300/90 tracking-wider">TAKE A BREAK ON TIVI+</span>
         </motion.div>
-        <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+        <div className="flex-1 h-px bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" />
       </div>
 
-      {/* French Cinema Exclusives */}
-      <div className="mb-6">
-        <SectionHeader
-          icon={Sparkles}
-          title="French Cinema"
-          accent="bg-gradient-to-br from-amber-500 to-orange-600"
-          onSeeAll={() => window.open(`${TIVI_PLUS_BASE}/browse?category=french`, '_blank')}
-        />
-        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4">
-          {FRENCH_EXCLUSIVES.map(content => (
-            <ContentCard
-              key={content.id}
-              content={content}
-              onClick={() => handleContentClick(content)}
-            />
-          ))}
-        </div>
-        <p className="text-[9px] text-white/40 mt-2 italic">
-          Content not available on YouTube - Exclusive to TIVI+
-        </p>
-      </div>
-
-      {/* Trending on TIVI+ */}
-      <div className="mb-6">
-        <SectionHeader
-          icon={Tv}
-          title="Trending on TIVI+"
-          accent="bg-gradient-to-br from-purple-500 to-pink-600"
-          onSeeAll={() => window.open(`${TIVI_PLUS_BASE}/browse`, '_blank')}
-        />
-        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4">
-          {TRENDING_TIVI.map(content => (
-            <ContentCard
-              key={content.id}
-              content={content}
-              onClick={() => handleContentClick(content)}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* Featured Teaser - Widescreen Banner */}
+      {/* Featured Banner */}
       <motion.button
-        className="relative w-full h-44 rounded-2xl overflow-hidden mb-4 group"
-        onClick={handleTeaserClick}
+        className="relative w-[calc(100%-32px)] mx-4 h-36 rounded-2xl overflow-hidden mb-5 group"
+        onClick={() => handleMovieClick(FEATURED_BANNER.streamId)}
         whileHover={{ scale: 1.01 }}
         whileTap={{ scale: 0.99 }}
       >
-        {/* Background - Use backdrop for cinematic look */}
-        <img
-          src={FEATURED_TEASER.backdropUrl}
-          alt={FEATURED_TEASER.title}
-          className="absolute inset-0 w-full h-full object-cover"
-          loading="lazy"
-        />
-
-        {/* Gradient overlays */}
-        <div className="absolute inset-0 bg-gradient-to-r from-black/95 via-black/60 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-black/30" />
-
-        {/* Top badges */}
-        <div className="absolute top-3 left-3 flex items-center gap-2">
-          <div className="px-2 py-1 bg-gradient-to-r from-amber-500 to-orange-500 rounded-full text-[9px] font-bold text-black flex items-center gap-1">
-            <Sparkles className="w-3 h-3" />
-            TIVI+ EXCLUSIVE
-          </div>
-          <div className="px-2 py-1 bg-black/60 backdrop-blur-sm rounded-full text-[9px] font-bold text-amber-400 flex items-center gap-1">
-            <Star className="w-3 h-3 fill-amber-400" />
-            8.5
-          </div>
+        <img src={FEATURED_BANNER.backdrop} alt={FEATURED_BANNER.title} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/50 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20" />
+        <div className="absolute top-3 left-3 px-2 py-0.5 bg-gradient-to-r from-amber-500 to-orange-500 rounded text-[8px] font-bold text-black flex items-center gap-1">
+          <Sparkles className="w-2.5 h-2.5" />
+          TIVI+ EXCLUSIVE
         </div>
-
-        {/* Content */}
-        <div className="absolute bottom-0 left-0 right-16 p-4">
-          <h3 className="text-xl font-black text-white mb-1 drop-shadow-lg">{FEATURED_TEASER.title}</h3>
-          <p className="text-xs text-amber-300 font-medium mb-2">{FEATURED_TEASER.subtitle}</p>
-          <p className="text-[10px] text-white/80 line-clamp-2 max-w-[80%]">{FEATURED_TEASER.description}</p>
+        <div className="absolute bottom-3 left-3 right-14">
+          <h3 className="text-lg font-black text-white mb-0.5">{FEATURED_BANNER.title}</h3>
+          <p className="text-[10px] text-amber-300 font-medium">{FEATURED_BANNER.subtitle}</p>
         </div>
-
-        {/* Play button - Bigger and more prominent */}
         <motion.div
-          className="absolute right-4 bottom-4"
-          whileHover={{ scale: 1.1 }}
-          animate={{ scale: [1, 1.05, 1] }}
+          className="absolute right-3 bottom-3 w-11 h-11 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg"
+          animate={{ scale: [1, 1.08, 1] }}
           transition={{ duration: 2, repeat: Infinity }}
         >
-          <div className="w-14 h-14 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 shadow-lg shadow-amber-500/30 flex items-center justify-center">
-            <Play className="w-7 h-7 text-black fill-black ml-1" />
-          </div>
+          <Play className="w-5 h-5 text-black fill-black ml-0.5" />
         </motion.div>
-
-        {/* "Watch on TIVI+" CTA */}
-        <div className="absolute right-4 top-3 flex items-center gap-1 px-2 py-1 bg-black/50 backdrop-blur-sm rounded-full text-[8px] text-white/70">
-          <span>Watch on</span>
-          <span className="font-bold text-amber-400">TIVI+</span>
-          <ExternalLink className="w-2.5 h-2.5" />
-        </div>
-
-        {/* Subtle animated glow */}
-        <motion.div
-          className="absolute inset-0 rounded-2xl pointer-events-none"
-          animate={{
-            boxShadow: [
-              'inset 0 0 0 1px rgba(245,158,11,0)',
-              'inset 0 0 0 1px rgba(245,158,11,0.3)',
-              'inset 0 0 0 1px rgba(245,158,11,0)',
-            ],
-          }}
-          transition={{ duration: 3, repeat: Infinity }}
-        />
       </motion.button>
 
-      {/* Back to Music divider */}
-      <div className="flex items-center gap-3 mt-6 mb-4">
-        <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+      {/* Trending on TIVI+ */}
+      <div className="mb-5">
+        <SectionHeader icon={Sparkles} title="Trending on TIVI+" color="linear-gradient(135deg, #f59e0b, #ea580c)" onSeeAll={() => window.open(TIVI_PLUS_BASE, '_blank')} />
+        <div className="flex gap-3 overflow-x-auto scrollbar-hide" style={{ paddingLeft: 16, paddingRight: 16 }}>
+          {TRENDING_TIVI.map(movie => (
+            <MoviePosterCard key={movie.id} movie={movie} onClick={() => handleMovieClick(movie.id)} />
+          ))}
+        </div>
+      </div>
+
+      {/* Live TV - Billboard Cards */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-3 px-4">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg" style={{ background: 'linear-gradient(135deg, #8b5cf6, #a855f7)' }}>
+              <Radio className="w-3.5 h-3.5 text-white" />
+            </div>
+            <span className="text-sm font-bold text-white">Live TV</span>
+            <span className="text-[10px] text-cyan-400 font-semibold ml-1">+{TOTAL_LIVE_CHANNELS} channels</span>
+          </div>
+          <button onClick={() => window.open(`${TIVI_PLUS_BASE}/live`, '_blank')} className="flex items-center gap-1 text-[9px] text-white/40 hover:text-white/70 transition-colors">
+            <span>Open TIVI+</span>
+            <ExternalLink className="w-2.5 h-2.5" />
+          </button>
+        </div>
+        <div className="flex gap-3 overflow-x-auto scrollbar-hide" style={{ paddingLeft: 16, paddingRight: 16 }}>
+          {LIVE_TV_CATEGORIES.map(category => (
+            <LiveTVBox key={category.id} category={category} onClick={() => handleLiveTVClick(category.id)} />
+          ))}
+        </div>
+      </div>
+
+      {/* ========== BACK TO MUSIC SECTION ========== */}
+
+      {/* Section Divider - Back to Music */}
+      <div className="flex items-center gap-3 mb-4 px-4">
+        <div className="flex-1 h-px bg-gradient-to-r from-transparent via-purple-500/30 to-transparent" />
         <motion.div
-          className="flex items-center gap-2 px-3 py-1 rounded-full bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/30"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20"
           animate={{ scale: [1, 1.02, 1] }}
-          transition={{ duration: 3, repeat: Infinity, delay: 1 }}
+          transition={{ duration: 4, repeat: Infinity, delay: 1 }}
         >
-          <Music className="w-4 h-4 text-purple-400" />
-          <span className="text-[10px] font-bold text-purple-300 tracking-wider">
-            BACK TO THE MUSIC
-          </span>
+          <Music className="w-3.5 h-3.5 text-purple-400" />
+          <span className="text-[9px] font-bold text-purple-300/90 tracking-wider">BACK TO THE MUSIC</span>
         </motion.div>
-        <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+        <div className="flex-1 h-px bg-gradient-to-r from-transparent via-purple-500/30 to-transparent" />
       </div>
 
-      {/* New Releases */}
-      <div className="mb-6">
-        <SectionHeader
-          icon={Flame}
-          title="New Releases"
-          accent="bg-gradient-to-br from-green-500 to-emerald-600"
+      {/* All Time Classics - Time Tunnel (scroll through time) */}
+      <div className="mb-5">
+        <div className="flex items-center gap-2 mb-3 px-4">
+          <span className="text-lg">💿</span>
+          <span className="text-sm font-bold text-white">All Time Classics</span>
+          <span className="text-[8px] text-white/40 ml-auto">← past | present →</span>
+        </div>
+        <TimeTunnelCarousel
+          initialTracks={initialClassicsTracks}
+          allTracks={allClassicsTracks}
+          onPlay={handleMusicClick}
         />
-        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4">
-          {NEW_RELEASES.map(track => (
-            <MusicCard
-              key={track.id}
-              track={track}
-              onClick={() => handleMusicClick(track)}
+        <p className="text-[8px] text-white/30 mt-2 px-4 italic">Scroll through time — timeless African hits</p>
+      </div>
+
+      {/* West African Hits - Cards with static curated data (OG style) */}
+      <div className="mb-8">
+        <div className="flex items-center gap-2 mb-3 px-4">
+          <span className="text-lg">🌍</span>
+          <span className="text-sm font-bold text-white">West African Hits</span>
+        </div>
+        <div className="flex gap-3 overflow-x-auto scrollbar-hide" style={{ paddingLeft: 16, paddingRight: 16 }}>
+          {WEST_AFRICAN_HITS.map((hit) => (
+            <WestAfricanCard
+              key={hit.id}
+              hit={hit}
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent('voyo:playTrack', {
+                  detail: {
+                    youtubeId: hit.trackId,
+                    title: hit.title,
+                    artist: hit.artist,
+                    thumbnail: `https://i.ytimg.com/vi/${hit.trackId}/hqdefault.jpg`,
+                  }
+                }));
+              }}
             />
           ))}
         </div>
+        <p className="text-[8px] text-white/30 mt-2 px-4 italic">From Guinea to Senegal - your local favorites</p>
       </div>
-
-      {/* All Time Classics */}
-      <div className="mb-6">
-        <SectionHeader
-          icon={Heart}
-          title="All Time Classics"
-          accent="bg-gradient-to-br from-rose-500 to-red-600"
-        />
-        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4">
-          {ALL_TIME_CLASSICS.map(track => (
-            <MusicCard
-              key={track.id}
-              track={track}
-              onClick={() => handleMusicClick(track)}
-            />
-          ))}
-        </div>
-        <p className="text-[9px] text-white/40 mt-2 italic">
-          Timeless African hits that defined generations
-        </p>
-      </div>
-
-      {/* West African Hits */}
-      <div className="mb-6">
-        <SectionHeader
-          icon={Globe}
-          title="West African Hits"
-          accent="bg-gradient-to-br from-yellow-500 to-orange-600"
-        />
-        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4">
-          {WEST_AFRICAN_HITS.map(track => (
-            <MusicCard
-              key={track.id}
-              track={track}
-              onClick={() => handleMusicClick(track)}
-            />
-          ))}
-        </div>
-        <p className="text-[9px] text-white/40 mt-2 italic">
-          From Guinea to Senegal - your local favorites
-        </p>
-      </div>
-    </motion.div>
+    </div>
   );
 };
 

@@ -296,14 +296,27 @@ const BottomNav = ({
         <span className="text-xs">{leftLabel}</span>
       </motion.button>
 
-      {/* CENTER: VOYO Player */}
+      {/* CENTER: VOYO Player - Gentle premium glow */}
       <motion.button
         className="relative"
         onClick={onVOYOClick}
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.9 }}
       >
-        <div className="w-14 h-14 -mt-6 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/30">
+        {/* Gentle ambient glow - slow, premium feel */}
+        <motion.div
+          className="absolute inset-0 -m-2 rounded-full bg-purple-500/30 blur-xl"
+          animate={{
+            opacity: [0.3, 0.6, 0.3],
+            scale: [1, 1.15, 1],
+          }}
+          transition={{
+            duration: 3,
+            repeat: Infinity,
+            ease: 'easeInOut',
+          }}
+        />
+        <div className="relative w-14 h-14 -mt-6 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/40">
           <Radio className="w-6 h-6 text-white" />
         </div>
       </motion.button>

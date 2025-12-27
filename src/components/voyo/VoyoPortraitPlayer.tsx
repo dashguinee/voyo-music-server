@@ -28,7 +28,7 @@ import { BoostButton } from '../ui/BoostButton';
 import { BoostSettings } from '../ui/BoostSettings';
 import { haptics, getReactionHaptic } from '../../utils/haptics';
 import { useReactionStore, ReactionCategory, initReactionSubscription } from '../../store/reactionStore';
-import { TiviPlusCrossPromo } from './TiviPlusCrossPromo';
+// TiviPlusCrossPromo moved to HomeFeed.tsx (classic homepage)
 import { useUniverseStore } from '../../store/universeStore';
 import { generateLyrics, getCurrentSegment, type EnrichedLyrics, type LyricsGenerationProgress } from '../../services/lyricsEngine';
 import { getVideoStreamUrl } from '../../services/piped';
@@ -5389,9 +5389,7 @@ export const VoyoPortraitPlayer = ({
           </div>
         </div>
 
-        {/* ========== TIVI+ CROSS-PROMO SECTION ========== */}
-        {/* "Take a Break with Family" - Content YouTube doesn't have */}
-        <TiviPlusCrossPromo />
+        {/* TIVI+ Cross-Promo moved to HomeFeed.tsx (classic homepage) */}
 
       </div>
 
