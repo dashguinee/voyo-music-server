@@ -731,4 +731,210 @@ function extractSnippet(text: string, query: string, contextLength = 50): string
   return snippet;
 }
 
+// ============================================
+// VIDEO INTELLIGENCE API - The Collective Brain
+// ============================================
+
+export interface VideoIntelligenceRow {
+  youtube_id: string;
+  title: string;
+  artist: string | null;
+  channel_name: string | null;
+  duration_seconds: number | null;
+  thumbnail_url: string | null;
+  search_terms: string[] | null;
+  normalized_title: string | null;
+  related_ids: string[];
+  similar_ids: string[];
+  genres: string[];
+  moods: string[];
+  language: string | null;
+  region: string | null;
+  voyo_play_count: number;
+  voyo_queue_count: number;
+  voyo_reaction_count: number;
+  discovered_by: string | null;
+  discovery_method: 'manual_play' | 'ocr_extraction' | 'api_search' | 'related_crawl' | 'import' | null;
+  created_at: string;
+  updated_at: string;
+  last_played_at: string | null;
+}
+
+export const videoIntelligenceAPI = {
+  /**
+   * Sync a video to Supabase (upsert)
+   * Called when a video is discovered/played
+   */
+  async sync(video: Partial<VideoIntelligenceRow> & { youtube_id: string }): Promise<boolean> {
+    if (!supabase) {
+      console.log('[VideoIntelligence] Supabase not configured, skipping sync');
+      return false;
+    }
+
+    const { error } = await supabase
+      .from('video_intelligence')
+      .upsert({
+        ...video,
+        updated_at: new Date().toISOString(),
+      }, {
+        onConflict: 'youtube_id'
+      });
+
+    if (error) {
+      console.error('[VideoIntelligence] Sync error:', error.message);
+      return false;
+    }
+
+    console.log(`[VideoIntelligence] Synced ${video.youtube_id} to Supabase`);
+    return true;
+  },
+
+  /**
+   * Get video by YouTube ID
+   */
+  async get(youtubeId: string): Promise<VideoIntelligenceRow | null> {
+    if (!supabase) return null;
+
+    const { data, error } = await supabase
+      .from('video_intelligence')
+      .select('*')
+      .eq('youtube_id', youtubeId)
+      .single();
+
+    if (error || !data) return null;
+    return data;
+  },
+
+  /**
+   * Search videos by title (fuzzy)
+   */
+  async search(query: string, limit = 5): Promise<VideoIntelligenceRow[]> {
+    if (!supabase || query.length < 2) return [];
+
+    // Use the RPC function for fuzzy search
+    const { data, error } = await supabase
+      .rpc('search_video_intelligence', {
+        search_query: query,
+        limit_count: limit
+      });
+
+    if (error) {
+      // Fallback to ilike search
+      const { data: fallbackData } = await supabase
+        .from('video_intelligence')
+        .select('*')
+        .or(`title.ilike.%${query}%,artist.ilike.%${query}%`)
+        .limit(limit);
+
+      return fallbackData || [];
+    }
+
+    return data || [];
+  },
+
+  /**
+   * Increment play count
+   */
+  async recordPlay(youtubeId: string): Promise<void> {
+    if (!supabase) return;
+
+    await supabase.rpc('increment_video_play', { video_id: youtubeId });
+  },
+
+  /**
+   * Increment queue count
+   */
+  async recordQueue(youtubeId: string): Promise<void> {
+    if (!supabase) return;
+
+    await supabase.rpc('increment_video_queue', { video_id: youtubeId });
+  },
+
+  /**
+   * Get popular videos (most played)
+   */
+  async getPopular(limit = 20): Promise<VideoIntelligenceRow[]> {
+    if (!supabase) return [];
+
+    const { data, error } = await supabase
+      .from('video_intelligence')
+      .select('*')
+      .order('voyo_play_count', { ascending: false })
+      .limit(limit);
+
+    if (error) return [];
+    return data || [];
+  },
+
+  /**
+   * Get recent discoveries
+   */
+  async getRecent(limit = 20): Promise<VideoIntelligenceRow[]> {
+    if (!supabase) return [];
+
+    const { data, error } = await supabase
+      .from('video_intelligence')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) return [];
+    return data || [];
+  },
+
+  /**
+   * Batch sync multiple videos (for efficiency)
+   */
+  async batchSync(videos: Array<Partial<VideoIntelligenceRow> & { youtube_id: string }>): Promise<number> {
+    if (!supabase || videos.length === 0) return 0;
+
+    const videosWithTimestamp = videos.map(v => ({
+      ...v,
+      updated_at: new Date().toISOString(),
+    }));
+
+    const { error, count } = await supabase
+      .from('video_intelligence')
+      .upsert(videosWithTimestamp, {
+        onConflict: 'youtube_id',
+        count: 'exact'
+      });
+
+    if (error) {
+      console.error('[VideoIntelligence] Batch sync error:', error.message);
+      return 0;
+    }
+
+    console.log(`[VideoIntelligence] Batch synced ${count} videos`);
+    return count || 0;
+  },
+
+  /**
+   * Get stats for the collective brain
+   */
+  async getStats(): Promise<{
+    totalVideos: number;
+    totalPlays: number;
+    recentDiscoveries: number;
+  }> {
+    if (!supabase) return { totalVideos: 0, totalPlays: 0, recentDiscoveries: 0 };
+
+    const [countRes, playsRes, recentRes] = await Promise.all([
+      supabase.from('video_intelligence').select('*', { count: 'exact', head: true }),
+      supabase.from('video_intelligence').select('voyo_play_count'),
+      supabase.from('video_intelligence')
+        .select('*', { count: 'exact', head: true })
+        .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+    ]);
+
+    const totalPlays = (playsRes.data || []).reduce((sum: number, v: any) => sum + (v.voyo_play_count || 0), 0);
+
+    return {
+      totalVideos: countRes.count || 0,
+      totalPlays,
+      recentDiscoveries: recentRes.count || 0,
+    };
+  },
+};
+
 export default supabase;

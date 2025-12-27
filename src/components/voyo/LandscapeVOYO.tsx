@@ -29,6 +29,7 @@ import {
   searchYouTube,
   cacheVideo,
   registerTrackPlay,
+  registerTrackQueue,
   getRelatedVideos
 } from '../../services/videoIntelligence';
 
@@ -702,6 +703,9 @@ export const LandscapeVOYO = ({ onVideoMode }: LandscapeVOYOProps) => {
             };
             addToQueue(newTrack);
           }
+
+          // Track queue action in Supabase (collective brain)
+          registerTrackQueue(videoId);
           // Show overlay briefly with feedback
           setShowOverlay(true);
           startHideTimer();

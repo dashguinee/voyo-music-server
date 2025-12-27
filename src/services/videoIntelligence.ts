@@ -12,6 +12,7 @@
  */
 
 import Tesseract from 'tesseract.js';
+import { videoIntelligenceAPI, isSupabaseConfigured } from '../lib/supabase';
 
 // ============================================
 // TYPES
@@ -274,36 +275,53 @@ async function getDB(): Promise<IDBDatabase> {
 }
 
 /**
- * Save video to local cache
+ * Save video to local cache + sync to Supabase
  */
 export async function cacheVideo(video: VideoIntelligence): Promise<void> {
   const database = await getDB();
 
-  return new Promise((resolve, reject) => {
+  // Add normalized title
+  const videoWithNorm = {
+    ...video,
+    normalizedTitle: normalizeTitle(video.title)
+  };
+
+  // 1. Save to IndexedDB (local, instant)
+  await new Promise<void>((resolve, reject) => {
     const tx = database.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
-
-    // Add normalized title
-    const videoWithNorm = {
-      ...video,
-      normalizedTitle: normalizeTitle(video.title)
-    };
-
     store.put(videoWithNorm);
-
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
+
+  // 2. Sync to Supabase (cloud, async - don't block)
+  if (isSupabaseConfigured) {
+    videoIntelligenceAPI.sync({
+      youtube_id: video.youtubeId,
+      title: video.title,
+      artist: video.artist || null,
+      channel_name: video.channelName || null,
+      duration_seconds: video.durationSeconds || null,
+      thumbnail_url: video.thumbnailUrl || null,
+      discovered_by: video.discoveredBy || null,
+      discovery_method: video.discoveryMethod || null,
+    }).catch(err => {
+      // Don't fail local cache if Supabase sync fails
+      console.warn('[VideoIntelligence] Supabase sync failed:', err);
+    });
+  }
 }
 
 /**
- * Search local cache by title
+ * Search local cache by title, fallback to Supabase
  */
 export async function searchLocalCache(query: string): Promise<VideoIntelligence | null> {
   const database = await getDB();
   const normalizedQuery = normalizeTitle(query);
 
-  return new Promise((resolve) => {
+  // 1. Try local IndexedDB first (instant)
+  const localResult = await new Promise<VideoIntelligence | null>((resolve) => {
     const tx = database.transaction(STORE_NAME, 'readonly');
     const store = tx.objectStore(STORE_NAME);
     const index = store.index('normalizedTitle');
@@ -326,9 +344,7 @@ export async function searchLocalCache(query: string): Promise<VideoIntelligence
       }
 
       if (bestMatch) {
-        console.log(`[VOYO Intelligence] Cache HIT: "${query}" → ${bestMatch.youtubeId} (${Math.round(bestSimilarity * 100)}% match)`);
-      } else {
-        console.log(`[VOYO Intelligence] Cache MISS: "${query}"`);
+        console.log(`[VOYO Intelligence] Local HIT: "${query}" → ${bestMatch.youtubeId} (${Math.round(bestSimilarity * 100)}% match)`);
       }
 
       resolve(bestMatch);
@@ -336,6 +352,44 @@ export async function searchLocalCache(query: string): Promise<VideoIntelligence
 
     request.onerror = () => resolve(null);
   });
+
+  if (localResult) return localResult;
+
+  // 2. Try Supabase (cloud, collective brain)
+  if (isSupabaseConfigured) {
+    try {
+      const supabaseResults = await videoIntelligenceAPI.search(query, 1);
+      if (supabaseResults.length > 0) {
+        const result = supabaseResults[0];
+        console.log(`[VOYO Intelligence] Supabase HIT: "${query}" → ${result.youtube_id}`);
+
+        // Cache locally for next time
+        const video: VideoIntelligence = {
+          youtubeId: result.youtube_id,
+          title: result.title,
+          artist: result.artist || undefined,
+          channelName: result.channel_name || undefined,
+          durationSeconds: result.duration_seconds || undefined,
+          thumbnailUrl: result.thumbnail_url || undefined,
+        };
+
+        // Save to local cache (don't re-sync to Supabase)
+        const db = await getDB();
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        tx.objectStore(STORE_NAME).put({
+          ...video,
+          normalizedTitle: normalizeTitle(video.title)
+        });
+
+        return video;
+      }
+    } catch (err) {
+      console.warn('[VOYO Intelligence] Supabase search failed:', err);
+    }
+  }
+
+  console.log(`[VOYO Intelligence] Cache MISS: "${query}"`);
+  return null;
 }
 
 /**
@@ -512,7 +566,7 @@ export async function registerTrackPlay(
   const existing = await getVideoById(youtubeId);
 
   if (existing) {
-    // Update play count (would sync to Supabase in full implementation)
+    // Update play count locally
     await cacheVideo({
       ...existing,
       voyoPlayCount: (existing.voyoPlayCount || 0) + 1
@@ -527,6 +581,21 @@ export async function registerTrackPlay(
       discoveryMethod: 'manual_play',
       voyoPlayCount: 1
     });
+  }
+
+  // Sync play count to Supabase (async, don't block)
+  if (isSupabaseConfigured) {
+    videoIntelligenceAPI.recordPlay(youtubeId).catch(() => {});
+  }
+}
+
+/**
+ * Register a track when it's added to queue
+ */
+export async function registerTrackQueue(youtubeId: string): Promise<void> {
+  // Sync queue count to Supabase
+  if (isSupabaseConfigured) {
+    videoIntelligenceAPI.recordQueue(youtubeId).catch(() => {});
   }
 }
 
