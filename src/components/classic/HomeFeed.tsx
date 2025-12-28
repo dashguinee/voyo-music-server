@@ -19,6 +19,11 @@ import { getUserTopTracks, getPoolAwareHotTracks } from '../../services/personal
 import { usePlayerStore } from '../../store/playerStore';
 import { useTrackPoolStore } from '../../store/trackPoolStore';
 import { Track } from '../../types';
+import {
+  getCurations,
+  SectionCurations,
+  invalidateCurationCache
+} from '../../services/sectionCurator';
 import { TiviPlusCrossPromo } from '../voyo/TiviPlusCrossPromo';
 
 // ============================================
@@ -785,6 +790,8 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
   const { history, hotTracks, discoverTracks, refreshRecommendations } = usePlayerStore();
   const { hotPool } = useTrackPoolStore();
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoadingCurations, setIsLoadingCurations] = useState(false);
+  const [curations, setCurations] = useState<SectionCurations | null>(null);
 
   // Ref for TIVI+ immersive section (nav hides when in view)
   const tiviBreakRef = useRef<HTMLDivElement>(null);
@@ -810,19 +817,54 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
     refreshRecommendations();
   }, [hotPool.length, refreshRecommendations]);
 
+  // Load LLM-curated sections
+  useEffect(() => {
+    const loadCurations = async () => {
+      setIsLoadingCurations(true);
+      try {
+        const result = await getCurations();
+        setCurations(result);
+        console.log('[HomeFeed] Curations loaded:', {
+          madeForYou: result.madeForYou.length,
+          discoverMore: result.discoverMore.length,
+          allTimeClassics: result.allTimeClassics.length,
+          westAfricanHits: result.westAfricanHits.length,
+          newReleases: result.newReleases.length,
+        });
+      } catch (error) {
+        console.error('[HomeFeed] Failed to load curations:', error);
+      } finally {
+        setIsLoadingCurations(false);
+      }
+    };
+
+    loadCurations();
+  }, []);
+
   const handleRefresh = () => {
     setIsRefreshing(true);
     refreshRecommendations();
+    invalidateCurationCache();
+    // Reload curations
+    getCurations().then(setCurations).catch(console.error);
     setTimeout(() => setIsRefreshing(false), 500);
   };
 
+  // TIER 1 - Pure Local (no API calls)
   const recentlyPlayed = useMemo(() => getRecentlyPlayed(history, 15), [history]);
   const heavyRotation = useMemo(() => getUserTopTracks(15), [history]);
-  const madeForYou = hotTracks.length > 0 ? hotTracks : getPoolAwareHotTracks(15);
-  const vibes = VIBES;
-  const newReleases = useMemo(() => getNewReleases(15), []);
   const artistsYouLove = useMemo(() => getArtistsYouLove(history, 8), [history]);
-  const trending = useMemo(() => getTrendingTracks(hotPool, 15), [hotPool]);
+  const vibes = VIBES;
+
+  // TIER 2 & 3 - LLM Curated (from sectionCurator)
+  // Falls back to local pool if curations not loaded yet
+  const madeForYou = curations?.madeForYou.length ? curations.madeForYou : (hotTracks.length > 0 ? hotTracks : getPoolAwareHotTracks(15));
+  const discoverMoreTracks = curations?.discoverMore.length ? curations.discoverMore : discoverTracks;
+  const allTimeClassics = curations?.allTimeClassics || [];
+  const westAfricanHits = curations?.westAfricanHits || [];
+  const africanVibes = curations?.africanVibes.length ? curations.africanVibes : getPoolAwareHotTracks(15);
+  const newReleases = curations?.newReleases.length ? curations.newReleases : getNewReleases(15);
+  const trending = curations?.topOnVoyo.length ? curations.topOnVoyo : getTrendingTracks(hotPool, 15);
 
   const greeting = getGreeting();
 
@@ -846,6 +888,9 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
   const hasPreferences = heavyRotation.length > 0;
   const hasArtists = artistsYouLove.length > 0;
   const hasTrending = trending.length > 0;
+  const hasAllTimeClassics = allTimeClassics.length > 0;
+  const hasWestAfricanHits = westAfricanHits.length > 0;
+  const hasDiscoverMore = discoverMoreTracks.length > 0;
 
   return (
     <div className="flex flex-col h-full overflow-y-auto pb-52 scrollbar-hide">
@@ -971,7 +1016,7 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
               TRENDING
             </span>
           </div>
-          <AfricanVibesCarousel tracks={madeForYou.slice(0, 8)} onTrackPlay={onTrackPlay} />
+          <AfricanVibesCarousel tracks={africanVibes.slice(0, 8)} onTrackPlay={onTrackPlay} />
         </div>
       </div>
 
@@ -1011,13 +1056,53 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
         </div>
       )}
 
-      {/* Discover More */}
-      {discoverTracks.length > 0 && (
+      {/* Discover More - LLM curated expansion beyond comfort zone */}
+      {hasDiscoverMore && (
         <Shelf title="Discover More">
-          {discoverTracks.map((track) => (
+          {discoverMoreTracks.map((track) => (
             <TrackCard key={track.id} track={track} onPlay={() => onTrackPlay(track)} />
           ))}
         </Shelf>
+      )}
+
+      {/* 🔥 West African Hits - Regional trending */}
+      {hasWestAfricanHits && (
+        <div className="mb-10">
+          <div className="px-4 mb-4 flex items-center gap-2">
+            <span className="text-xl">🔥</span>
+            <div className="flex-1">
+              <h2 className="text-white font-semibold text-base">West African Hits</h2>
+              <p className="text-[9px] font-medium tracking-wider uppercase text-orange-400/70">
+                Trending in Nigeria, Ghana & Beyond
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-3 px-4 overflow-x-auto scrollbar-hide">
+            {westAfricanHits.map((track) => (
+              <TrackCard key={track.id} track={track} onPlay={() => onTrackPlay(track)} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 👑 All Time Classics - Legendary tracks from user's genres */}
+      {hasAllTimeClassics && (
+        <div className="mb-10">
+          <div className="px-4 mb-4 flex items-center gap-2">
+            <span className="text-xl">👑</span>
+            <div className="flex-1">
+              <h2 className="text-white font-semibold text-base">All Time Classics</h2>
+              <p className="text-[9px] font-medium tracking-wider uppercase text-yellow-400/70">
+                Timeless Hits You'll Love
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-3 px-4 overflow-x-auto scrollbar-hide">
+            {allTimeClassics.map((track) => (
+              <TrackCard key={track.id} track={track} onPlay={() => onTrackPlay(track)} />
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Top 10 on VOYO */}
