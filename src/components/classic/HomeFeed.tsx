@@ -815,9 +815,9 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub }: HomeFeedProps) => {
         </div>
       </div>
 
-      {/* Made For You - tighter spacing for identity shelf */}
+      {/* Made For You - bold, sits on cards, no hesitation */}
       <div className="mb-10">
-        <div className="flex justify-between items-center px-4 mb-3">
+        <div className="flex justify-between items-center px-4 mb-1.5">
           <h2 className="text-white font-semibold text-base">Made For You</h2>
           <motion.button
             className="p-2 rounded-full bg-white/10 hover:bg-white/20"
