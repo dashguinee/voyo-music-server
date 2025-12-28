@@ -726,7 +726,7 @@ export const TiviPlusCrossPromo = () => {
       </div>
 
       {/* Live TV - Billboard Cards */}
-      <div className="mb-12">
+      <div className="mb-20">
         <div className="flex items-center justify-between mb-5 px-4">
           <div className="flex items-center gap-2">
             <div className="p-1.5 rounded-lg" style={{ background: 'linear-gradient(135deg, #8b5cf6, #a855f7)' }}>
