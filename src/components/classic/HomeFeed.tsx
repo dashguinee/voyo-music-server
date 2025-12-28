@@ -767,9 +767,9 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub }: HomeFeedProps) => {
         </div>
       )}
 
-      {/* 🌍 African Vibes */}
+      {/* 🌍 African Vibes - identity shelf, tighter spacing */}
       <div className="mb-12">
-        <div className="px-4 mb-5 flex items-center gap-2">
+        <div className="px-4 mb-3 flex items-center gap-2">
           <span className="text-xl">🌍</span>
           <div className="flex-1">
             <h2 className="text-white font-semibold text-base">African Vibes</h2>
