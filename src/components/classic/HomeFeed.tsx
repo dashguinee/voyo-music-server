@@ -19,11 +19,6 @@ import { getUserTopTracks, getPoolAwareHotTracks } from '../../services/personal
 import { usePlayerStore } from '../../store/playerStore';
 import { useTrackPoolStore } from '../../store/trackPoolStore';
 import { Track } from '../../types';
-import {
-  getCurations,
-  SectionCurations,
-  invalidateCurationCache
-} from '../../services/sectionCurator';
 import { TiviPlusCrossPromo } from '../voyo/TiviPlusCrossPromo';
 
 // ============================================
@@ -790,8 +785,6 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
   const { history, hotTracks, discoverTracks, refreshRecommendations } = usePlayerStore();
   const { hotPool } = useTrackPoolStore();
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isLoadingCurations, setIsLoadingCurations] = useState(false);
-  const [curations, setCurations] = useState<SectionCurations | null>(null);
 
   // Ref for TIVI+ immersive section (nav hides when in view)
   const tiviBreakRef = useRef<HTMLDivElement>(null);
@@ -817,52 +810,24 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
     refreshRecommendations();
   }, [hotPool.length, refreshRecommendations]);
 
-  // Load LLM-curated sections
-  useEffect(() => {
-    const loadCurations = async () => {
-      setIsLoadingCurations(true);
-      try {
-        const result = await getCurations();
-        setCurations(result);
-        console.log('[HomeFeed] Curations loaded:', {
-          madeForYou: result.madeForYou.length,
-          discoverMore: result.discoverMore.length,
-          allTimeClassics: result.allTimeClassics.length,
-          westAfricanHits: result.westAfricanHits.length,
-          newReleases: result.newReleases.length,
-        });
-      } catch (error) {
-        console.error('[HomeFeed] Failed to load curations:', error);
-      } finally {
-        setIsLoadingCurations(false);
-      }
-    };
-
-    loadCurations();
-  }, []);
-
   const handleRefresh = () => {
     setIsRefreshing(true);
     refreshRecommendations();
-    invalidateCurationCache();
-    // Reload curations
-    getCurations().then(setCurations).catch(console.error);
     setTimeout(() => setIsRefreshing(false), 500);
   };
 
-  // TIER 1 - Pure Local (no API calls)
+  // Data from existing DJ/Curator systems (pool-based)
   const recentlyPlayed = useMemo(() => getRecentlyPlayed(history, 15), [history]);
   const heavyRotation = useMemo(() => getUserTopTracks(15), [history]);
   const artistsYouLove = useMemo(() => getArtistsYouLove(history, 8), [history]);
   const vibes = VIBES;
 
-  // TIER 2 & 3 - LLM Curated (from sectionCurator)
-  // Falls back to local pool if curations not loaded yet
-  const madeForYou = curations?.madeForYou.length ? curations.madeForYou : (hotTracks.length > 0 ? hotTracks : getPoolAwareHotTracks(15));
-  const discoverMoreTracks = curations?.discoverMore.length ? curations.discoverMore : discoverTracks;
-  const africanVibes = curations?.africanVibes.length ? curations.africanVibes : getPoolAwareHotTracks(15);
-  const newReleases = curations?.newReleases.length ? curations.newReleases : getNewReleases(15);
-  const trending = curations?.topOnVoyo.length ? curations.topOnVoyo : getTrendingTracks(hotPool, 15);
+  // Pool-fed sections (DJ/Curator fills pool → refreshRecommendations → these update)
+  const madeForYou = hotTracks.length > 0 ? hotTracks : getPoolAwareHotTracks(15);
+  const discoverMoreTracks = discoverTracks.length > 0 ? discoverTracks : getPoolAwareHotTracks(15);
+  const africanVibes = getPoolAwareHotTracks(15);
+  const newReleases = useMemo(() => getNewReleases(15), []);
+  const trending = getTrendingTracks(hotPool, 15);
 
   const greeting = getGreeting();
 
