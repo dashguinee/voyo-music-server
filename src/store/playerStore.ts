@@ -788,7 +788,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     }));
 
     // Record reaction in preferences (if there's a current track)
-    const { currentTrack } = get();
+    const { currentTrack, duration } = get();
     if (currentTrack) {
       // Import at runtime to avoid circular dependencies
       import('./preferenceStore').then(({ usePreferenceStore }) => {
@@ -797,6 +797,27 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
       // POOL ENGAGEMENT: Record reaction (strong positive signal)
       recordPoolEngagement(currentTrack.id, 'react');
+
+      // 🔥 OYE = AUTO-BOOST: When user OYEs a track, cache it for offline
+      // This is the signature VOYO feature - love it? Keep it forever.
+      if (reaction.type === 'oye') {
+        import('./downloadStore').then(({ useDownloadStore }) => {
+          const { cacheTrack, checkCache } = useDownloadStore.getState();
+          // Only cache if not already cached
+          checkCache(currentTrack.trackId).then((cached) => {
+            if (!cached) {
+              console.log(`🔥 [OYE] Auto-boosting: ${currentTrack.title}`);
+              cacheTrack(
+                currentTrack.trackId,
+                currentTrack.title,
+                currentTrack.artist,
+                Math.floor(duration || 0),
+                `https://voyo-music-api.fly.dev/cdn/art/${currentTrack.trackId}?quality=high`
+              );
+            }
+          });
+        });
+      }
     }
 
     // Auto-remove after animation (2s)

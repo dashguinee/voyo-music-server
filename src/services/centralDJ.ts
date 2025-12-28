@@ -590,6 +590,43 @@ export async function getStats(): Promise<{
 }
 
 // ============================================
+// SEED SYNC - Upload local tracks to Supabase (one-time)
+// ============================================
+
+const SEED_SYNC_KEY = 'voyo_seed_synced_v1';
+
+/**
+ * Sync seed tracks from local TRACKS to Supabase
+ * Only runs once per device (stores flag in localStorage)
+ */
+export async function syncSeedTracks(tracks: Track[]): Promise<number> {
+  if (!supabase || !isSupabaseConfigured) {
+    console.log('[Central DJ] Supabase not configured, skipping seed sync');
+    return 0;
+  }
+
+  // Check if already synced
+  if (localStorage.getItem(SEED_SYNC_KEY)) {
+    console.log('[Central DJ] Seed tracks already synced');
+    return 0;
+  }
+
+  console.log(`[Central DJ] 🌱 Syncing ${tracks.length} seed tracks to Supabase...`);
+
+  let synced = 0;
+  for (const track of tracks) {
+    const success = await saveVerifiedTrack(track, undefined, 'seed');
+    if (success) synced++;
+  }
+
+  // Mark as synced
+  localStorage.setItem(SEED_SYNC_KEY, new Date().toISOString());
+  console.log(`[Central DJ] ✅ Synced ${synced}/${tracks.length} seed tracks`);
+
+  return synced;
+}
+
+// ============================================
 // DEBUG HELPERS
 // ============================================
 
@@ -626,6 +663,7 @@ export default {
   // Save
   saveVerifiedTrack,
   saveVerifiedTracks,
+  syncSeedTracks,
   // Signals
   recordSignal,
   signals,

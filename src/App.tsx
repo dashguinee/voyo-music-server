@@ -36,6 +36,8 @@ import './utils/debugIntent';
 import { startPoolMaintenance } from './store/trackPoolStore';
 import { bootstrapPool } from './services/poolCurator';
 import { runStartupHeal } from './services/trackVerifier';
+import { syncSeedTracks } from './services/centralDJ';
+import { TRACKS } from './data/tracks';
 
 // App modes
 type AppMode = 'classic' | 'voyo' | 'video';
@@ -955,6 +957,14 @@ function App() {
   useEffect(() => {
     startPoolMaintenance();
     console.log('[VOYO] Track pool maintenance started');
+
+    // SEED SYNC: Upload local tracks to Supabase (one-time per device)
+    // This ensures the collective brain has our seed tracks
+    syncSeedTracks(TRACKS).then(count => {
+      if (count > 0) {
+        console.log(`[VOYO] 🌱 Synced ${count} seed tracks to Supabase`);
+      }
+    });
 
     // BOOTSTRAP: Ensure pool has fresh tracks from our backend search
     // This replaces Gemini/Piped with verified VOYO IDs
