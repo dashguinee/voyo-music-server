@@ -837,20 +837,20 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub }: HomeFeedProps) => {
         </div>
       </div>
 
+      {/* Artists You Love - flows from "your music" */}
+      {hasArtists && (
+        <Shelf title="Artists You Love">
+          {artistsYouLove.map((artist) => (
+            <ArtistCard key={artist.name} artist={artist} onPlay={onTrackPlay} />
+          ))}
+        </Shelf>
+      )}
+
       {/* Discover More */}
       {discoverTracks.length > 0 && (
         <Shelf title="Discover More">
           {discoverTracks.map((track) => (
             <TrackCard key={track.id} track={track} onPlay={() => onTrackPlay(track)} />
-          ))}
-        </Shelf>
-      )}
-
-      {/* Artists You Love */}
-      {hasArtists && (
-        <Shelf title="Artists You Love">
-          {artistsYouLove.map((artist) => (
-            <ArtistCard key={artist.name} artist={artist} onPlay={onTrackPlay} />
           ))}
         </Shelf>
       )}
