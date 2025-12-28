@@ -390,12 +390,35 @@ export function getLikelySkips(limit: number = 5): Track[] {
 
 /**
  * Get user's top tracks (most completed, most reactions)
+ * POOL-AWARE: Combines static TRACKS + dynamic pool for full coverage
  */
 export function getUserTopTracks(limit: number = 10): Track[] {
   const preferences = usePreferenceStore.getState().trackPreferences;
+  const poolStore = useTrackPoolStore.getState();
+  const hotPool = poolStore.hotPool;
 
-  const scored = TRACKS.map((track) => {
-    const pref = preferences[track.id];
+  // Combine static TRACKS + pool tracks (dedupe by id)
+  const seenIds = new Set<string>();
+  const allTracks: Track[] = [];
+
+  // Add static tracks first
+  for (const track of TRACKS) {
+    if (!seenIds.has(track.id)) {
+      seenIds.add(track.id);
+      allTracks.push(track);
+    }
+  }
+
+  // Add pool tracks (discovered via search, DJ, etc)
+  for (const poolTrack of hotPool) {
+    if (!seenIds.has(poolTrack.id)) {
+      seenIds.add(poolTrack.id);
+      allTracks.push(poolTrack);
+    }
+  }
+
+  const scored = allTracks.map((track) => {
+    const pref = preferences[track.id] || preferences[track.trackId];
     if (!pref) return { track, score: 0 };
 
     const completionRate = pref.totalListens > 0
