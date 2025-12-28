@@ -954,12 +954,12 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub }: HomeFeedProps) => {
         </div>
       )}
 
-      {/* Vibes - clean, confident */}
+      {/* Vibes - choices, not playlist */}
       <div className="mb-12">
-        <div className="px-4 mb-3">
+        <div className="px-4 mb-1.5">
           <h2 className="text-white font-semibold text-base">Vibes</h2>
         </div>
-        <div className="flex gap-3 px-4 overflow-x-auto scrollbar-hide py-4">
+        <div className="flex gap-4 px-4 overflow-x-auto scrollbar-hide py-4">
           {vibes.map((vibe, index) => (
             <VibeCard key={vibe.id} vibe={vibe} index={index} onSelect={() => handleVibeSelect(vibe)} />
           ))}
