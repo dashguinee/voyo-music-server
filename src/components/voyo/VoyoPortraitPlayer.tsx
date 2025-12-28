@@ -1100,20 +1100,15 @@ const BackdropLibrary = ({
 const ExpandVideoButton = memo(({ onClick }: { onClick: () => void }) => (
   <motion.button
     onClick={onClick}
-    className="absolute top-3 right-3 z-30 p-2 rounded-xl bg-black/40 backdrop-blur-sm border border-white/10 text-white/60 hover:text-white hover:bg-black/60 hover:border-purple-500/30 transition-all group"
-    whileHover={{ scale: 1.08 }}
-    whileTap={{ scale: 0.93 }}
-    initial={{ opacity: 0, scale: 0.85 }}
-    animate={{ opacity: 1, scale: 1 }}
-    transition={{ delay: 0.2, ...springs.smooth }}
+    className="absolute top-3 right-3 z-30 px-3 py-1.5 rounded-full bg-black/50 backdrop-blur-sm border border-white/20 text-white text-xs font-medium flex items-center gap-1.5 hover:bg-black/70 hover:border-purple-500/40 transition-all"
+    whileHover={{ scale: 1.05 }}
+    whileTap={{ scale: 0.95 }}
+    initial={{ opacity: 0, y: -5 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ delay: 0.3, ...springs.smooth }}
   >
-    <Maximize2 size={16} />
-    {/* Tooltip */}
-    <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-      <div className="bg-black/80 backdrop-blur-sm text-white text-[9px] px-2 py-1 rounded whitespace-nowrap">
-        Watch Video
-      </div>
-    </div>
+    <Play size={12} fill="currentColor" />
+    <span>Video</span>
   </motion.button>
 ));
 
