@@ -1816,13 +1816,24 @@ const BigCenterCard = memo(({ track, onExpandVideo, onShowLyrics, showOverlay = 
           src={`https://www.youtube.com/embed/${track.trackId}?autoplay=1&controls=0&modestbranding=1&rel=0&playsinline=1&showinfo=0&iv_load_policy=3&fs=0&mute=1`}
           className="w-full h-full"
           style={{
-            transform: 'scale(1.5)',
+            transform: 'scale(2)',
             transformOrigin: 'center center',
           }}
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
           title={track.title}
         />
+        {/* Gradient overlay for title visibility */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/40 pointer-events-none" />
+        {/* Track title overlay */}
+        <div className="absolute bottom-4 left-4 right-4 z-20 pointer-events-none">
+          <p className="text-white font-bold text-lg truncate" style={{ textShadow: '0 2px 8px rgba(0,0,0,0.9)' }}>
+            {track.title}
+          </p>
+          <p className="text-white/70 text-sm truncate" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.9)' }}>
+            {track.artist}
+          </p>
+        </div>
         {/* Close video button */}
         <motion.button
           onClick={onCloseVideo}
