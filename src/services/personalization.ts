@@ -22,6 +22,7 @@ import { TRACKS } from '../data/tracks';
 import { useIntentStore, matchTrackToMode, VibeMode, MODE_KEYWORDS } from '../store/intentStore';
 import { useTrackPoolStore, PooledTrack } from '../store/trackPoolStore';
 import { safeAddManyToPool } from './trackVerifier';
+import { saveVerifiedTrack } from './centralDJ';
 
 // ============================================
 // SCORING WEIGHTS
@@ -721,10 +722,19 @@ export function getPoolAwareDiscoveryTracks(
  * Add tracks to pool from search results
  * Call this when user searches and plays a track
  * Validates each track before adding - no bad thumbnails enter
+ * Also syncs to Supabase collective brain for other users
  */
 export async function addSearchResultsToPool(tracks: Track[]): Promise<void> {
   const added = await safeAddManyToPool(tracks, 'search');
   console.log(`[VOYO Pool] Added ${added}/${tracks.length} validated search results to pool`);
+
+  // COLLECTIVE BRAIN: Sync validated search results to Supabase
+  // So other users can benefit from discovered tracks
+  for (const track of tracks) {
+    saveVerifiedTrack(track, undefined, 'user_search').catch(() => {
+      // Silent fail - local pool is the source of truth
+    });
+  }
 }
 
 /**

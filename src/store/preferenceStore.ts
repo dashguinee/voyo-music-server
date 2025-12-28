@@ -80,7 +80,7 @@ interface PreferenceStore {
   currentSession: ListenSession | null;
 
   // Actions
-  startListenSession: (trackId: string) => void;
+  startListenSession: (trackId: string, totalDuration?: number) => void;
   endListenSession: (duration: number, reactions: number) => void;
   recordSkip: (trackId: string, listenDuration: number) => void;
   recordCompletion: (trackId: string, duration: number, reactions: number) => void;
@@ -118,14 +118,14 @@ export const usePreferenceStore = create<PreferenceStore>()(
       currentSession: null,
 
       // Start tracking a listen session
-      startListenSession: (trackId: string) => {
+      startListenSession: (trackId: string, totalDuration: number = 0) => {
         const now = new Date().toISOString();
 
         set({
           currentSession: {
             trackId,
             startedAt: now,
-            duration: 0,
+            duration: totalDuration, // Total track duration for completion check
             completed: false,
             skipped: false,
             reactions: 0,

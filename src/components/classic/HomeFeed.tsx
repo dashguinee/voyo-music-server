@@ -1149,7 +1149,9 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
           <motion.button
             className="px-6 py-3 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold"
             onClick={() => {
-              const randomTrack = getHotTracks()[0];
+              // Pool-aware: Use dynamic pool if available, fallback to static
+              const poolTracks = hotPool.length > 0 ? hotPool : getHotTracks();
+              const randomTrack = poolTracks[0];
               if (randomTrack) onTrackPlay(randomTrack);
             }}
             whileHover={{ scale: 1.05 }}

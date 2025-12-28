@@ -30,6 +30,7 @@ import { recordPoolEngagement } from '../services/personalization';
 import { recordTrackInSession } from '../services/poolCurator';
 import { recordPlay as djRecordPlay } from '../services/intelligentDJ';
 import { onTrackPlay as oyoOnTrackPlay, onTrackSkip as oyoOnTrackSkip, onTrackComplete as oyoOnTrackComplete } from '../services/oyoDJ';
+import { registerTrackPlay as viRegisterPlay } from '../services/videoIntelligence';
 import { useMiniPiP } from '../hooks/useMiniPiP';
 
 type PlaybackMode = 'cached' | 'iframe';
@@ -624,6 +625,13 @@ export const AudioPlayer = () => {
               djRecordPlay(playingState.currentTrack, false, false);
               // OYO DJ: Announce track transition
               oyoOnTrackPlay(playingState.currentTrack, previousTrackRef.current || undefined);
+              // VIDEO INTELLIGENCE: Sync to collective brain (Supabase)
+              viRegisterPlay(
+                playingState.currentTrack.trackId,
+                playingState.currentTrack.title,
+                playingState.currentTrack.artist,
+                'user_play'
+              );
               previousTrackRef.current = playingState.currentTrack;
               console.log(`[VOYO Pool] Recorded play (iframe): ${playingState.currentTrack.title}`);
             }
@@ -667,8 +675,8 @@ export const AudioPlayer = () => {
         endListenSession(el?.currentTime || 0, 0);
       }
 
-      // Start new session
-      startListenSession(currentTrack.id);
+      // Start new session with track duration for completion rate tracking
+      startListenSession(currentTrack.id, currentTrack.duration || 0);
       lastTrackId.current = currentTrack.id;
 
       try {
@@ -750,6 +758,13 @@ export const AudioPlayer = () => {
                         djRecordPlay(currentTrack, false, false);
                         // OYO DJ: Announce track transition
                         oyoOnTrackPlay(currentTrack, previousTrackRef.current || undefined);
+                        // VIDEO INTELLIGENCE: Sync to collective brain (Supabase)
+                        viRegisterPlay(
+                          currentTrack.trackId,
+                          currentTrack.title,
+                          currentTrack.artist,
+                          'user_play'
+                        );
                         previousTrackRef.current = currentTrack;
                         console.log(`[VOYO Pool] Recorded play: ${currentTrack.title}`);
                       }
