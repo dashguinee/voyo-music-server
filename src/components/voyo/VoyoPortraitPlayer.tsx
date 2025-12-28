@@ -1818,8 +1818,20 @@ const BigCenterCard = memo(({ track, onExpandVideo, onShowLyrics, showOverlay = 
           allowFullScreen
           title={track.title}
         />
-        {/* Gradient overlay for title visibility */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/40 pointer-events-none" />
+        {/* Purple fade overlay - matching non-video style */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background: `linear-gradient(
+              to top,
+              rgba(88, 28, 135, 0.95) 0%,
+              rgba(139, 92, 246, 0.7) 15%,
+              rgba(139, 92, 246, 0.4) 30%,
+              rgba(139, 92, 246, 0.1) 50%,
+              transparent 70%
+            )`,
+          }}
+        />
         {/* Track title overlay */}
         <div className="absolute bottom-4 left-4 right-4 z-20 pointer-events-none">
           <p className="text-white font-bold text-lg truncate" style={{ textShadow: '0 2px 8px rgba(0,0,0,0.9)' }}>
