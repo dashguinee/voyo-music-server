@@ -239,7 +239,7 @@ ${collectivePool.slice(0, 30).map(t => `- "${t.title}" by ${t.artist} (heat: ${t
 SECTIONS NEEDING TRACKS:
 ${gaps.map(g => `- ${g.section}: Need ${g.gap} more tracks. Intent: ${SECTION_CONFIG[g.section as keyof typeof SECTION_CONFIG]?.intent || 'curated picks'}`).join('\n')}
 
-For each section that needs tracks, suggest YouTube music videos. Return ONLY valid JSON:
+For each section that needs tracks, suggest 15-20 YouTube music videos per section. Return ONLY valid JSON:
 {
   "curations": [
     {
@@ -251,14 +251,17 @@ For each section that needs tracks, suggest YouTube music videos. Return ONLY va
   ]
 }
 
-IMPORTANT:
-- Suggest REAL songs that exist on YouTube
-- Match the section intent precisely
-- For "allTimeClassics" - suggest legendary tracks from the user's preferred genres
-- For "westAfricanHits" - suggest trending Afrobeats, Amapiano, Nigerian/Ghanaian hits
-- For "newReleases" - suggest songs from 2024-2025
-- For "discoverMore" - suggest similar but NEW artists the user hasn't heard
-- For "madeForYou" - match the user's exact taste profile`;
+CRITICAL INSTRUCTIONS:
+- Suggest 15-20 REAL songs per section that DEFINITELY exist on YouTube
+- Use EXACT song titles and artist names as they appear on YouTube
+- For African music, use artists like: Burna Boy, Wizkid, Davido, Tems, Rema, Asake, Ayra Starr, Tiwa Savage, CKay, Fireboy DML, Omah Lay, Olamide, Yemi Alade, Mr Eazi, Joeboy, Ruger, BNXN, Pheelz, Kizz Daniel
+- For "allTimeClassics" - legendary African hits: African Queen (2face), Kukere (Iyanya), Oliver Twist (D'banj), Personally (P-Square), etc.
+- For "westAfricanHits" - recent hits: Last Last, Calm Down, Rush, Essence, Love Nwantiti, Finesse, etc.
+- For "newReleases" - songs from 2024-2025
+- For "discoverMore" - similar artists the user hasn't heard
+- For "madeForYou" - match user's taste exactly
+
+DO NOT suggest generic or made-up songs. Only suggest songs you are CERTAIN exist on YouTube.`;
 
   try {
     const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
@@ -300,23 +303,46 @@ IMPORTANT:
 // ============================================
 
 async function fillGapsWithSearch(
-  suggestions: { title: string; artist: string; reason: string }[]
+  suggestions: { title: string; artist: string; reason: string }[],
+  targetCount: number = 10
 ): Promise<Track[]> {
   const verified: Track[] = [];
+  let attempts = 0;
+  const maxAttempts = suggestions.length;
 
-  for (const suggestion of suggestions.slice(0, 5)) { // Limit to 5 searches per section
+  // Keep trying until we have enough tracks or exhausted all suggestions
+  for (const suggestion of suggestions) {
+    if (verified.length >= targetCount) break;
+    if (attempts >= maxAttempts) break;
+    attempts++;
+
     try {
-      const query = `${suggestion.artist} ${suggestion.title}`;
-      const results = await searchMusic(query, 1);
+      // Try multiple search variations
+      const queries = [
+        `${suggestion.artist} ${suggestion.title} official`,
+        `${suggestion.artist} ${suggestion.title}`,
+        `${suggestion.title} ${suggestion.artist}`,
+      ];
 
-      if (results.length > 0) {
-        const track = results[0];
-        // Add to pool for future use
-        await safeAddToPool(track, 'llm_curation');
-        verified.push(track);
+      for (const query of queries) {
+        try {
+          const results = await searchMusic(query, 1);
+          if (results.length > 0) {
+            const track = results[0];
+            await safeAddToPool(track, 'llm_curation');
+            verified.push(track);
+            console.log(`[SectionCurator] ✓ Verified: ${suggestion.title} by ${suggestion.artist}`);
+            break; // Got this track, move to next suggestion
+          }
+        } catch (searchError) {
+          // Try next query variation
+          continue;
+        }
+        // Small delay to avoid rate limits
+        await new Promise(r => setTimeout(r, 200));
       }
     } catch (error) {
-      console.error(`[SectionCurator] Failed to verify: ${suggestion.title}`, error);
+      console.warn(`[SectionCurator] Failed: ${suggestion.title}`, error);
     }
   }
 
@@ -414,16 +440,27 @@ export async function curateSections(): Promise<SectionCurations> {
 
   console.log('[SectionCurator] Gaps to fill:', gaps);
 
-  // 6. Call LLM to fill gaps
+  // 6. Call LLM to fill gaps - THE LLM IS THE BRAIN
   if (gaps.length > 0) {
+    console.log('[SectionCurator] 🧠 Calling LLM to fill gaps...');
     const llmCurations = await callGeminiForCuration(userProfile, collectivePool, gaps);
 
-    // 7. Search and verify LLM suggestions
+    // 7. Search and verify LLM suggestions - KEEP TRYING
     for (const curation of llmCurations) {
       const section = curation.section as keyof SectionCurations;
-      if (curations[section] && curation.tracks) {
-        const verified = await fillGapsWithSearch(curation.tracks);
-        curations[section] = [...curations[section], ...verified].slice(0, SECTION_CONFIG[section]?.count || 15);
+      const config = SECTION_CONFIG[section as keyof typeof SECTION_CONFIG];
+
+      if (curations[section] && curation.tracks && curation.tracks.length > 0) {
+        const currentCount = curations[section].length;
+        const targetCount = config?.count || 15;
+        const needed = targetCount - currentCount;
+
+        if (needed > 0) {
+          console.log(`[SectionCurator] 🔍 Filling ${section}: have ${currentCount}, need ${needed} more`);
+          const verified = await fillGapsWithSearch(curation.tracks, needed);
+          curations[section] = [...curations[section], ...verified].slice(0, targetCount);
+          console.log(`[SectionCurator] ✅ ${section}: now have ${curations[section].length} tracks`);
+        }
       }
     }
   }

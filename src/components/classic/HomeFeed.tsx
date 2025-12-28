@@ -860,8 +860,6 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
   // Falls back to local pool if curations not loaded yet
   const madeForYou = curations?.madeForYou.length ? curations.madeForYou : (hotTracks.length > 0 ? hotTracks : getPoolAwareHotTracks(15));
   const discoverMoreTracks = curations?.discoverMore.length ? curations.discoverMore : discoverTracks;
-  const allTimeClassics = curations?.allTimeClassics || [];
-  const westAfricanHits = curations?.westAfricanHits || [];
   const africanVibes = curations?.africanVibes.length ? curations.africanVibes : getPoolAwareHotTracks(15);
   const newReleases = curations?.newReleases.length ? curations.newReleases : getNewReleases(15);
   const trending = curations?.topOnVoyo.length ? curations.topOnVoyo : getTrendingTracks(hotPool, 15);
@@ -888,8 +886,6 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
   const hasPreferences = heavyRotation.length > 0;
   const hasArtists = artistsYouLove.length > 0;
   const hasTrending = trending.length > 0;
-  const hasAllTimeClassics = allTimeClassics.length > 0;
-  const hasWestAfricanHits = westAfricanHits.length > 0;
   const hasDiscoverMore = discoverMoreTracks.length > 0;
 
   return (
@@ -1063,46 +1059,6 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
             <TrackCard key={track.id} track={track} onPlay={() => onTrackPlay(track)} />
           ))}
         </Shelf>
-      )}
-
-      {/* 🔥 West African Hits - Regional trending */}
-      {hasWestAfricanHits && (
-        <div className="mb-10">
-          <div className="px-4 mb-4 flex items-center gap-2">
-            <span className="text-xl">🔥</span>
-            <div className="flex-1">
-              <h2 className="text-white font-semibold text-base">West African Hits</h2>
-              <p className="text-[9px] font-medium tracking-wider uppercase text-orange-400/70">
-                Trending in Nigeria, Ghana & Beyond
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-3 px-4 overflow-x-auto scrollbar-hide">
-            {westAfricanHits.map((track) => (
-              <TrackCard key={track.id} track={track} onPlay={() => onTrackPlay(track)} />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* 👑 All Time Classics - Legendary tracks from user's genres */}
-      {hasAllTimeClassics && (
-        <div className="mb-10">
-          <div className="px-4 mb-4 flex items-center gap-2">
-            <span className="text-xl">👑</span>
-            <div className="flex-1">
-              <h2 className="text-white font-semibold text-base">All Time Classics</h2>
-              <p className="text-[9px] font-medium tracking-wider uppercase text-yellow-400/70">
-                Timeless Hits You'll Love
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-3 px-4 overflow-x-auto scrollbar-hide">
-            {allTimeClassics.map((track) => (
-              <TrackCard key={track.id} track={track} onPlay={() => onTrackPlay(track)} />
-            ))}
-          </div>
-        </div>
       )}
 
       {/* Top 10 on VOYO */}
