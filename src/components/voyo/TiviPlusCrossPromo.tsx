@@ -481,7 +481,11 @@ const SectionHeader = ({ icon: Icon, title, color, onSeeAll }: { icon: React.Ele
 // MAIN COMPONENT
 // ============================================
 
-export const TiviPlusCrossPromo = () => {
+interface TiviPlusCrossPromoProps {
+  immersiveRef?: React.RefObject<HTMLDivElement>;
+}
+
+export const TiviPlusCrossPromo = ({ immersiveRef }: TiviPlusCrossPromoProps) => {
   // Section reveal ref for shimmer animation
   const sectionRef = useRef<HTMLDivElement>(null);
   const isInView = useInView(sectionRef, { once: true, margin: '-100px' });
@@ -598,6 +602,8 @@ export const TiviPlusCrossPromo = () => {
 
       {/* ========== TIVI+ SECTION CONTENT ========== */}
 
+      {/* Immersive section wrapper - nav hides when this is in view */}
+      <div ref={immersiveRef}>
       {/* Section Divider - Take a Break */}
       <div className="relative z-20 flex items-center gap-3 mb-10 px-4">
         <div className="flex-1 h-px bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" />
@@ -714,6 +720,7 @@ export const TiviPlusCrossPromo = () => {
           )}
         </AnimatePresence>
       </motion.button>
+      </div>{/* Close immersive wrapper */}
 
       {/* Trending on TIVI+ */}
       <div className="mb-10">

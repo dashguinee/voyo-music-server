@@ -129,89 +129,52 @@ interface CenterCarouselProps {
   onPlay: (track: Track) => void;
 }
 
-// Full VOYO Drop Animation - pure Framer Motion, no useEffect
-const FullDropAnimation = () => (
-  <div className="flex flex-col items-center gap-1">
-    {/* Drop + Ripple container */}
-    <div className="relative h-14 w-14 flex items-center justify-center">
-      {/* Falling drop - loops with keyframes */}
-      <motion.div
-        className="absolute"
-        animate={{
-          y: [-15, 15, -15],
-          scale: [0.8, 1, 0.8],
-          opacity: [0.5, 1, 0.5],
+// Scattered VOYO text for left end - arrow pattern (clean, no dot)
+const VoyoScatter = () => (
+  <div className="relative w-16 h-20">
+    {['VOYO', 'VOYO', 'VOYO'].map((text, i) => (
+      <motion.span
+        key={i}
+        className="absolute text-[8px] font-black tracking-wider"
+        style={{
+          background: 'linear-gradient(135deg, #a855f7, #ec4899)',
+          backgroundClip: 'text',
+          WebkitBackgroundClip: 'text',
+          color: 'transparent',
+          top: `${15 + i * 25}%`,
+          left: `${10 + (i % 2) * 20}%`,
+          transform: `rotate(${-15 + i * 15}deg)`,
         }}
-        transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+        animate={{
+          opacity: [0.3, 0.8, 0.3],
+          scale: [0.9, 1.1, 0.9],
+        }}
+        transition={{
+          duration: 2,
+          repeat: Infinity,
+          delay: i * 0.3,
+          ease: 'easeInOut',
+        }}
       >
-        <div
-          className="w-4 h-6"
-          style={{
-            background: 'linear-gradient(180deg, rgba(168, 85, 247, 0.9) 0%, rgba(236, 72, 153, 0.8) 60%, rgba(147, 51, 234, 0.9) 100%)',
-            borderRadius: '50% 50% 50% 50% / 60% 60% 40% 40%',
-            boxShadow: '0 0 15px rgba(168, 85, 247, 0.6)',
-          }}
-        />
-      </motion.div>
-
-      {/* Ripple rings - continuous pulse */}
-      {[0, 1].map((i) => (
-        <motion.div
-          key={i}
-          className="absolute rounded-full"
-          style={{
-            border: '1.5px solid rgba(168, 85, 247, 0.5)',
-          }}
-          animate={{
-            width: [10, 50],
-            height: [10, 25],
-            opacity: [0.6, 0],
-          }}
-          transition={{
-            duration: 1.2,
-            repeat: Infinity,
-            delay: i * 0.4,
-            ease: 'easeOut',
-          }}
-        />
-      ))}
-    </div>
-
-    {/* VOYO branding */}
-    <motion.span
-      className="text-[10px] font-bold tracking-wider"
-      style={{
-        background: 'linear-gradient(135deg, #a855f7, #ec4899)',
-        backgroundClip: 'text',
-        WebkitBackgroundClip: 'text',
-        color: 'transparent',
-      }}
-      animate={{ opacity: [0.5, 1, 0.5] }}
-      transition={{ duration: 2, repeat: Infinity }}
-    >
-      VOYO
-    </motion.span>
+        {text}
+      </motion.span>
+    ))}
   </div>
 );
 
-// Pulsing circle while scrolling (not teardrop - that looks like sperm)
-const PulsingDrop = () => (
+// Smooth pulsing circle while scrolling
+const PulsingCircle = () => (
   <motion.div
-    className="w-5 h-5 rounded-full"
+    className="w-4 h-4 rounded-full"
     style={{
-      background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.9), rgba(236, 72, 153, 0.8))',
-      boxShadow: '0 0 15px rgba(168, 85, 247, 0.5)',
+      background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.8), rgba(236, 72, 153, 0.7))',
+      boxShadow: '0 0 12px rgba(168, 85, 247, 0.4)',
     }}
     animate={{
       scale: [1, 1.3, 1],
-      opacity: [0.7, 1, 0.7],
-      boxShadow: [
-        '0 0 15px rgba(168, 85, 247, 0.5)',
-        '0 0 25px rgba(168, 85, 247, 0.8)',
-        '0 0 15px rgba(168, 85, 247, 0.5)',
-      ],
+      opacity: [0.5, 1, 0.5],
     }}
-    transition={{ duration: 1, repeat: Infinity, ease: 'easeInOut' }}
+    transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
   />
 );
 
@@ -241,32 +204,32 @@ const CenterFocusedCarousel = ({ tracks, onPlay }: CenterCarouselProps) => {
 
   return (
     <div className="relative">
-      {/* LEFT END: Full VOYO drop animation */}
+      {/* LEFT END: Scattered VOYO text */}
       <AnimatePresence>
         {scrollState === 'left-end' && (
           <motion.div
-            className="absolute left-4 top-1/2 -translate-y-1/2 z-10 pointer-events-none"
+            className="absolute left-2 top-1/2 -translate-y-1/2 z-10 pointer-events-none"
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
             transition={{ duration: 0.3 }}
           >
-            <FullDropAnimation />
+            <VoyoScatter />
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* WHILE SCROLLING: Pulsing circle */}
+      {/* WHILE SCROLLING: Smooth pulsing circle */}
       <AnimatePresence>
         {scrollState === 'scrolling' && (
           <motion.div
             className="absolute left-4 top-1/2 -translate-y-1/2 z-10 pointer-events-none"
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -10 }}
+            initial={{ opacity: 0, scale: 0.5 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.5 }}
             transition={{ duration: 0.2 }}
           >
-            <PulsingDrop />
+            <PulsingCircle />
           </motion.div>
         )}
       </AnimatePresence>
@@ -282,11 +245,11 @@ const CenterFocusedCarousel = ({ tracks, onPlay }: CenterCarouselProps) => {
             transition={{ duration: 0.3 }}
           >
             <motion.p
-              className="text-[10px] text-purple-400/70 font-medium whitespace-nowrap"
-              animate={{ opacity: [0.5, 1, 0.5] }}
-              transition={{ duration: 2, repeat: Infinity }}
+              className="text-[10px] text-purple-400/60 font-medium whitespace-nowrap"
+              animate={{ opacity: [0.4, 0.8, 0.4] }}
+              transition={{ duration: 2.5, repeat: Infinity }}
             >
-              New drops coming soon 💧
+              New drops coming soon
             </motion.p>
           </motion.div>
         )}
@@ -489,13 +452,13 @@ const ArtistCard = ({ artist, onPlay }: ArtistCardProps) => {
 
   return (
     <motion.button
-      className="flex-shrink-0 w-32"
+      className="flex-shrink-0 w-28"
       onClick={() => firstTrack && onPlay(firstTrack)}
-      whileHover={{ scale: 1.05 }}
+      whileHover={{ scale: 1.08 }}
       whileTap={{ scale: 0.95 }}
       style={{ scrollSnapAlign: 'start' }}
     >
-      <div className="relative w-32 h-32 rounded-full overflow-hidden mb-2 bg-white/5 mx-auto">
+      <div className="relative w-20 h-20 rounded-full overflow-hidden mb-3 bg-white/5 mx-auto shadow-lg shadow-black/30">
         {firstTrack && (
           <SmartImage
             src={getThumb(firstTrack.trackId)}
@@ -507,13 +470,13 @@ const ArtistCard = ({ artist, onPlay }: ArtistCardProps) => {
             title={firstTrack.title}
           />
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full bg-purple-500/80 text-[10px] text-white font-medium">
-          {artist.playCount} plays
+        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
+        <div className="absolute bottom-1 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded-full bg-purple-500/80 text-[8px] text-white font-medium">
+          {artist.playCount}
         </div>
       </div>
-      <p className="text-white text-sm font-medium truncate text-center">{artist.name}</p>
-      <p className="text-white/50 text-xs truncate text-center">{artist.tracks.length} tracks</p>
+      <p className="text-white text-xs font-medium truncate text-center">{artist.name}</p>
+      <p className="text-white/40 text-[10px] truncate text-center">{artist.tracks.length} tracks</p>
     </motion.button>
   );
 };
@@ -815,12 +778,33 @@ interface HomeFeedProps {
   onTrackPlay: (track: Track) => void;
   onSearch: () => void;
   onDahub: () => void;
+  onNavVisibilityChange?: (visible: boolean) => void;
 }
 
-export const HomeFeed = ({ onTrackPlay, onSearch, onDahub }: HomeFeedProps) => {
+export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange }: HomeFeedProps) => {
   const { history, hotTracks, discoverTracks, refreshRecommendations } = usePlayerStore();
   const { hotPool } = useTrackPoolStore();
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Ref for TIVI+ immersive section (nav hides when in view)
+  const tiviBreakRef = useRef<HTMLDivElement>(null);
+
+  // Track when TIVI+ "Take a Break" section is in view
+  useEffect(() => {
+    if (!onNavVisibilityChange) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const isInView = entries[0]?.isIntersecting ?? false;
+        onNavVisibilityChange(!isInView); // Hide nav when TIVI+ banner is in view
+      },
+      { threshold: 0, rootMargin: '0px 0px -300px 0px' } // Trigger extra early
+    );
+
+    if (tiviBreakRef.current) observer.observe(tiviBreakRef.current);
+
+    return () => observer.disconnect();
+  }, [onNavVisibilityChange]);
 
   useEffect(() => {
     refreshRecommendations();
@@ -900,16 +884,45 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub }: HomeFeedProps) => {
         </Shelf>
       )}
 
-      {/* Heavy Rotation - tighter spacing for identity shelf */}
+      {/* Heavy Rotation - circles, only first one rotates gently */}
       {hasPreferences && (
         <div className="mb-10">
-          <div className="px-4 mb-3">
-            <h2 className="text-white font-semibold text-base">Your Heavy Rotation</h2>
+          <div className="px-4 mb-4">
+            <h2 className="text-white font-semibold text-base">Heavy Rotation</h2>
           </div>
-          <div className="flex gap-3 px-4 overflow-x-auto scrollbar-hide">
-            {heavyRotation.map((track) => (
-              <TrackCard key={track.id} track={track} onPlay={() => onTrackPlay(track)} />
-            ))}
+          <div className="flex gap-5 px-4 overflow-x-auto scrollbar-hide">
+            {heavyRotation.map((track, index) => {
+              const isFirst = index === 0;
+              return (
+                <motion.button
+                  key={track.id}
+                  className="flex-shrink-0 w-32"
+                  onClick={() => onTrackPlay(track)}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <motion.div
+                    className="relative w-32 h-32 rounded-full overflow-hidden mb-2 bg-white/5 mx-auto shadow-lg shadow-black/40"
+                    animate={isFirst ? { rotate: 360 } : undefined}
+                    transition={isFirst ? {
+                      duration: 60,
+                      repeat: Infinity,
+                      ease: 'linear',
+                    } : undefined}
+                  >
+                    <img
+                      src={`https://i.ytimg.com/vi/${track.trackId}/hqdefault.jpg`}
+                      alt={track.title}
+                      className="w-full h-full object-cover"
+                      style={{ objectPosition: 'center 35%', transform: 'scale(1.3)' }}
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
+                  </motion.div>
+                  <p className="text-white text-sm font-medium truncate text-center mt-1">{track.title.split('|')[0].trim()}</p>
+                  <p className="text-white/50 text-xs truncate text-center">{track.artist}</p>
+                </motion.button>
+              );
+            })}
           </div>
         </div>
       )}
@@ -984,13 +997,18 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub }: HomeFeedProps) => {
         </div>
       </div>
 
-      {/* Artists You Love - flows from "your music" */}
+      {/* Artists You Love - individuality with breathing room */}
       {hasArtists && (
-        <Shelf title="Artists You Love">
-          {artistsYouLove.map((artist) => (
-            <ArtistCard key={artist.name} artist={artist} onPlay={onTrackPlay} />
-          ))}
-        </Shelf>
+        <div className="mb-10">
+          <div className="px-4 mb-5">
+            <h2 className="text-white font-semibold text-base">Artists You Love</h2>
+          </div>
+          <div className="flex gap-6 px-4 overflow-x-auto scrollbar-hide">
+            {artistsYouLove.map((artist) => (
+              <ArtistCard key={artist.name} artist={artist} onPlay={onTrackPlay} />
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Discover More */}
@@ -1114,7 +1132,7 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub }: HomeFeedProps) => {
       </div>
 
       {/* TIVI+ Cross-Promo - "Take a Break with Family" */}
-      <TiviPlusCrossPromo />
+      <TiviPlusCrossPromo immersiveRef={tiviBreakRef} />
 
       {/* New Releases - Center-focused carousel */}
       <div className="mb-12">

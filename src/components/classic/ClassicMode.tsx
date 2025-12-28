@@ -76,7 +76,7 @@ const MiniPlayer = () => {
 
   return (
     <motion.div
-      className="absolute bottom-16 left-4 right-4 z-40"
+      className="absolute bottom-24 left-4 right-4 z-40"
       initial={{ y: 100, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       exit={{ y: 100, opacity: 0 }}
@@ -142,7 +142,7 @@ const MiniPlayer = () => {
       </AnimatePresence>
 
       <motion.div
-        className="w-full flex items-center gap-3 p-3 pr-4 rounded-2xl bg-black/25 border border-white/10 backdrop-blur-xl shadow-2xl relative overflow-hidden cursor-pointer"
+        className="w-full flex items-center gap-2.5 p-2 pr-3 rounded-2xl bg-black/25 border border-white/10 backdrop-blur-xl shadow-2xl relative overflow-hidden cursor-pointer"
         onClick={() => setShowBubbles(!showBubbles)}
         drag="x"
         dragConstraints={{ left: 0, right: 0 }}
@@ -284,7 +284,7 @@ const BottomNav = ({
   const rightLabel = activeTab === 'library' ? 'DAHUB' : 'Library';
 
   return (
-    <nav className="absolute bottom-0 left-0 right-0 flex items-center justify-around py-3 px-6 bg-[#0a0a0f]/95 backdrop-blur-lg border-t border-white/5">
+    <nav className="absolute bottom-0 left-0 right-0 z-30 flex items-center justify-around py-3 px-6 bg-[#0a0a0f]/95 backdrop-blur-lg border-t border-white/5">
       {/* LEFT */}
       <motion.button
         className="flex flex-col items-center gap-1 p-2 text-white/40"
@@ -392,6 +392,7 @@ const SettingsScreen = () => {
 export const ClassicMode = ({ onSwitchToVOYO, onSearch }: ClassicModeProps) => {
   const [activeTab, setActiveTab] = useState<ClassicTab>('home');
   const [showNowPlaying, setShowNowPlaying] = useState(false);
+  const [navVisible, setNavVisible] = useState(true);
   const { currentTrack } = usePlayerStore();
   const { forcePlay } = useMobilePlay();
 
@@ -424,7 +425,12 @@ export const ClassicMode = ({ onSwitchToVOYO, onSearch }: ClassicModeProps) => {
           transition={{ duration: 0.2 }}
         >
           {activeTab === 'home' && (
-            <HomeFeed onTrackPlay={handleTrackClick} onSearch={onSearch} onDahub={() => setActiveTab('hub')} />
+            <HomeFeed
+              onTrackPlay={handleTrackClick}
+              onSearch={onSearch}
+              onDahub={() => setActiveTab('hub')}
+              onNavVisibilityChange={setNavVisible}
+            />
           )}
           {activeTab === 'hub' && (
             <Hub />
@@ -442,12 +448,26 @@ export const ClassicMode = ({ onSwitchToVOYO, onSearch }: ClassicModeProps) => {
         )}
       </AnimatePresence>
 
-      {/* Bottom Navigation */}
-      <BottomNav
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        onVOYOClick={onSwitchToVOYO}
-      />
+      {/* Bottom Navigation - hides during immersive sections */}
+      <AnimatePresence>
+        {navVisible && (
+          <motion.div
+            initial={{ y: 60, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 60, opacity: 0 }}
+            transition={{
+              duration: 0.5,
+              ease: [0.25, 0.1, 0.25, 1],
+            }}
+          >
+            <BottomNav
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
+              onVOYOClick={onSwitchToVOYO}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Full Now Playing */}
       <NowPlaying

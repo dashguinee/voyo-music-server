@@ -240,6 +240,53 @@ async function isThumbnailValid(url: string): Promise<boolean> {
 }
 
 /**
+ * CONTENT MATCH CHECK - Verify video content matches expected track
+ * Uses YouTube oEmbed API to get actual video title and check similarity
+ */
+async function verifyContentMatch(
+  trackId: string,
+  expectedArtist: string,
+  expectedTitle: string
+): Promise<{ valid: boolean; actualTitle?: string }> {
+  try {
+    const response = await fetch(
+      `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${trackId}&format=json`
+    );
+
+    if (!response.ok) {
+      // Video doesn't exist
+      return { valid: false };
+    }
+
+    const data = await response.json();
+    const actualTitle = (data.title || '').toLowerCase();
+    const expectedArtistLower = expectedArtist.toLowerCase();
+    const expectedTitleLower = expectedTitle.toLowerCase();
+
+    // Check if actual video title contains artist OR track title
+    const hasArtist = expectedArtistLower.split(/[,&]/).some(part =>
+      actualTitle.includes(part.trim().split(' ')[0]) // First word of artist name
+    );
+    const hasTitle = expectedTitleLower.split(/[|()\[\]]/).some(part =>
+      part.trim().length > 2 && actualTitle.includes(part.trim())
+    );
+
+    const isMatch = hasArtist || hasTitle;
+
+    if (!isMatch) {
+      console.log(`[TrackVerifier] ❌ CONTENT MISMATCH:`);
+      console.log(`   Expected: ${expectedArtist} - ${expectedTitle}`);
+      console.log(`   Actual: ${data.title}`);
+    }
+
+    return { valid: isMatch, actualTitle: data.title };
+  } catch (error) {
+    console.warn(`[TrackVerifier] Could not verify content for ${trackId}:`, error);
+    return { valid: true }; // Assume valid if we can't check
+  }
+}
+
+/**
  * BATCH HEAL - Fix ALL tracks with bad thumbnails
  * Run once to ensure no user ever sees a placeholder
  *
@@ -266,14 +313,20 @@ export async function batchHealTracks(): Promise<{
     const thumbnailUrl = getThumb(track.trackId);
 
     // Check if thumbnail is valid
-    const isValid = await isThumbnailValid(thumbnailUrl);
+    const thumbnailValid = await isThumbnailValid(thumbnailUrl);
 
-    if (isValid) {
-      skipped++;
-      continue; // Thumbnail works, skip
+    if (thumbnailValid) {
+      // Thumbnail works, but check content match too
+      const contentCheck = await verifyContentMatch(track.trackId, track.artist, track.title);
+      if (contentCheck.valid) {
+        skipped++;
+        continue; // Both valid, skip
+      }
+      console.log(`[TrackVerifier] ⚠️ CONTENT MISMATCH: ${track.artist} - ${track.title}`);
+      console.log(`[TrackVerifier]    Actual video: ${contentCheck.actualTitle}`);
+    } else {
+      console.log(`[TrackVerifier] ❌ Bad thumbnail: ${track.artist} - ${track.title}`);
     }
-
-    console.log(`[TrackVerifier] ❌ Bad thumbnail: ${track.artist} - ${track.title}`);
 
     // Try to heal
     const result = await verifyTrack(track.trackId, track.artist, track.title);
@@ -302,38 +355,62 @@ export async function batchHealTracks(): Promise<{
 /**
  * Pre-validate a track BEFORE it enters the pool
  * Call this when adding tracks from any source
+ * Now includes CONTENT MATCH verification!
  */
 export async function validateBeforePool(
   trackId: string,
   artist: string,
   title: string
-): Promise<{ valid: boolean; verifiedId?: string; thumbnail?: string }> {
+): Promise<{ valid: boolean; verifiedId?: string; thumbnail?: string; mismatch?: string }> {
   const thumbnailUrl = getThumb(trackId);
-  const isValid = await isThumbnailValid(thumbnailUrl);
+  const thumbnailValid = await isThumbnailValid(thumbnailUrl);
 
-  if (isValid) {
-    return { valid: true };
+  if (!thumbnailValid) {
+    // Thumbnail doesn't load, definitely need to verify
+    console.log(`[TrackVerifier] 🔍 Thumbnail failed, verifying: ${artist} - ${title}`);
+    return await findCorrectTrack(artist, title);
   }
 
-  // Not valid, verify immediately
-  console.log(`[TrackVerifier] 🔍 Pre-validating: ${artist} - ${title}`);
+  // Thumbnail loads, but does CONTENT match?
+  const contentCheck = await verifyContentMatch(trackId, artist, title);
 
+  if (!contentCheck.valid) {
+    // CONTENT MISMATCH! Wrong video ID (like Gobe → Fleetwood Mac)
+    console.log(`[TrackVerifier] ⚠️ CONTENT MISMATCH detected for: ${artist} - ${title}`);
+    console.log(`[TrackVerifier]    Video is actually: ${contentCheck.actualTitle}`);
+    return await findCorrectTrack(artist, title, contentCheck.actualTitle);
+  }
+
+  // Both thumbnail and content are valid
+  return { valid: true };
+}
+
+/**
+ * Helper to find the correct track via search
+ */
+async function findCorrectTrack(
+  artist: string,
+  title: string,
+  mismatchedTitle?: string
+): Promise<{ valid: boolean; verifiedId?: string; thumbnail?: string; mismatch?: string }> {
   try {
     const results = await searchMusic(`${artist} ${title}`, 3);
 
     if (results.length > 0) {
       const verified = results[0];
+      console.log(`[TrackVerifier] ✅ Found correct: ${verified.artist} - ${verified.title}`);
       return {
         valid: true,
         verifiedId: verified.voyoId,
         thumbnail: verified.thumbnail,
+        mismatch: mismatchedTitle,
       };
     }
   } catch (error) {
-    console.warn(`[TrackVerifier] Pre-validation failed for ${artist} - ${title}`);
+    console.warn(`[TrackVerifier] Search failed for ${artist} - ${title}`);
   }
 
-  return { valid: false };
+  return { valid: false, mismatch: mismatchedTitle };
 }
 
 /**

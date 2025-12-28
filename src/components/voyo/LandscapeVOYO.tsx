@@ -16,8 +16,9 @@
 
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
-import { SkipBack, SkipForward, Play, Pause, Plus, Volume2, Smartphone, Loader2 } from 'lucide-react';
+import { SkipBack, SkipForward, Play, Pause, Plus, Volume2, Smartphone, Loader2, Zap } from 'lucide-react';
 import { usePlayerStore } from '../../store/playerStore';
+import { BoostButton } from '../ui/BoostButton';
 import { getYouTubeThumbnail, TRACKS } from '../../data/tracks';
 import { Track } from '../../types';
 import { SmartImage } from '../ui/SmartImage';
@@ -546,6 +547,8 @@ export const LandscapeVOYO = ({ onVideoMode }: LandscapeVOYOProps) => {
     refreshRecommendations,
     isPlaying,
     togglePlay,
+    playbackSource,
+    setPlaybackSource,
   } = usePlayerStore();
 
   // UI visibility state - auto-hide after 3 seconds
@@ -659,7 +662,7 @@ export const LandscapeVOYO = ({ onVideoMode }: LandscapeVOYOProps) => {
       {currentTrack && (
         <div className="absolute inset-0 z-0">
           <iframe
-            src={`https://www.youtube.com/embed/${currentTrack.trackId}?autoplay=1&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${currentTrack.trackId}&showinfo=0&iv_load_policy=3&fs=0`}
+            src={`https://www.youtube.com/embed/${currentTrack.trackId}?autoplay=1&controls=0&modestbranding=1&rel=0&playsinline=1&loop=1&playlist=${currentTrack.trackId}&showinfo=0&iv_load_policy=3&fs=0${playbackSource === 'cached' ? '&mute=1' : ''}`}
             className="absolute inset-0 w-full h-full"
             style={{
               // Scale up to hide YouTube UI edges
@@ -826,6 +829,14 @@ export const LandscapeVOYO = ({ onVideoMode }: LandscapeVOYOProps) => {
                 >
                   Fireee 🔥
                 </motion.button>
+              </div>
+
+              {/* Boost Toggle - Enhanced Audio with Video */}
+              <div className="ml-4">
+                <BoostButton variant="toolbar" />
+                {playbackSource === 'cached' && (
+                  <span className="block text-[10px] text-yellow-400 text-center mt-1">HD Audio</span>
+                )}
               </div>
             </div>
 

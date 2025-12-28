@@ -1125,7 +1125,18 @@ function App() {
 
       {/* Main Content */}
       <AnimatePresence mode="wait">
-        {appMode === 'classic' ? (
+        {/* GLOBAL LANDSCAPE OVERRIDE - When landscape, always show video player */}
+        {isLandscape && currentTrack ? (
+          <motion.div
+            key="landscape-global"
+            className="relative z-10 h-full"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <LandscapeVOYO onVideoMode={handleVideoModeEnter} />
+          </motion.div>
+        ) : appMode === 'classic' ? (
           <motion.div
             key="classic"
             className="relative z-10 h-full"
