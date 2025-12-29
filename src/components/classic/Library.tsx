@@ -283,7 +283,7 @@ export const Library = ({ onTrackClick }: LibraryProps) => {
   const [activeFilter, setActiveFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [playlistModalTrack, setPlaylistModalTrack] = useState<Track | null>(null);
-  const { setCurrentTrack, addToQueue, queue, history } = usePlayerStore();
+  const { addToQueue, queue, history } = usePlayerStore();
   const { playlists } = usePlaylistStore();
 
   // Get liked tracks from preference store (persisted to localStorage)
@@ -389,9 +389,8 @@ export const Library = ({ onTrackClick }: LibraryProps) => {
   }, [activeFilter, searchQuery, boostedTracks, queue, history, playlists, likedTracks]);
 
   const handleTrackClick = (track: Track) => {
-    setCurrentTrack(track);
-    // FIX: Explicitly start playback when user clicks library track
-    setTimeout(() => usePlayerStore.getState().togglePlay(), 100);
+    // Use onTrackClick which goes through PlaybackOrchestrator
+    // No need for manual setCurrentTrack/togglePlay - orchestrator handles it
     onTrackClick(track);
   };
 

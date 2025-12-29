@@ -10,6 +10,7 @@ import { PipedPlaylist, PipedTrack, searchAlbums, getAlbumTracks } from '../../s
 import { pipedTrackToVoyoTrack } from '../../data/tracks';
 import { usePlayerStore } from '../../store/playerStore';
 import { Track } from '../../types';
+import PlaybackOrchestrator from '../../services/playbackOrchestrator';
 
 interface AlbumSectionProps {
   query: string;
@@ -23,7 +24,7 @@ export const AlbumSection = ({ query, isVisible }: AlbumSectionProps) => {
   const [albumTracks, setAlbumTracks] = useState<PipedTrack[]>([]);
   const [isLoadingTracks, setIsLoadingTracks] = useState(false);
 
-  const { setCurrentTrack, addToQueue } = usePlayerStore();
+  const { addToQueue } = usePlayerStore();
 
   // Search for albums when query changes
   const handleSearch = useCallback(async () => {
@@ -67,30 +68,26 @@ export const AlbumSection = ({ query, isVisible }: AlbumSectionProps) => {
   }, []);
 
   // Play entire album
-  const handlePlayAlbum = useCallback(() => {
+  const handlePlayAlbum = useCallback(async () => {
     if (albumTracks.length === 0 || !selectedAlbum) return;
 
     const voyoTracks = albumTracks.map(track =>
       pipedTrackToVoyoTrack(track, selectedAlbum.name)
     );
 
-    // Play first track, add rest to queue
-    setCurrentTrack(voyoTracks[0]);
-    // FIX: Explicitly start playback when playing album
-    setTimeout(() => usePlayerStore.getState().togglePlay(), 100);
+    // Play first track via orchestrator, add rest to queue
+    await PlaybackOrchestrator.play(voyoTracks[0]);
     if (voyoTracks.length > 1) {
       // Add tracks one by one to the queue
       voyoTracks.slice(1).forEach(track => addToQueue(track));
     }
-  }, [albumTracks, selectedAlbum, setCurrentTrack, addToQueue]);
+  }, [albumTracks, selectedAlbum, addToQueue]);
 
   // Play individual track
-  const handleTrackClick = useCallback((track: PipedTrack) => {
+  const handleTrackClick = useCallback(async (track: PipedTrack) => {
     const voyoTrack = pipedTrackToVoyoTrack(track, selectedAlbum?.name);
-    setCurrentTrack(voyoTrack);
-    // FIX: Explicitly start playback when user clicks album track
-    setTimeout(() => usePlayerStore.getState().togglePlay(), 100);
-  }, [selectedAlbum, setCurrentTrack]);
+    await PlaybackOrchestrator.play(voyoTrack);
+  }, [selectedAlbum]);
 
   // Add track to queue
   const handleAddToQueue = useCallback((track: PipedTrack, e: React.MouseEvent) => {

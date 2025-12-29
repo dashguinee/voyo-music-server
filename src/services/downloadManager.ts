@@ -173,12 +173,32 @@ export async function downloadTrack(
   onProgress?: (progress: number) => void
 ): Promise<boolean> {
   try {
+    // Fetch with retry logic for rate limiting (429)
+    let response: Response | null = null;
+    const MAX_RETRIES = 3;
+    let retryDelay = 2000; // Start with 2 seconds
 
-    // Fetch the audio file
-    const response = await fetch(audioUrl);
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      response = await fetch(audioUrl);
 
-    if (!response.ok) {
+      if (response.status === 429) {
+        // Rate limited - exponential backoff
+        const retryAfter = response.headers.get('Retry-After');
+        const waitTime = retryAfter ? parseInt(retryAfter, 10) * 1000 : retryDelay;
+        console.log(`🎵 CACHE: Rate limited (429), retrying in ${waitTime / 1000}s...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        retryDelay *= 2; // Double the delay for next retry
+        continue;
+      }
+
+      if (response.ok) break; // Success, exit retry loop
+
+      // Other errors - don't retry
       throw new Error(`Download failed: ${response.status}`);
+    }
+
+    if (!response || !response.ok) {
+      throw new Error('Download failed after retries');
     }
 
     const contentLength = response.headers.get('content-length');

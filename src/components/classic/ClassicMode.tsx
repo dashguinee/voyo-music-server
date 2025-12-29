@@ -16,7 +16,6 @@ import { Library } from './Library';
 import { Hub } from './Hub';
 import { NowPlaying } from './NowPlaying';
 import { usePlayerStore } from '../../store/playerStore';
-import { useMobilePlay } from '../../hooks/useMobilePlay';
 import { getYouTubeThumbnail } from '../../data/tracks';
 import { SmartImage } from '../ui/SmartImage';
 import { Track } from '../../types';
@@ -469,7 +468,6 @@ export const ClassicMode = ({ onSwitchToVOYO, onSearch }: ClassicModeProps) => {
   const [showNowPlaying, setShowNowPlaying] = useState(false);
   const [navVisible, setNavVisible] = useState(true);
   const { currentTrack, shouldOpenNowPlaying, setShouldOpenNowPlaying } = usePlayerStore();
-  const { forcePlay } = useMobilePlay();
 
   // FIX A4: Listen for shouldOpenNowPlaying flag (set by search overlay)
   useEffect(() => {
@@ -479,30 +477,26 @@ export const ClassicMode = ({ onSwitchToVOYO, onSearch }: ClassicModeProps) => {
     }
   }, [shouldOpenNowPlaying, setShouldOpenNowPlaying]);
 
-  // Section-aware track play handler
+  // Section-aware track play handler - SIMPLE DIRECT approach
   // Communal sections (Top 10, African Vibes, Trending) → open full player
   // Personal sections (Continue Listening, Made For You) → mini player only
-  const handleTrackClick = async (track: Track, options?: { openFull?: boolean }) => {
-    const { setCurrentTrack, isPlaying } = usePlayerStore.getState();
-    setCurrentTrack(track);
-
-    // Only open full player for communal/discovery sections
+  const handleTrackClick = (track: Track, options?: { openFull?: boolean }) => {
+    // Open full player for communal/discovery sections
     if (options?.openFull) {
       setShowNowPlaying(true);
     }
-    // Personal sections: track plays but stays in mini player
 
-    // AUTO-PLAY: Set isPlaying to true and let AudioPlayer handle playback
-    // The AudioPlayer component watches isPlaying and currentTrack changes
-    if (!isPlaying) {
-      // Small delay to let AudioPlayer set the source, then toggle play
-      setTimeout(() => {
-        const { togglePlay, isPlaying: stillPaused } = usePlayerStore.getState();
-        if (!stillPaused) {
-          togglePlay(); // This updates state AND triggers playback
-        }
-      }, 200);
-    }
+    // Simple direct playback - no orchestrator complexity
+    const { setCurrentTrack } = usePlayerStore.getState();
+    setCurrentTrack(track);
+
+    // Small delay to let components initialize, then ensure playing
+    setTimeout(() => {
+      const { isPlaying, togglePlay } = usePlayerStore.getState();
+      if (!isPlaying) {
+        togglePlay();
+      }
+    }, 100);
   };
 
   const handleArtistClick = (artist: { name: string; tracks: Track[] }) => {

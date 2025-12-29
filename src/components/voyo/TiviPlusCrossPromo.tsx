@@ -22,6 +22,8 @@ import { Play, ExternalLink, Tv, Radio, Sparkles, Star, Music, Globe, Wifi } fro
 import { TRACKS } from '../../data/tracks';
 import { Track } from '../../types';
 import { useTrackPoolStore } from '../../store/trackPoolStore';
+import { getThumb } from '../../utils/thumbnail';
+import { SmartImage } from '../ui/SmartImage';
 
 // ============================================
 // TIVI+ CONTENT DATA
@@ -321,7 +323,8 @@ const TimeTunnelCarousel = ({ initialTracks, allTracks, onPlay }: {
 
 // Single Vinyl Card - uses CSS transforms for smooth scaling (no layout thrashing)
 const VinylCard = ({ track, progress, onClick }: { track: Track; progress: number; onClick: () => void }) => {
-  const thumbnailUrl = track.coverUrl || `https://i.ytimg.com/vi/${track.trackId}/hqdefault.jpg`;
+  // Use getThumb for proper VOYO ID decoding + fallback
+  const thumbnailUrl = track.coverUrl || getThumb(track.trackId, 'high');
 
   // Scale and opacity based on viewport position
   const scale = 0.4 + progress * 0.6; // 0.4 → 1.0
@@ -373,7 +376,7 @@ const VinylCard = ({ track, progress, onClick }: { track: Track; progress: numbe
           <div className="absolute rounded-full border border-white/10" style={{ inset: 7 }} />
           <div className="absolute rounded-full border border-white/5" style={{ inset: 14 }} />
           <div className="absolute rounded-full border border-white/5" style={{ inset: 21 }} />
-          {/* Center thumbnail */}
+          {/* Center thumbnail - SmartImage with self-healing */}
           <div
             className="absolute rounded-full overflow-hidden"
             style={{
@@ -381,14 +384,17 @@ const VinylCard = ({ track, progress, onClick }: { track: Track; progress: numbe
               boxShadow: 'inset 0 0 8px rgba(0,0,0,0.7)',
             }}
           >
-            <img
+            <SmartImage
               src={thumbnailUrl}
+              trackId={track.trackId}
               alt={track.title}
+              artist={track.artist}
+              title={track.title}
               className="w-full h-full object-cover"
               style={{
                 filter: `sepia(${0.2 - progress * 0.15}) brightness(${0.7 + progress * 0.3})`,
               }}
-              loading="lazy"
+              lazy={false}
             />
             {/* Center hole */}
             <div className="absolute inset-0 flex items-center justify-center">
@@ -420,8 +426,6 @@ const VinylCard = ({ track, progress, onClick }: { track: Track; progress: numbe
 
 // West African Hit Card - Pool-fed: uses Track from DJ
 const WestAfricanCard = ({ track, onClick }: { track: Track; onClick: () => void }) => {
-  const thumbnailUrl = `https://i.ytimg.com/vi/${track.trackId}/hqdefault.jpg`;
-
   return (
     <motion.button
       className="flex-shrink-0"
@@ -430,11 +434,14 @@ const WestAfricanCard = ({ track, onClick }: { track: Track; onClick: () => void
       onClick={onClick}
     >
       <div className="relative w-28 h-28 rounded-xl overflow-hidden bg-white/5">
-        <img
-          src={thumbnailUrl}
+        <SmartImage
+          src={getThumb(track.trackId, 'high')}
+          trackId={track.trackId}
           alt={track.title}
+          artist={track.artist}
+          title={track.title}
           className="w-full h-full object-cover"
-          loading="lazy"
+          lazy={false}
         />
         {/* Gradient overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
@@ -561,7 +568,7 @@ export const TiviPlusCrossPromo = ({ immersiveRef }: TiviPlusCrossPromoProps) =>
         youtubeId: track.trackId,
         title: track.title,
         artist: track.artist,
-        thumbnail: track.coverUrl || `https://i.ytimg.com/vi/${track.trackId}/hqdefault.jpg`,
+        thumbnail: track.coverUrl || getThumb(track.trackId, 'high'),
       }
     }));
   };

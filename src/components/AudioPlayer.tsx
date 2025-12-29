@@ -304,7 +304,10 @@ export const AudioPlayer = () => {
               isInitialLoadRef.current = false;
             }
 
-            if (isPlaying && audioRef.current.paused) {
+            // FIX: Get fresh state to avoid stale closure bug
+            // The isPlaying from closure might be outdated when callback fires
+            const { isPlaying: shouldPlay } = usePlayerStore.getState();
+            if (shouldPlay && audioRef.current.paused) {
               audioContextRef.current?.state === 'suspended' && audioContextRef.current.resume();
               audioRef.current.play().then(() => {
                 audioRef.current!.volume = 1.0;
@@ -317,6 +320,15 @@ export const AudioPlayer = () => {
         // 📡 NOT CACHED - Stream via iframe, boost in background
         console.log('🎵 [VOYO] Streaming via iframe, boosting in background...');
         setPlaybackSource('iframe');
+
+        // FIX: Ensure isPlaying is true so YouTubeIframe will play
+        // The orchestrator may have set this already, but we need to ensure it
+        // in case the timing was off (race condition with async cache check)
+        const { isPlaying: currentlyPlaying, togglePlay: triggerToggle } = usePlayerStore.getState();
+        if (!currentlyPlaying) {
+          console.log('🎵 [VOYO] Setting isPlaying=true for iframe playback');
+          triggerToggle();
+        }
 
         // Start background boost (non-blocking)
         if (backgroundBoostingRef.current !== trackId) {

@@ -679,12 +679,16 @@ const AfricanVibesVideoCard = ({
       />
 
       <div className="relative w-full h-full rounded-xl overflow-hidden bg-black">
-        {/* Thumbnail */}
-        <img
-          src={`https://img.youtube.com/vi/${youtubeId}/mqdefault.jpg`}
+        {/* Thumbnail - SmartImage with fallback chain */}
+        <SmartImage
+          src={getThumb(track.trackId, 'medium')}
+          trackId={track.trackId}
           alt={track.title}
+          artist={track.artist}
+          title={track.title}
           className="absolute inset-0 w-full h-full object-cover"
           style={{ transform: 'scale(1.8)' }}
+          lazy={false}
         />
 
         {/* Video iframe */}
@@ -1047,11 +1051,15 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
                       ease: 'linear',
                     } : undefined}
                   >
-                    <img
-                      src={`https://i.ytimg.com/vi/${track.trackId}/hqdefault.jpg`}
+                    <SmartImage
+                      src={getThumb(track.trackId, 'high')}
+                      trackId={track.trackId}
                       alt={track.title}
+                      artist={track.artist}
+                      title={track.title}
                       className="w-full h-full object-cover"
                       style={{ objectPosition: 'center 35%', transform: 'scale(1.3)' }}
+                      lazy={false}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
                   </motion.div>

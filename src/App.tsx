@@ -17,10 +17,12 @@ import { LandscapeVOYO } from './components/voyo/LandscapeVOYO';
 import { VideoMode } from './components/voyo/VideoMode';
 import { ClassicMode } from './components/classic/ClassicMode';
 import { AudioPlayer } from './components/AudioPlayer';
+import { YouTubeIframe } from './components/YouTubeIframe';
 import { SearchOverlayV2 as SearchOverlay } from './components/search/SearchOverlayV2';
 import { AnimatedBackground, BackgroundPicker, BackgroundType, ReactionCanvas } from './components/backgrounds/AnimatedBackgrounds';
 import { usePlayerStore } from './store/playerStore';
 import { getYouTubeThumbnail } from './data/tracks';
+import PlaybackOrchestrator from './services/playbackOrchestrator';
 import { setupMobileAudioUnlock } from './utils/mobileAudioUnlock';
 import { InstallButton } from './components/ui/InstallButton';
 import { OfflineIndicator } from './components/ui/OfflineIndicator';
@@ -918,7 +920,7 @@ function App() {
 
   // VOYO:PLAYTRACK - Listen for track play events from cross-promo sections
   useEffect(() => {
-    const handlePlayTrack = (event: CustomEvent) => {
+    const handlePlayTrack = async (event: CustomEvent) => {
       const { youtubeId, title, artist, thumbnail } = event.detail;
       if (!youtubeId) return;
 
@@ -935,15 +937,15 @@ function App() {
         oyeScore: 0,
       };
 
-      // Play the track using the store
-      const { setCurrentTrack } = usePlayerStore.getState();
-      setCurrentTrack(track as any);
+      // Play the track via PlaybackOrchestrator for reliable playback
       console.log('[VOYO] Playing cross-promo track:', title);
+      await PlaybackOrchestrator.play(track as any);
     };
 
-    window.addEventListener('voyo:playTrack', handlePlayTrack as EventListener);
+    const listener = (e: Event) => { handlePlayTrack(e as CustomEvent); };
+    window.addEventListener('voyo:playTrack', listener);
     return () => {
-      window.removeEventListener('voyo:playTrack', handlePlayTrack as EventListener);
+      window.removeEventListener('voyo:playTrack', listener);
     };
   }, []);
 
@@ -1250,7 +1252,8 @@ function App() {
       {/* Audio Player - Boost (cached audio) handles playback */}
       <AudioPlayer />
 
-      {/* YouTube Iframe - Now rendered inside VoyoPortraitPlayer for simpler positioning */}
+      {/* YouTube Iframe - GLOBAL for all modes (Classic needs it for streaming) */}
+      <YouTubeIframe />
 
       {/* Search Overlay - Powered by Piped API */}
       <SearchOverlay isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />

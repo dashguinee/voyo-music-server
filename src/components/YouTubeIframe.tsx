@@ -27,7 +27,35 @@ const YT_STATES = {
 
 function getYouTubeId(trackId: string): string {
   if (!trackId) return '';
-  if (trackId.startsWith('VOYO_')) return trackId.replace('VOYO_', '');
+
+  // Handle VOYO_ prefix (old format)
+  if (trackId.startsWith('VOYO_')) {
+    const result = trackId.replace('VOYO_', '');
+    console.log(`[YouTubeIframe] getYouTubeId: ${trackId} → ${result} (VOYO_ prefix)`);
+    return result;
+  }
+
+  // Handle vyo_ prefix (base64url encoded YouTube ID)
+  if (trackId.startsWith('vyo_')) {
+    try {
+      const encoded = trackId.substring(4);
+      // Convert base64url to standard base64
+      let base64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+      // Add padding if needed
+      while (base64.length % 4 !== 0) base64 += '=';
+      const decoded = atob(base64);
+      // Valid YouTube IDs are 11 characters
+      if (decoded.length === 11 && /^[a-zA-Z0-9_-]+$/.test(decoded)) {
+        console.log(`[YouTubeIframe] getYouTubeId: ${trackId} → ${decoded} (vyo_ decoded)`);
+        return decoded;
+      }
+      console.warn(`[YouTubeIframe] getYouTubeId: ${trackId} decoded to invalid ID: ${decoded}`);
+    } catch (e) {
+      console.warn('[YouTubeIframe] Failed to decode vyo_ trackId:', trackId, e);
+    }
+  }
+
+  console.log(`[YouTubeIframe] getYouTubeId: ${trackId} → ${trackId} (passthrough)`);
   return trackId;
 }
 
@@ -129,11 +157,25 @@ export const YouTubeIframe = memo(() => {
   }, []);
 
   const initPlayer = useCallback((videoId: string) => {
-    if (!isApiLoadedRef.current || !(window as any).YT?.Player) return;
-    if (!containerRef.current) return;
-    if (initializingRef.current) return;
-    if (playerRef.current && currentVideoIdRef.current === videoId) return;
+    console.log(`[YouTubeIframe] initPlayer called with videoId: ${videoId}`);
+    if (!isApiLoadedRef.current || !(window as any).YT?.Player) {
+      console.log('[YouTubeIframe] API not loaded yet');
+      return;
+    }
+    if (!containerRef.current) {
+      console.log('[YouTubeIframe] No container ref');
+      return;
+    }
+    if (initializingRef.current) {
+      console.log('[YouTubeIframe] Already initializing');
+      return;
+    }
+    if (playerRef.current && currentVideoIdRef.current === videoId) {
+      console.log('[YouTubeIframe] Same video, skipping');
+      return;
+    }
 
+    console.log(`[YouTubeIframe] Creating player for: ${videoId}`);
     initializingRef.current = true;
     currentVideoIdRef.current = videoId;
 
@@ -168,15 +210,45 @@ export const YouTubeIframe = memo(() => {
           initializingRef.current = false;
           const player = event.target;
           const state = usePlayerStore.getState();
+          console.log(`[YouTubeIframe] onReady: playbackSource=${state.playbackSource}, isPlaying=${state.isPlaying}`);
 
           if (state.playbackSource === 'cached') {
+            console.log('[YouTubeIframe] onReady: Source is cached, muting iframe');
             player.setVolume(0);
             player.mute();
           } else {
+            // playbackSource is 'iframe' OR null (AudioPlayer still determining)
+            // Either way, we should play since user requested playback
+            console.log(`[YouTubeIframe] onReady: Source is ${state.playbackSource}, calling playVideo()`);
             player.unMute();
             player.setVolume(state.volume);
             player.playVideo();
-            if (!state.isPlaying) usePlayerStore.getState().togglePlay();
+
+            // FORCE sync: Always ensure store reflects playing state
+            if (!state.isPlaying) {
+              usePlayerStore.getState().togglePlay();
+            }
+
+            // RETRY LOGIC: Verify playback started after 500ms
+            // Handles cases where playVideo() silently fails
+            setTimeout(() => {
+              try {
+                const playerState = player.getPlayerState();
+                const freshState = usePlayerStore.getState();
+                console.log(`[YouTubeIframe] Retry check: playerState=${playerState}, playbackSource=${freshState.playbackSource}`);
+                // Only retry if we're still in iframe mode (not switched to cached)
+                // AND if we should be playing but it's not actually playing
+                if (freshState.playbackSource !== 'cached' &&
+                    freshState.isPlaying &&
+                    playerState !== YT_STATES.PLAYING &&
+                    playerState !== YT_STATES.BUFFERING) {
+                  console.log('[YouTubeIframe] Retry: forcing playVideo()');
+                  player.playVideo();
+                }
+              } catch (e) {
+                // Player may have been destroyed, ignore
+              }
+            }, 500);
           }
 
           const duration = player.getDuration();
@@ -185,20 +257,26 @@ export const YouTubeIframe = memo(() => {
         onStateChange: (event: any) => {
           const ytState = event.data;
           const state = usePlayerStore.getState();
+          console.log(`[YouTubeIframe] onStateChange: ytState=${ytState}, playbackSource=${state.playbackSource}, isPlaying=${state.isPlaying}`);
 
-          if (ytState === YT_STATES.ENDED && state.playbackSource === 'iframe') {
+          if (ytState === YT_STATES.ENDED && state.playbackSource !== 'cached') {
+            // Track ended - go to next (unless we're in cached mode where AudioPlayer handles this)
             nextTrack();
           } else if (ytState === YT_STATES.PLAYING) {
-            // Only update buffer health if we're the active playback source
-            if (state.playbackSource === 'iframe') {
+            // Update buffer health if we're streaming via iframe (or source not yet determined)
+            if (state.playbackSource !== 'cached') {
               setBufferHealth(100, 'healthy');
+              // Also ensure playbackSource is set to iframe if it was null
+              if (state.playbackSource === null) {
+                usePlayerStore.getState().setPlaybackSource('iframe');
+              }
             }
-            if (state.playbackSource === 'iframe' && !state.isPlaying) {
+            if (state.playbackSource !== 'cached' && !state.isPlaying) {
               usePlayerStore.getState().togglePlay();
             }
           } else if (ytState === YT_STATES.BUFFERING) {
-            // Only update buffer health if we're the active playback source
-            if (state.playbackSource === 'iframe') {
+            // Update buffer health if we're streaming via iframe
+            if (state.playbackSource !== 'cached') {
               setBufferHealth(50, 'warning');
             }
           }
@@ -223,13 +301,23 @@ export const YouTubeIframe = memo(() => {
   useEffect(() => {
     if (!playerRef.current) return;
     try {
-      const state = playerRef.current.getPlayerState();
+      const ytState = playerRef.current.getPlayerState();
+      const currentSource = usePlayerStore.getState().playbackSource;
+
+      // Only control playback if we're the audio source (iframe mode) or source not yet determined
+      // In cached mode, AudioPlayer handles playback - we just provide video
+      if (currentSource === 'cached') {
+        // In cached mode, just sync video position with audio, don't control play state
+        return;
+      }
+
       if (isPlaying) {
-        if (state !== YT_STATES.PLAYING && state !== YT_STATES.BUFFERING) {
+        if (ytState !== YT_STATES.PLAYING && ytState !== YT_STATES.BUFFERING) {
+          console.log('[YouTubeIframe] isPlaying effect: calling playVideo()');
           playerRef.current.playVideo();
         }
       } else {
-        if (state === YT_STATES.PLAYING || state === YT_STATES.BUFFERING) {
+        if (ytState === YT_STATES.PLAYING || ytState === YT_STATES.BUFFERING) {
           playerRef.current.pauseVideo();
         }
       }
@@ -245,6 +333,17 @@ export const YouTubeIframe = memo(() => {
       } else if (playbackSource === 'iframe') {
         playerRef.current.unMute();
         playerRef.current.setVolume(volume);
+
+        // FIX: When switching to iframe mode, ensure playback starts if isPlaying is true
+        // This handles the case where isPlaying was set before playbackSource
+        const { isPlaying: shouldPlay } = usePlayerStore.getState();
+        if (shouldPlay) {
+          const ytState = playerRef.current.getPlayerState();
+          if (ytState !== YT_STATES.PLAYING && ytState !== YT_STATES.BUFFERING) {
+            console.log('[YouTubeIframe] playbackSource=iframe + isPlaying=true, calling playVideo()');
+            playerRef.current.playVideo();
+          }
+        }
       }
     } catch (e) {}
   }, [playbackSource, volume]);
@@ -342,18 +441,21 @@ export const YouTubeIframe = memo(() => {
     return <PortraitVideoContainer iframeContent={iframeContent} />;
   }
 
-  // Hidden mode: offscreen but active for audio
+  // Hidden mode: visually hidden but still "visible" to YouTube
+  // YouTube blocks autoplay for truly invisible iframes (1x1px, offscreen)
+  // So we make it small but on-screen with opacity:0 and behind everything
   return (
     <div
       id="voyo-iframe-container"
       style={{
         position: 'fixed',
-        top: -9999,
-        left: -9999,
-        width: 1,
-        height: 1,
-        opacity: 0,
+        bottom: 0,
+        right: 0,
+        width: 300,
+        height: 150,
+        opacity: 0.001, // Nearly invisible but not 0 (some browsers detect opacity:0)
         pointerEvents: 'none',
+        zIndex: -1, // Behind everything
       }}
     >
       {iframeContent}

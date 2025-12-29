@@ -343,6 +343,10 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       // SKEEP FIX: Reset playback rate when changing tracks
       playbackRate: 1,
       isSkeeping: false,
+      // FIX: Reset playback source so AudioPlayer determines fresh for new track
+      // Without this, stale 'cached' value causes YouTubeIframe to mute
+      playbackSource: null,
+      bufferHealth: 0,
     });
 
     // POOL ENGAGEMENT: Record play (check abort before async op)

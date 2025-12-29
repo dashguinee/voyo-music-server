@@ -11,6 +11,7 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { usePlayerStore } from '../../store/playerStore';
 import { Track } from '../../types';
 import { getThumb } from '../../utils/thumbnail';
+import PlaybackOrchestrator from '../../services/playbackOrchestrator';
 
 // MixBoard mode icons for vibe display
 const MODE_COLORS: Record<string, string> = {
@@ -71,7 +72,7 @@ export const VibesSection = ({ query, isVisible }: VibesSectionProps) => {
   const [vibeTracks, setVibeTracks] = useState<VibeTrack[]>([]);
   const [isLoadingTracks, setIsLoadingTracks] = useState(false);
 
-  const { setCurrentTrack, addToQueue } = usePlayerStore();
+  const { addToQueue } = usePlayerStore();
 
   // Search vibes from Supabase
   const handleSearch = useCallback(async () => {
@@ -245,7 +246,7 @@ export const VibesSection = ({ query, isVisible }: VibesSectionProps) => {
   }, []);
 
   // Play entire vibe
-  const handlePlayVibe = useCallback(() => {
+  const handlePlayVibe = useCallback(async () => {
     if (vibeTracks.length === 0 || !selectedVibe) return;
 
     const tracks: Track[] = vibeTracks.map(t => ({
@@ -263,14 +264,13 @@ export const VibesSection = ({ query, isVisible }: VibesSectionProps) => {
       createdAt: new Date().toISOString(),
     }));
 
-    // Play first, queue rest
-    setCurrentTrack(tracks[0]);
-    setTimeout(() => usePlayerStore.getState().togglePlay(), 100);
+    // Play first via orchestrator, queue rest
+    await PlaybackOrchestrator.play(tracks[0]);
     tracks.slice(1).forEach(track => addToQueue(track));
-  }, [vibeTracks, selectedVibe, setCurrentTrack, addToQueue]);
+  }, [vibeTracks, selectedVibe, addToQueue]);
 
   // Play individual track
-  const handleTrackClick = useCallback((track: VibeTrack) => {
+  const handleTrackClick = useCallback(async (track: VibeTrack) => {
     const voyoTrack: Track = {
       id: track.voyo_id,
       title: track.title,
@@ -285,9 +285,8 @@ export const VibesSection = ({ query, isVisible }: VibesSectionProps) => {
       oyeScore: 0,
       createdAt: new Date().toISOString(),
     };
-    setCurrentTrack(voyoTrack);
-    setTimeout(() => usePlayerStore.getState().togglePlay(), 100);
-  }, [selectedVibe, setCurrentTrack]);
+    await PlaybackOrchestrator.play(voyoTrack);
+  }, [selectedVibe]);
 
   const formatDuration = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
