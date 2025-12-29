@@ -477,7 +477,7 @@ export const ClassicMode = ({ onSwitchToVOYO, onSearch }: ClassicModeProps) => {
     }
   }, [shouldOpenNowPlaying, setShouldOpenNowPlaying]);
 
-  // Section-aware track play handler - SIMPLE DIRECT approach
+  // Section-aware track play handler - CONSOLIDATED
   // Communal sections (Top 10, African Vibes, Trending) → open full player
   // Personal sections (Continue Listening, Made For You) → mini player only
   const handleTrackClick = (track: Track, options?: { openFull?: boolean }) => {
@@ -486,17 +486,8 @@ export const ClassicMode = ({ onSwitchToVOYO, onSearch }: ClassicModeProps) => {
       setShowNowPlaying(true);
     }
 
-    // Simple direct playback - no orchestrator complexity
-    const { setCurrentTrack } = usePlayerStore.getState();
-    setCurrentTrack(track);
-
-    // Small delay to let components initialize, then ensure playing
-    setTimeout(() => {
-      const { isPlaying, togglePlay } = usePlayerStore.getState();
-      if (!isPlaying) {
-        togglePlay();
-      }
-    }, 100);
+    // CONSOLIDATED: One atomic call - no delays, no fragmentation
+    usePlayerStore.getState().playTrack(track);
   };
 
   const handleArtistClick = (artist: { name: string; tracks: Track[] }) => {

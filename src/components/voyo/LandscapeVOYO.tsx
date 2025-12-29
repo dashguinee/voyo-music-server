@@ -554,7 +554,7 @@ export const LandscapeVOYO = ({ onVideoMode }: LandscapeVOYOProps) => {
     discoverTracks,
     nextTrack,
     prevTrack,
-    setCurrentTrack,
+    playTrack,
     addToQueue,
     addReaction,
     volume,
@@ -743,15 +743,13 @@ export const LandscapeVOYO = ({ onVideoMode }: LandscapeVOYOProps) => {
             <div className="relative flex items-center justify-center gap-2 p-3 pointer-events-auto">
               {pastTracks.map((track, i) => (
                 <TimelineCard key={`past-${i}`} track={track} onClick={() => {
-                  setCurrentTrack(track);
-                  setTimeout(() => togglePlay(), 100);
+                  playTrack(track);
                   startHideTimer();
                 }} />
               ))}
               {pastTracks.length === 0 && suggestTracks.map((track, i) => (
                 <TimelineCard key={`suggest-${i}`} track={track} onClick={() => {
-                  setCurrentTrack(track);
-                  setTimeout(() => togglePlay(), 100);
+                  playTrack(track);
                   startHideTimer();
                 }} />
               ))}
@@ -760,8 +758,7 @@ export const LandscapeVOYO = ({ onVideoMode }: LandscapeVOYOProps) => {
               )}
               {queueTracks.map((track, i) => (
                 <TimelineCard key={`queue-${i}`} track={track} onClick={() => {
-                  setCurrentTrack(track);
-                  setTimeout(() => togglePlay(), 100);
+                  playTrack(track);
                   startHideTimer();
                 }} />
               ))}
@@ -858,8 +855,7 @@ export const LandscapeVOYO = ({ onVideoMode }: LandscapeVOYOProps) => {
                 <span className="text-white/60 text-xs uppercase">HOT</span>
                 {hotTracks.slice(0, 3).map((track) => (
                   <MiniCard key={track.id} track={track} onClick={() => {
-                    setCurrentTrack(track);
-                    setTimeout(() => togglePlay(), 100);
+                    playTrack(track);
                     startHideTimer();
                   }} />
                 ))}
@@ -870,8 +866,7 @@ export const LandscapeVOYO = ({ onVideoMode }: LandscapeVOYOProps) => {
                 <span className="text-white/60 text-xs uppercase">DISCOVER</span>
                 {discoverTracks.slice(0, 3).map((track) => (
                   <MiniCard key={track.id} track={track} onClick={() => {
-                    setCurrentTrack(track);
-                    setTimeout(() => togglePlay(), 100);
+                    playTrack(track);
                     startHideTimer();
                   }} />
                 ))}

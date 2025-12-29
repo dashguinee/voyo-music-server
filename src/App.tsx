@@ -22,7 +22,6 @@ import { SearchOverlayV2 as SearchOverlay } from './components/search/SearchOver
 import { AnimatedBackground, BackgroundPicker, BackgroundType, ReactionCanvas } from './components/backgrounds/AnimatedBackgrounds';
 import { usePlayerStore } from './store/playerStore';
 import { getYouTubeThumbnail } from './data/tracks';
-import PlaybackOrchestrator from './services/playbackOrchestrator';
 import { setupMobileAudioUnlock } from './utils/mobileAudioUnlock';
 import { InstallButton } from './components/ui/InstallButton';
 import { OfflineIndicator } from './components/ui/OfflineIndicator';
@@ -937,9 +936,9 @@ function App() {
         oyeScore: 0,
       };
 
-      // Play the track via PlaybackOrchestrator for reliable playback
+      // Play the track - consolidated playTrack for reliable playback
       console.log('[VOYO] Playing cross-promo track:', title);
-      await PlaybackOrchestrator.play(track as any);
+      usePlayerStore.getState().playTrack(track as any);
     };
 
     const listener = (e: Event) => { handlePlayTrack(e as CustomEvent); };

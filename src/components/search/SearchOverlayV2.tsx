@@ -17,7 +17,6 @@ import { searchCache } from '../../utils/searchCache';
 import { addSearchResultsToPool } from '../../services/personalization';
 import { AlbumSection } from './AlbumSection';
 import { VibesSection } from './VibesSection';
-import PlaybackOrchestrator from '../../services/playbackOrchestrator';
 
 interface SearchOverlayProps {
   isOpen: boolean;
@@ -458,12 +457,12 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
     createdAt: new Date().toISOString(),
   }), []);
 
-  const handleSelectTrack = useCallback(async (result: SearchResult) => {
+  const handleSelectTrack = useCallback((result: SearchResult) => {
     const track = resultToTrack(result);
     // POOL INTEGRATION: Add played search result to track pool for recommendations
     addSearchResultsToPool([track]);
-    // Use PlaybackOrchestrator for reliable playback
-    await PlaybackOrchestrator.play(track);
+    // CONSOLIDATED: playTrack handles everything atomically
+    usePlayerStore.getState().playTrack(track);
     // FIX A4: Signal to Classic mode that NowPlaying should open
     usePlayerStore.getState().setShouldOpenNowPlaying(true);
     onClose();

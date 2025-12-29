@@ -10,7 +10,6 @@ import { PipedPlaylist, PipedTrack, searchAlbums, getAlbumTracks } from '../../s
 import { pipedTrackToVoyoTrack } from '../../data/tracks';
 import { usePlayerStore } from '../../store/playerStore';
 import { Track } from '../../types';
-import PlaybackOrchestrator from '../../services/playbackOrchestrator';
 
 interface AlbumSectionProps {
   query: string;
@@ -75,8 +74,8 @@ export const AlbumSection = ({ query, isVisible }: AlbumSectionProps) => {
       pipedTrackToVoyoTrack(track, selectedAlbum.name)
     );
 
-    // Play first track via orchestrator, add rest to queue
-    await PlaybackOrchestrator.play(voyoTracks[0]);
+    // Play first track, add rest to queue
+    usePlayerStore.getState().playTrack(voyoTracks[0]);
     if (voyoTracks.length > 1) {
       // Add tracks one by one to the queue
       voyoTracks.slice(1).forEach(track => addToQueue(track));
@@ -84,9 +83,9 @@ export const AlbumSection = ({ query, isVisible }: AlbumSectionProps) => {
   }, [albumTracks, selectedAlbum, addToQueue]);
 
   // Play individual track
-  const handleTrackClick = useCallback(async (track: PipedTrack) => {
+  const handleTrackClick = useCallback((track: PipedTrack) => {
     const voyoTrack = pipedTrackToVoyoTrack(track, selectedAlbum?.name);
-    await PlaybackOrchestrator.play(voyoTrack);
+    usePlayerStore.getState().playTrack(voyoTrack);
   }, [selectedAlbum]);
 
   // Add track to queue

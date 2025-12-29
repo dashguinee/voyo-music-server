@@ -261,6 +261,8 @@ export const NowPlaying = ({ isOpen, onClose }: NowPlayingProps) => {
     seekTo,
     queue,
     removeFromQueue,
+    videoTarget,
+    setVideoTarget,
   } = usePlayerStore();
 
   // Get current track position for hotspot detection
@@ -287,7 +289,7 @@ export const NowPlaying = ({ isOpen, onClose }: NowPlayingProps) => {
   const [floatingReactions, setFloatingReactions] = useState<FloatingReaction[]>([]);
   const [showQueue, setShowQueue] = useState(false);
   const [shareToast, setShareToast] = useState(false);
-  const [videoMode, setVideoMode] = useState(false); // Video toggle - shows YouTube iframe
+  // Video mode now uses global videoTarget from playerStore (no local state)
 
   // Reactions data
   const currentTrackId = currentTrack?.id || '';
@@ -301,6 +303,13 @@ export const NowPlaying = ({ isOpen, onClose }: NowPlayingProps) => {
       fetchTrackStats(currentTrack.id);
     }
   }, [currentTrack?.id, isOpen, fetchTrackReactions, fetchTrackStats]);
+
+  // Reset videoTarget to hidden when NowPlaying closes
+  useEffect(() => {
+    if (!isOpen && videoTarget === 'portrait') {
+      setVideoTarget('hidden');
+    }
+  }, [isOpen, videoTarget, setVideoTarget]);
 
   // Format time
   const formatTime = (seconds: number) => {
@@ -416,20 +425,11 @@ export const NowPlaying = ({ isOpen, onClose }: NowPlayingProps) => {
           exit={{ y: '100%' }}
           transition={{ type: 'spring', damping: 25, stiffness: 200 }}
         >
-          {/* BACKGROUND - Album Art or Video */}
-          {videoMode ? (
-            <div className="absolute inset-0 bg-black z-0">
-              <iframe
-                src={`https://www.youtube.com/embed/${currentTrack.trackId}?autoplay=0&controls=0&showinfo=0&rel=0&modestbranding=1&playsinline=1`}
-                className="w-full h-full"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-                title={currentTrack.title}
-              />
-            </div>
-          ) : (
+          {/* BACKGROUND - Album Art (Video uses global YouTubeIframe via videoTarget) */}
+          {videoTarget !== 'portrait' && (
             <AlbumArtBackground coverUrl={getTrackThumbnailUrl(currentTrack, 'max')} />
           )}
+          {/* When videoTarget === 'portrait', the global YouTubeIframe renders here */}
 
           {/* VIDEO TOGGLE - Left side vertical toggle */}
           <motion.div
@@ -440,14 +440,14 @@ export const NowPlaying = ({ isOpen, onClose }: NowPlayingProps) => {
           >
             <motion.button
               className={`flex flex-col items-center gap-2 px-2 py-3 rounded-full backdrop-blur-xl border transition-all duration-300 ${
-                videoMode
+                videoTarget === 'portrait'
                   ? 'bg-purple-500/30 border-purple-400/50'
                   : 'bg-black/40 border-white/10 hover:border-white/20'
               }`}
-              onClick={() => setVideoMode(!videoMode)}
+              onClick={() => setVideoTarget(videoTarget === 'portrait' ? 'hidden' : 'portrait')}
               whileTap={{ scale: 0.95 }}
             >
-              {videoMode ? (
+              {videoTarget === 'portrait' ? (
                 <Image className="w-4 h-4 text-white" />
               ) : (
                 <Video className="w-4 h-4 text-white" />
@@ -456,7 +456,7 @@ export const NowPlaying = ({ isOpen, onClose }: NowPlayingProps) => {
                 className="text-[9px] text-white/80 font-medium"
                 style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
               >
-                {videoMode ? 'ART' : 'VIDEO'}
+                {videoTarget === 'portrait' ? 'ART' : 'VIDEO'}
               </span>
             </motion.button>
           </motion.div>

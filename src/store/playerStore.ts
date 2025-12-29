@@ -191,6 +191,7 @@ interface PlayerStore {
 
   // Actions - Playback
   setCurrentTrack: (track: Track) => void;
+  playTrack: (track: Track) => void; // CONSOLIDATED: Sets track AND starts playing in one atomic update
   togglePlay: () => void;
   setProgress: (progress: number) => void;
   setCurrentTime: (time: number) => void;
@@ -393,6 +394,21 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     }, 100);
     // Cleanup on abort
     signal.addEventListener('abort', () => clearTimeout(portalSyncTimeoutId));
+  },
+
+  // CONSOLIDATED: Play a track - sets track AND isPlaying in one atomic update
+  // Use this instead of setCurrentTrack + setTimeout + togglePlay pattern
+  playTrack: (track) => {
+    // First set the track (this resets playbackSource, bufferHealth, etc.)
+    get().setCurrentTrack(track);
+
+    // Then immediately set isPlaying = true (no delay needed)
+    set({ isPlaying: true });
+
+    // Update Media Session
+    if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = 'playing';
+    }
   },
 
   togglePlay: () => {

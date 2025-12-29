@@ -11,7 +11,6 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { usePlayerStore } from '../../store/playerStore';
 import { Track } from '../../types';
 import { getThumb } from '../../utils/thumbnail';
-import PlaybackOrchestrator from '../../services/playbackOrchestrator';
 
 // MixBoard mode icons for vibe display
 const MODE_COLORS: Record<string, string> = {
@@ -264,13 +263,13 @@ export const VibesSection = ({ query, isVisible }: VibesSectionProps) => {
       createdAt: new Date().toISOString(),
     }));
 
-    // Play first via orchestrator, queue rest
-    await PlaybackOrchestrator.play(tracks[0]);
+    // Play first, queue rest
+    usePlayerStore.getState().playTrack(tracks[0]);
     tracks.slice(1).forEach(track => addToQueue(track));
   }, [vibeTracks, selectedVibe, addToQueue]);
 
   // Play individual track
-  const handleTrackClick = useCallback(async (track: VibeTrack) => {
+  const handleTrackClick = useCallback((track: VibeTrack) => {
     const voyoTrack: Track = {
       id: track.voyo_id,
       title: track.title,
@@ -285,7 +284,7 @@ export const VibesSection = ({ query, isVisible }: VibesSectionProps) => {
       oyeScore: 0,
       createdAt: new Date().toISOString(),
     };
-    await PlaybackOrchestrator.play(voyoTrack);
+    usePlayerStore.getState().playTrack(voyoTrack);
   }, [selectedVibe]);
 
   const formatDuration = (seconds: number): string => {

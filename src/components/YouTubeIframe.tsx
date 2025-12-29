@@ -60,6 +60,7 @@ function getYouTubeId(trackId: string): string {
 }
 
 // Isolated component for portrait mode - handles dynamic zoom based on overlay state
+// Uses FIXED positioning to overlay correctly on NowPlaying modal
 const PortraitVideoContainer = memo(({ iframeContent }: { iframeContent: React.ReactNode }) => {
   const currentTime = usePlayerStore((s) => s.currentTime);
   const duration = usePlayerStore((s) => s.duration);
@@ -75,32 +76,40 @@ const PortraitVideoContainer = memo(({ iframeContent }: { iframeContent: React.R
   const showingOverlay = showingNowPlaying || ((showingNextUpMid || showingNextUpEnd) && queue.length > 0);
 
   // Dynamic zoom:
-  // - Full zoom (220%) during pure playback
-  // - Pull back (190%) when overlay appears (give text breathing room)
+  // - Full zoom (140%) during pure playback - cropped to hide YouTube UI
+  // - Pull back (120%) when overlay appears (give text breathing room)
   // - Slight pull back when paused
   const getZoomLevel = () => {
-    if (!isPlaying) return { width: '200%', height: '130%' }; // Paused
-    if (showingOverlay) return { width: '190%', height: '120%' }; // Overlay visible
-    return { width: '220%', height: '140%' }; // Full immersion
+    if (!isPlaying) return { scale: 1.2 }; // Paused
+    if (showingOverlay) return { scale: 1.3 }; // Overlay visible
+    return { scale: 1.4 }; // Full immersion - cropped for cinematic feel
   };
 
-  const { width, height } = getZoomLevel();
+  const { scale } = getZoomLevel();
 
   return (
     <div
       id="voyo-iframe-container"
-      className="absolute inset-0 z-10 overflow-hidden rounded-[2rem]"
-      style={{ background: '#000' }}
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
+        zIndex: 45, // Below NowPlaying controls (z-50) but above background
+        overflow: 'hidden',
+        background: '#000',
+      }}
     >
       <div
         style={{
           position: 'absolute',
           top: '50%',
           left: '50%',
-          width,
-          height,
-          transform: 'translate(-50%, -50%)',
-          transition: 'width 0.6s cubic-bezier(0.4, 0, 0.2, 1), height 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+          width: '100%',
+          height: '100%',
+          transform: `translate(-50%, -50%) scale(${scale})`,
+          transition: 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
         }}
       >
         {iframeContent}
@@ -218,15 +227,18 @@ export const YouTubeIframe = memo(() => {
             player.mute();
           } else {
             // playbackSource is 'iframe' OR null (AudioPlayer still determining)
-            // Either way, we should play since user requested playback
-            console.log(`[YouTubeIframe] onReady: Source is ${state.playbackSource}, calling playVideo()`);
-            player.unMute();
-            player.setVolume(state.volume);
-            player.playVideo();
-
-            // FORCE sync: Always ensure store reflects playing state
-            if (!state.isPlaying) {
-              usePlayerStore.getState().togglePlay();
+            // Only auto-play if isPlaying is already true (user initiated via playTrack)
+            // Don't force play on page refresh - browser autoplay policies will block it
+            if (state.isPlaying) {
+              console.log(`[YouTubeIframe] onReady: isPlaying=true, calling playVideo()`);
+              player.unMute();
+              player.setVolume(state.volume);
+              player.playVideo();
+            } else {
+              console.log(`[YouTubeIframe] onReady: isPlaying=false (page refresh), waiting for user action`);
+              player.unMute();
+              player.setVolume(state.volume);
+              // Don't call playVideo() - wait for user to click play
             }
 
             // RETRY LOGIC: Verify playback started after 500ms
@@ -292,10 +304,7 @@ export const YouTubeIframe = memo(() => {
 
   useEffect(() => {
     if (!youtubeId) return;
-    const timer = setTimeout(() => {
-      if (isApiLoadedRef.current) initPlayer(youtubeId);
-    }, 100);
-    return () => clearTimeout(timer);
+    if (isApiLoadedRef.current) initPlayer(youtubeId);
   }, [youtubeId, initPlayer]);
 
   useEffect(() => {

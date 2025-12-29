@@ -2481,9 +2481,7 @@ const ReactionBar = memo(({
           const tracks = await getAlbumTracks(match.id);
           if (tracks.length > 0) {
             const voyoTrack = pipedTrackToVoyoTrack(tracks[0], match.thumbnail);
-            usePlayerStore.getState().setCurrentTrack(voyoTrack);
-            // FIX: Explicitly start playback after voice command
-            setTimeout(() => usePlayerStore.getState().togglePlay(), 100);
+            usePlayerStore.getState().playTrack(voyoTrack);
             setChatResponse(`🔥 Playing "${match.name}" by ${match.artist}`);
           } else {
             setChatResponse(`Found "${match.name}" - search to play!`);
@@ -3686,7 +3684,7 @@ export const VoyoPortraitPlayer = ({
     refreshRecommendations, // For intent-triggered refresh
     nextTrack,
     prevTrack,
-    setCurrentTrack,
+    playTrack,
     addReaction,
     reactions,
     seekTo,
@@ -3825,16 +3823,14 @@ export const VoyoPortraitPlayer = ({
 
     if (foundTrack) {
       // Play the track - this will also update NowPlaying
-      setCurrentTrack(foundTrack);
-      // FIX: Explicitly start playback after punch tap
-      setTimeout(() => usePlayerStore.getState().togglePlay(), 100);
+      playTrack(foundTrack);
     } else {
       // Track not in current feeds - trigger search with the track title
       // This opens the search overlay with the track as query
       console.log(`[Punch] Track not in feeds, would search for: ${punch.trackTitle}`);
       // For now, just log - full search integration would require onSearch callback
     }
-  }, [hotTracks, discoverTracks, setCurrentTrack]);
+  }, [hotTracks, discoverTracks, playTrack]);
 
   // Backdrop state
   const [backdropEnabled, setBackdropEnabled] = useState(false); // OFF by default for smoothness
@@ -4503,9 +4499,7 @@ export const VoyoPortraitPlayer = ({
     // For now, we'll set the current track and auto-stop after 30s
     setTeaserTrack(track);
     setIsTeaserPlaying(true);
-    setCurrentTrack(track);
-    // FIX: Explicitly start playback for teaser
-    setTimeout(() => usePlayerStore.getState().togglePlay(), 100);
+    playTrack(track);
 
     // Auto-stop after 30 seconds
     teaserTimeoutRef.current = setTimeout(() => {
@@ -4513,7 +4507,7 @@ export const VoyoPortraitPlayer = ({
       setTeaserTrack(null);
       // Don't auto-pause - let user decide
     }, 30000);
-  }, [setCurrentTrack]);
+  }, [playTrack]);
 
   // Cleanup teaser on unmount
   useEffect(() => {
@@ -4643,11 +4637,7 @@ export const VoyoPortraitPlayer = ({
                 <div key={track.id + i} style={{ scrollSnapAlign: 'start', flexShrink: 0 }}>
                   <SmallCard
                     track={track}
-                    onTap={() => {
-                      setCurrentTrack(track);
-                      // FIX: Explicitly start playback when user taps history card
-                      setTimeout(() => usePlayerStore.getState().togglePlay(), 100);
-                    }}
+                    onTap={() => playTrack(track)}
                     isPlayed={true}
                   />
                 </div>
@@ -4687,11 +4677,7 @@ export const VoyoPortraitPlayer = ({
                 <div key={track.id + i} style={{ scrollSnapAlign: 'start', flexShrink: 0 }}>
                   <SmallCard
                     track={track}
-                    onTap={() => {
-                      setCurrentTrack(track);
-                      // FIX: Explicitly start playback when user taps queue card
-                      setTimeout(() => usePlayerStore.getState().togglePlay(), 100);
-                    }}
+                    onTap={() => playTrack(track)}
                     isPlayed={playedTrackIds.has(track.id)}
                   />
                 </div>
@@ -5051,7 +5037,7 @@ export const VoyoPortraitPlayer = ({
             {/* HOT Cards Belt (loops within this zone) */}
             <PortalBelt
               tracks={hotTracks.slice(0, 8)}
-              onTap={setCurrentTrack}
+              onTap={playTrack}
               onTeaser={handleTeaser}
               onQueueAdd={trackQueueAddition}
               playedTrackIds={playedTrackIds}
@@ -5170,7 +5156,7 @@ export const VoyoPortraitPlayer = ({
             {/* DISCOVERY Cards Belt (loops within this zone) */}
             <PortalBelt
               tracks={discoverTracks.slice(0, 8)}
-              onTap={setCurrentTrack}
+              onTap={playTrack}
               onTeaser={handleTeaser}
               onQueueAdd={trackQueueAddition}
               playedTrackIds={playedTrackIds}

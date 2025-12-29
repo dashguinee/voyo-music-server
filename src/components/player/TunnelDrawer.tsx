@@ -26,7 +26,7 @@ const TunnelDrawer: React.FC<TunnelDrawerProps> = ({
     currentTrack,
     removeFromQueue,
     reorderQueue,
-    setCurrentTrack,
+    playTrack,
     clearQueue,
   } = usePlayerStore();
 
@@ -59,9 +59,7 @@ const TunnelDrawer: React.FC<TunnelDrawerProps> = ({
 
   // Replay from history
   const handleReplayTrack = (track: Track) => {
-    setCurrentTrack(track);
-    // FIX: Explicitly start playback when replaying from history
-    setTimeout(() => usePlayerStore.getState().togglePlay(), 100);
+    playTrack(track);
   };
 
   // Get last 5 history items
