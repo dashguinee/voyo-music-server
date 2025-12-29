@@ -34,6 +34,7 @@ import { TRACKS, pipedTrackToVoyoTrack } from '../../../data/tracks';
 import { searchAlbums, getAlbumTracks } from '../../../services/piped';
 import { mediaCache } from '../../../services/mediaCache';
 import { feedContentService, cacheFeedContent, updateAccessTime } from '../../../services/feedContentService';
+import { TRENDING_QUERIES, WEST_AFRICAN_QUERIES, CLASSICS_QUERIES } from '../../../services/poolCurator';
 import { AudioVisualizer, WaveformVisualizer } from './AudioVisualizer';
 import { VideoSnippet } from './VideoSnippet';
 import { ContentMixer, ContentType } from './ContentMixer';
@@ -46,58 +47,49 @@ import { applyTreatment, getStartTime, getDuration } from '../../../services/fee
 const ENABLE_VIDEO_SNIPPETS = true; // Toggle video snippets on/off
 const DEFAULT_SEEK_PERCENT = 25; // Where to start if no hotspots
 
-// Discovery config - searches to cycle through for infinite feed
-// Rotating queries ensure variety and never-ending content
-const DISCOVERY_QUERIES = [
-  // Top Artists
-  'Burna Boy official',
-  'Wizkid official',
-  'Davido official',
-  'Asake official',
-  'Ayra Starr official',
-  'Rema official',
-  'Tyla official',
+// Discovery config - unified with poolCurator's organized sections
+// Combines curated queries + extra variety for infinite feed
+const DISCOVERY_EXTRAS = [
+  // Top Artists (more specific)
+  'Burna Boy official video',
+  'Wizkid official video',
+  'Davido official video',
+  'Tyla official video',
   'Fireboy DML official',
-  'Omah Lay official',
-  'Ckay official',
   'Tiwa Savage official',
-  'Yemi Alade official',
-  'Olamide official',
   'Victony official',
   'BNXN official',
   'Ruger official',
-  'Pheelz official',
   'Kizz Daniel official',
 
   // Genres & Vibes
-  'Afrobeats 2024 hits',
   'Afrobeats 2025 new',
-  'Amapiano 2024 mix',
   'Amapiano hits playlist',
-  'Nigerian music trending',
   'South African amapiano',
   'Afro pop hits',
-  'African music trending',
   'Afrobeats party mix',
   'Amapiano dance',
   'Afro soul chill',
   'African RnB vibes',
 
   // Labels & Compilations
-  'Mavin Records',
-  'Spaceship Records',
-  'DMW Records',
+  'Mavin Records artists',
   'Starboy Entertainment',
-  'Afrobeats essentials',
-  'Best of Afrobeats',
-  'African music compilation',
+  'Afrobeats essentials playlist',
 
   // Regional
-  'Ghana music 2024',
-  'Tanzanian bongo',
+  'Tanzanian bongo flava',
   'Kenyan gengetone',
   'Congolese ndombolo',
-  'Afrobeats UK',
+  'Afrobeats UK scene',
+];
+
+// Unified discovery: curator sections + extras (single source of truth)
+const DISCOVERY_QUERIES = [
+  ...TRENDING_QUERIES,
+  ...WEST_AFRICAN_QUERIES,
+  ...CLASSICS_QUERIES,
+  ...DISCOVERY_EXTRAS,
 ];
 const DISCOVERY_THRESHOLD = 5; // Load more when 5 tracks from end
 

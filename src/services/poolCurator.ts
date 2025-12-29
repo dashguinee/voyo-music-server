@@ -56,8 +56,8 @@ let isBootstrapped = false;
 // BOOTSTRAP - Fresh start with working tracks
 // ============================================
 
-// General trending queries
-const TRENDING_QUERIES = [
+// General trending queries (exported for VoyoFeed discovery)
+export const TRENDING_QUERIES = [
   'Burna Boy 2024',
   'Asake latest',
   'Wizkid hits',
@@ -68,8 +68,8 @@ const TRENDING_QUERIES = [
   'Tyla water',
 ];
 
-// SECTION: West African Hits - Regional artists
-const WEST_AFRICAN_QUERIES = [
+// SECTION: West African Hits - Regional artists (exported for VoyoFeed discovery)
+export const WEST_AFRICAN_QUERIES = [
   'Nigerian afrobeats hits',
   'Ghana highlife music',
   'Senegalese mbalax music',
@@ -84,8 +84,8 @@ const WEST_AFRICAN_QUERIES = [
   'Master KG Jerusalema',
 ];
 
-// SECTION: All Time Classics - Timeless African hits
-const CLASSICS_QUERIES = [
+// SECTION: All Time Classics - Timeless African hits (exported for VoyoFeed discovery)
+export const CLASSICS_QUERIES = [
   'Fela Kuti best songs',
   'Youssou N\'Dour classics',
   'Angelique Kidjo songs',
