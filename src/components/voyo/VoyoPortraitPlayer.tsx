@@ -49,7 +49,7 @@ import {
 import { OyoIsland } from './OyoIsland';
 
 // YouTube Iframe - Unified streaming + video display
-import { YouTubeIframe } from '../YouTubeIframe';
+// YouTubeIframe is GLOBAL (App.tsx) - removed duplicate import
 
 // ============================================
 // ISOLATED TIME COMPONENTS - Prevents full re-renders
@@ -1793,137 +1793,16 @@ StreamCard.displayName = 'StreamCard';
 
 // ============================================
 // BIG CENTER CARD (NOW PLAYING - Canva-style purple fade with premium typography)
-// TAP ALBUM ART FOR LYRICS VIEW | TAP VIDEO TO GO BACK TO ALBUM ART
+// TAP ALBUM ART FOR LYRICS VIEW | VIDEO HANDLED BY GLOBAL IFRAME
 // ============================================
-// ============================================
-// VIDEO OVERLAY COMPONENT - Isolated time subscription
-// Prevents BigCenterCard from re-rendering every 250ms
-// ============================================
-const VideoOverlays = memo(({ track, showVideo }: { track: Track; showVideo: boolean }) => {
-  const currentTime = usePlayerStore((s) => s.currentTime);
-  const duration = usePlayerStore((s) => s.duration);
-  const queue = usePlayerStore((s) => s.queue);
-
-  // Get upcoming track - queue first, otherwise null (recommendations are unpredictable)
-  const upcomingTrack = queue[0]?.track || null;
-
-  // TIME-BASED thresholds (consistent across track lengths)
-  const timeRemaining = duration - currentTime;
-
-  // Overlay states - TV channel style
-  const showNowPlaying = showVideo && currentTime < 5; // First 5 seconds
-  const showNextUpMid = showVideo && currentTime > 30 && duration > 60 &&
-                        currentTime >= duration * 0.45 && currentTime < duration * 0.55; // Mid (45-55%) for tracks > 1min
-  const showNextUpEnd = showVideo && timeRemaining > 0 && timeRemaining < 20; // Last 20 seconds
-  const showNextUp = (showNextUpMid || showNextUpEnd) && upcomingTrack;
-
-  if (!showVideo) return null;
-
-  return (
-    <>
-      {/* TOP Purple fade - for "Now Playing" / "Next Up" text */}
-      <div
-        className="absolute inset-0 pointer-events-none z-25"
-        style={{
-          background: `linear-gradient(
-            to bottom,
-            rgba(88, 28, 135, 0.9) 0%,
-            rgba(139, 92, 246, 0.6) 12%,
-            rgba(139, 92, 246, 0.3) 25%,
-            transparent 45%
-          )`,
-        }}
-      />
-      {/* BOTTOM Purple fade overlay */}
-      <div
-        className="absolute inset-0 pointer-events-none z-25"
-        style={{
-          background: `linear-gradient(
-            to top,
-            rgba(88, 28, 135, 0.95) 0%,
-            rgba(139, 92, 246, 0.7) 15%,
-            rgba(139, 92, 246, 0.4) 30%,
-            rgba(139, 92, 246, 0.1) 50%,
-            transparent 70%
-          )`,
-        }}
-      />
-
-      {/* TV-STYLE OVERLAYS - Top area */}
-      <AnimatePresence mode="wait">
-        {/* NOW PLAYING - First 5 seconds */}
-        {showNowPlaying && (
-          <motion.div
-            key="now-playing"
-            className="absolute top-4 left-4 right-4 z-30 pointer-events-none"
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.4 }}
-          >
-            <p className="text-purple-300/90 text-[10px] uppercase tracking-[0.2em] font-medium mb-1"
-              style={{ textShadow: '0 1px 4px rgba(0,0,0,0.9)' }}>
-              Now Playing
-            </p>
-            <p className="text-white font-bold text-base truncate"
-              style={{ textShadow: '0 2px 8px rgba(0,0,0,0.9)' }}>
-              {track.title}
-            </p>
-            <p className="text-white/70 text-xs truncate"
-              style={{ textShadow: '0 1px 4px rgba(0,0,0,0.9)' }}>
-              {track.artist}
-            </p>
-          </motion.div>
-        )}
-
-        {/* NEXT UP - Mid & End of track */}
-        {showNextUp && upcomingTrack && !showNowPlaying && (
-          <motion.div
-            key="next-up"
-            className="absolute top-4 left-4 right-4 z-30 pointer-events-none"
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.4 }}
-          >
-            <p className="text-amber-400/90 text-[10px] uppercase tracking-[0.2em] font-medium mb-1"
-              style={{ textShadow: '0 1px 4px rgba(0,0,0,0.9)' }}>
-              Next Up
-            </p>
-            <p className="text-white font-bold text-base truncate"
-              style={{ textShadow: '0 2px 8px rgba(0,0,0,0.9)' }}>
-              {upcomingTrack.title}
-            </p>
-            <p className="text-white/70 text-xs truncate"
-              style={{ textShadow: '0 1px 4px rgba(0,0,0,0.9)' }}>
-              {upcomingTrack.artist}
-            </p>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Track title overlay - BOTTOM (always visible in video mode) */}
-      <div className="absolute bottom-4 left-4 right-4 z-26 pointer-events-none">
-        <p className="text-white font-bold text-lg truncate" style={{ textShadow: '0 2px 8px rgba(0,0,0,0.9)' }}>
-          {track.title}
-        </p>
-        <p className="text-white/70 text-sm truncate" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.9)' }}>
-          {track.artist}
-        </p>
-      </div>
-    </>
-  );
-});
-
-const BigCenterCard = memo(({ track, onExpandVideo, onShowLyrics, showVideo = false, onCloseVideo }: {
+const BigCenterCard = memo(({ track, onExpandVideo, onShowLyrics, showVideo = false }: {
   track: Track;
   onExpandVideo?: () => void;
   onShowLyrics?: () => void;
   showVideo?: boolean;
-  onCloseVideo?: () => void;
 }) => {
-  // Video target is now set by caller via setVideoTarget()
-  // showVideo = true means video is visible (videoTarget === 'portrait' && isPlaying)
+  // Video mode: when showVideo=true, the global YouTubeIframe (in App.tsx) renders fullscreen
+  // with tap-to-close and all overlays. This component just hides its thumbnail during video.
 
   return (
   <motion.div
@@ -1937,22 +1816,9 @@ const BigCenterCard = memo(({ track, onExpandVideo, onShowLyrics, showVideo = fa
     whileHover={{ scale: 1.02 }}
     key={track.id}
   >
-    {/* YouTubeIframe - ALWAYS MOUNTED for audio streaming */}
-    {/* When portrait mode: visible. When hidden: offscreen. When landscape: fullscreen */}
-    <YouTubeIframe />
-
-    {/* VIDEO MODE OVERLAY - tap to close */}
-    {showVideo && (
-      <div
-        className="absolute inset-0 z-20 cursor-pointer"
-        onClick={onCloseVideo}
-        role="button"
-        aria-label="Tap to show album art"
-      >
-        {/* Isolated component - only this re-renders on time updates */}
-        <VideoOverlays track={track} showVideo={showVideo} />
-      </div>
-    )}
+    {/* YouTubeIframe is now GLOBAL (in App.tsx) - no duplicate here */}
+    {/* When videoTarget='portrait', global iframe shows fullscreen with tap-to-close */}
+    {/* The PortraitVideoContainer in YouTubeIframe.tsx handles all video overlays */}
 
     {/* THUMBNAIL - visible when NOT showing video */}
     {!showVideo && (
@@ -4709,7 +4575,6 @@ export const VoyoPortraitPlayer = ({
             <BigCenterCard
               track={currentTrack}
               onExpandVideo={() => setVideoTarget('portrait')}
-              onCloseVideo={() => setVideoTarget('hidden')}
               showVideo={videoTarget === 'portrait' && isPlaying}
               onShowLyrics={() => setShowLyricsOverlay(true)}
             />
