@@ -74,6 +74,28 @@ const getTrendingTracks = (hotPool: any[], limit: number = 15): Track[] => {
     .slice(0, limit) as Track[];
 };
 
+// Section-filtered helpers (use curator tags from poolCurator)
+const getWestAfricanTracks = (hotPool: any[], limit: number = 15): Track[] => {
+  return [...hotPool]
+    .filter((t: any) => t.tags?.includes('west-african'))
+    .sort((a, b) => (b.poolScore || 0) - (a.poolScore || 0))
+    .slice(0, limit) as Track[];
+};
+
+const getClassicsTracks = (hotPool: any[], limit: number = 15): Track[] => {
+  return [...hotPool]
+    .filter((t: any) => t.tags?.includes('classic'))
+    .sort((a, b) => (b.poolScore || 0) - (a.poolScore || 0))
+    .slice(0, limit) as Track[];
+};
+
+const getCuratedTrendingTracks = (hotPool: any[], limit: number = 15): Track[] => {
+  return [...hotPool]
+    .filter((t: any) => t.tags?.includes('trending'))
+    .sort((a, b) => (b.poolScore || 0) - (a.poolScore || 0))
+    .slice(0, limit) as Track[];
+};
+
 const getRecentlyPlayed = (history: any[], limit: number = 10): Track[] => {
   const seen = new Set<string>();
   const uniqueTracks: Track[] = [];
@@ -800,9 +822,24 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
   // Pool-fed sections (DJ/Curator fills pool → refreshRecommendations → these update)
   const madeForYou = hotTracks.length > 0 ? hotTracks : getPoolAwareHotTracks(15);
   const discoverMoreTracks = discoverTracks.length > 0 ? discoverTracks : getPoolAwareHotTracks(15);
-  const africanVibes = getPoolAwareHotTracks(15);
   const newReleases = useMemo(() => getNewReleases(hotPool, 15), [hotPool]);
-  const trending = getTrendingTracks(hotPool, 15);
+
+  // Section-aware shelves (use curator tags, fallback to generic pool)
+  const westAfricanTracks = useMemo(() => {
+    const curated = getWestAfricanTracks(hotPool, 15);
+    return curated.length >= 5 ? curated : getPoolAwareHotTracks(15);
+  }, [hotPool]);
+  const africanVibes = westAfricanTracks; // Alias for backward compatibility
+
+  const classicsTracks = useMemo(() => {
+    const curated = getClassicsTracks(hotPool, 15);
+    return curated.length >= 5 ? curated : [];
+  }, [hotPool]);
+
+  const trending = useMemo(() => {
+    const curated = getCuratedTrendingTracks(hotPool, 15);
+    return curated.length >= 5 ? curated : getTrendingTracks(hotPool, 15);
+  }, [hotPool]);
 
   const greeting = getGreeting();
 
@@ -999,6 +1036,22 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
             <TrackCard key={track.id} track={track} onPlay={() => onTrackPlay(track)} />
           ))}
         </Shelf>
+      )}
+
+      {/* Classics - Timeless African music (from poolCurator) */}
+      {classicsTracks.length > 0 && (
+        <div className="mb-8 py-6" style={{ background: 'linear-gradient(180deg, rgba(218,165,32,0.08) 0%, transparent 100%)' }}>
+          <div className="px-4 mb-4 flex items-center gap-2">
+            <span className="text-xl">🎺</span>
+            <h2 className="text-white font-semibold text-base">Classics</h2>
+            <span className="text-xs text-white/40 ml-auto">Timeless African sounds</span>
+          </div>
+          <div className="flex gap-4 px-4 overflow-x-auto scrollbar-hide">
+            {classicsTracks.map((track) => (
+              <TrackCard key={track.id} track={track} onPlay={() => onTrackPlay(track)} />
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Top 10 on VOYO */}

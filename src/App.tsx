@@ -34,7 +34,7 @@ import './utils/debugIntent';
 
 // TRACK POOL: Start pool maintenance for dynamic track management
 import { startPoolMaintenance } from './store/trackPoolStore';
-import { bootstrapPool } from './services/poolCurator';
+import { bootstrapPool, curateAllSections } from './services/poolCurator';
 import { runStartupHeal } from './services/trackVerifier';
 import { syncSeedTracks } from './services/centralDJ';
 import { TRACKS } from './data/tracks';
@@ -976,6 +976,12 @@ function App() {
       // SELF-HEAL: After bootstrap, verify all thumbnails are valid
       // This ensures no user ever sees a placeholder
       runStartupHeal();
+
+      // CURATE SECTIONS: Populate pool with organized content for HomeFeed shelves
+      // Fetches west-african, classics, trending tracks
+      curateAllSections().then(() => {
+        console.log('[VOYO] All sections curated (West African, Classics, Trending)');
+      });
     });
 
     // INITIAL REFRESH: Refresh recommendations on app load (after small delay for stores to hydrate)
