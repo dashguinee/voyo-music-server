@@ -32,9 +32,9 @@ interface ClassicModeProps {
 }
 
 // Mini Player (shown at bottom when a track is playing)
-// Tap = floating bubble controls, Swipe = next/prev
+// Single tap = floating bubble controls, Double tap = full player, Swipe = next/prev
 // VOYO = Music Experience App, not just a player!
-const MiniPlayer = ({ onVOYOClick }: { onVOYOClick: () => void }) => {
+const MiniPlayer = ({ onVOYOClick, onOpenFull }: { onVOYOClick: () => void; onOpenFull: () => void }) => {
   const {
     currentTrack, isPlaying, togglePlay, progress, nextTrack, prevTrack,
     shuffleMode, repeatMode, toggleShuffle, cycleRepeat
@@ -46,6 +46,27 @@ const MiniPlayer = ({ onVOYOClick }: { onVOYOClick: () => void }) => {
   const [showBubbles, setShowBubbles] = useState(false);
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
   const titleRef = useRef<HTMLParagraphElement>(null);
+  const lastTapRef = useRef<number>(0);
+
+  // Double-tap detection for opening full player
+  const handleTap = useCallback(() => {
+    const now = Date.now();
+    const DOUBLE_TAP_DELAY = 300; // ms
+
+    if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
+      // Double tap → open full player
+      onOpenFull();
+      lastTapRef.current = 0; // Reset
+    } else {
+      // Single tap → toggle bubbles (with delay to check for double)
+      lastTapRef.current = now;
+      setTimeout(() => {
+        if (Date.now() - lastTapRef.current >= DOUBLE_TAP_DELAY) {
+          setShowBubbles(prev => !prev);
+        }
+      }, DOUBLE_TAP_DELAY);
+    }
+  }, [onOpenFull]);
 
   // Handle OYE reaction
   const handleOye = useCallback(() => {
@@ -187,7 +208,7 @@ const MiniPlayer = ({ onVOYOClick }: { onVOYOClick: () => void }) => {
 
       <motion.div
         className="w-full flex items-center gap-2.5 p-2 pr-3 rounded-2xl bg-black/25 border border-white/10 backdrop-blur-xl shadow-2xl relative overflow-hidden cursor-pointer"
-        onClick={() => setShowBubbles(!showBubbles)}
+        onClick={handleTap}
         drag="x"
         dragConstraints={{ left: 0, right: 0 }}
         dragElastic={0.3}
@@ -458,10 +479,19 @@ export const ClassicMode = ({ onSwitchToVOYO, onSearch }: ClassicModeProps) => {
     }
   }, [shouldOpenNowPlaying, setShouldOpenNowPlaying]);
 
-  const handleTrackClick = async (track: Track) => {
+  // Section-aware track play handler
+  // Communal sections (Top 10, African Vibes, Trending) → open full player
+  // Personal sections (Continue Listening, Made For You) → mini player only
+  const handleTrackClick = async (track: Track, options?: { openFull?: boolean }) => {
     const { setCurrentTrack } = usePlayerStore.getState();
     setCurrentTrack(track);
-    setShowNowPlaying(true);  // Open full NowPlaying view
+
+    // Only open full player for communal/discovery sections
+    if (options?.openFull) {
+      setShowNowPlaying(true);
+    }
+    // Personal sections: track plays but stays in mini player
+
     // Small delay to let AudioPlayer set the source, then force play
     setTimeout(async () => {
       await forcePlay();
@@ -502,10 +532,10 @@ export const ClassicMode = ({ onSwitchToVOYO, onSearch }: ClassicModeProps) => {
         </motion.div>
       </AnimatePresence>
 
-      {/* Mini Player */}
+      {/* Mini Player - Double tap to open full player */}
       <AnimatePresence>
         {currentTrack && !showNowPlaying && (
-          <MiniPlayer onVOYOClick={onSwitchToVOYO} />
+          <MiniPlayer onVOYOClick={onSwitchToVOYO} onOpenFull={() => setShowNowPlaying(true)} />
         )}
       </AnimatePresence>
 

@@ -862,7 +862,7 @@ const VibeCard = ({ vibe, onSelect, index }: VibeCardProps) => (
 // ============================================
 
 interface HomeFeedProps {
-  onTrackPlay: (track: Track) => void;
+  onTrackPlay: (track: Track, options?: { openFull?: boolean }) => void;
   onSearch: () => void;
   onDahub: () => void;
   onNavVisibilityChange?: (visible: boolean) => void;
@@ -1108,7 +1108,7 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
               TRENDING
             </span>
           </div>
-          <AfricanVibesCarousel tracks={africanVibes.slice(0, 15)} onTrackPlay={onTrackPlay} />
+          <AfricanVibesCarousel tracks={africanVibes.slice(0, 15)} onTrackPlay={(track) => onTrackPlay(track, { openFull: true })} />
         </div>
       </div>
 
@@ -1148,16 +1148,16 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
         </div>
       )}
 
-      {/* Discover More - LLM curated expansion beyond comfort zone */}
+      {/* Discover More - LLM curated expansion beyond comfort zone → COMMUNAL */}
       {hasDiscoverMore && (
         <Shelf title="Discover More">
           {discoverMoreTracks.map((track) => (
-            <TrackCard key={track.id} track={track} onPlay={() => onTrackPlay(track)} />
+            <TrackCard key={track.id} track={track} onPlay={() => onTrackPlay(track, { openFull: true })} />
           ))}
         </Shelf>
       )}
 
-      {/* Classics - Timeless African music (from poolCurator) */}
+      {/* Classics - Timeless African music (from poolCurator) → COMMUNAL */}
       {classicsTracks.length > 0 && (
         <div className="mb-8 py-6" style={{ background: 'linear-gradient(180deg, rgba(218,165,32,0.08) 0%, transparent 100%)' }}>
           <div className="px-4 mb-4 flex items-center gap-2">
@@ -1167,7 +1167,7 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
           </div>
           <div className="flex gap-4 px-4 overflow-x-auto scrollbar-hide">
             {classicsTracks.map((track) => (
-              <TrackCard key={track.id} track={track} onPlay={() => onTrackPlay(track)} />
+              <TrackCard key={track.id} track={track} onPlay={() => onTrackPlay(track, { openFull: true })} />
             ))}
           </div>
         </div>
@@ -1205,7 +1205,7 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
                 <motion.button
                   key={track.id}
                   className="flex-shrink-0 flex items-end relative"
-                  onClick={() => onTrackPlay(track)}
+                  onClick={() => onTrackPlay(track, { openFull: true })}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   style={{ scrollSnapAlign: 'start' }}
@@ -1287,12 +1287,12 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
       {/* TIVI+ Cross-Promo - "Take a Break with Family" */}
       <TiviPlusCrossPromo immersiveRef={tiviBreakRef} />
 
-      {/* New Releases - Center-focused carousel */}
+      {/* New Releases - Center-focused carousel → COMMUNAL */}
       <div className="mb-12">
         <div className="px-4 mb-5">
           <h2 className="text-white font-semibold text-base">New Releases</h2>
         </div>
-        <CenterFocusedCarousel tracks={newReleases} onPlay={onTrackPlay} />
+        <CenterFocusedCarousel tracks={newReleases} onPlay={(track) => onTrackPlay(track, { openFull: true })} />
       </div>
 
       {/* Empty State */}
