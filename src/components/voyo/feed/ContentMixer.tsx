@@ -3,8 +3,7 @@
  *
  * Determines what visual content to show for each track in the feed:
  * 1. YouTube Video - If track has video ID, show muted video snippet
- * 2. TikTok Embed - If matched with trending TikTok (future)
- * 3. Animated Art - Default fallback with album art effects
+ * 2. Animated Art - Default fallback with album art effects
  *
  * This creates variety in the feed like a real social platform.
  */
@@ -53,14 +52,13 @@ let cachedTeaserFormat: TeaserFormat | null = null;
 const getTeaserFormat = (): TeaserFormat => {
   if (!cachedTeaserFormat) {
     cachedTeaserFormat = getAdaptiveTeaserFormat();
-    console.log(`[ContentMixer] 📡 Adaptive format selected: ${cachedTeaserFormat}`);
+    console.log(`[ContentMixer] Adaptive format selected: ${cachedTeaserFormat}`);
   }
   return cachedTeaserFormat;
 };
-// import { TikTokEmbed } from './TikTokEmbed'; // Enable when matching system is ready
 
 // Content type enum
-export type ContentType = 'video' | 'tiktok' | 'animated_art' | 'gif';
+export type ContentType = 'video' | 'animated_art' | 'gif';
 
 interface ContentMixerProps {
   trackId: string;
@@ -73,7 +71,6 @@ interface ContentMixerProps {
   shouldPreload?: boolean; // Preload for upcoming cards
   // Optional overrides
   forceContentType?: ContentType;
-  tiktokId?: string;
   gifUrl?: string;
   bpm?: number;
 }
@@ -82,7 +79,6 @@ interface ContentMixerProps {
 const determineContentType = (
   trackId: string,
   hasVideo: boolean,
-  hasTiktok: boolean,
   hasGif: boolean,
 ): ContentType => {
   // MIX IT UP: Some tracks show as floating art for variety
@@ -90,9 +86,8 @@ const determineContentType = (
     return 'animated_art'; // Floating oval or disc
   }
 
-  // Priority: Video > TikTok > GIF > Animated Art
+  // Priority: Video > GIF > Animated Art
   if (hasVideo) return 'video';
-  if (hasTiktok) return 'tiktok';
   if (hasGif) return 'gif';
   return 'animated_art';
 };
@@ -123,7 +118,6 @@ export const ContentMixer = ({
   isThisTrack,
   shouldPreload = false,
   forceContentType,
-  tiktokId,
   gifUrl,
   bpm,
 }: ContentMixerProps) => {
@@ -136,10 +130,9 @@ export const ContentMixer = ({
     return determineContentType(
       trackId,
       isYouTubeId(trackId),
-      !!tiktokId,
       !!gifUrl
     );
-  }, [trackId, forceContentType, tiktokId, gifUrl]);
+  }, [trackId, forceContentType, gifUrl]);
 
   // For static content, randomly pick oval or disc based on track ID (consistent per track)
   const artDisplayMode: ArtDisplayMode = useMemo(() => {
@@ -198,29 +191,6 @@ export const ContentMixer = ({
             color={dominantColor}
           />
         </div>
-      );
-
-    case 'tiktok':
-      // TODO: Enable when TikTok matching system is ready
-      // return (
-      //   <TikTokEmbed
-      //     videoId={tiktokId!}
-      //     isActive={isActive}
-      //     isPlaying={isPlaying}
-      //     fallbackThumbnail={thumbnail}
-      //   />
-      // );
-      // For now, fall through to animated art
-      return (
-        <AnimatedArtCard
-          trackId={trackId}
-          thumbnail={thumbnail || ''}
-          isActive={isActive}
-          isPlaying={isPlaying}
-          bpm={bpm}
-          dominantColor={dominantColor}
-          displayMode={artDisplayMode}
-        />
       );
 
     case 'gif':

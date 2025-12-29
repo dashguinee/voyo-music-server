@@ -86,6 +86,9 @@ const friendNotes = [
 ];
 
 // Friends data
+// NOTE: nowPlaying is display-only. To enable playback, add trackId to each nowPlaying object
+// and wire up onClick to setCurrentTrack() in the friend cards below (lines ~790-818).
+// Current design: tapping a friend opens their story, not their track.
 const friends = [
   {
     id: 'aziz',

@@ -937,4 +937,217 @@ export const videoIntelligenceAPI = {
   },
 };
 
+// ============================================
+// FEED CONTENT API - Cached Track Storage
+// ============================================
+
+export type FeedContentSource = 'youtube' | 'ugc' | 'social';
+
+export interface FeedContentRow {
+  id: string;
+  track_id: string;
+  title: string;
+  artist: string;
+  thumbnail_url: string | null;
+  audio_extract_url: string | null;
+  duration: number | null;
+  source: FeedContentSource;
+  metadata: Record<string, unknown>;
+  cached_at: string;
+  last_accessed_at: string;
+  access_count: number;
+}
+
+export interface FeedContentInput {
+  track_id: string;
+  title: string;
+  artist: string;
+  thumbnail_url?: string | null;
+  audio_extract_url?: string | null;
+  duration?: number | null;
+  source?: FeedContentSource;
+  metadata?: Record<string, unknown>;
+}
+
+export const feedContentAPI = {
+  /**
+   * Get feed content by track ID
+   */
+  async get(trackId: string): Promise<FeedContentRow | null> {
+    if (!supabase) return null;
+
+    const { data, error } = await supabase
+      .from('voyo_feed_content')
+      .select('*')
+      .eq('track_id', trackId)
+      .single();
+
+    if (error || !data) return null;
+    return data as FeedContentRow;
+  },
+
+  /**
+   * Save feed content (upsert)
+   */
+  async save(content: FeedContentInput): Promise<boolean> {
+    if (!supabase) return false;
+
+    const now = new Date().toISOString();
+
+    const { error } = await supabase
+      .from('voyo_feed_content')
+      .upsert({
+        track_id: content.track_id,
+        title: content.title,
+        artist: content.artist,
+        thumbnail_url: content.thumbnail_url || `https://i.ytimg.com/vi/${content.track_id}/hqdefault.jpg`,
+        audio_extract_url: content.audio_extract_url || null,
+        duration: content.duration || null,
+        source: content.source || 'youtube',
+        metadata: content.metadata || {},
+        cached_at: now,
+        last_accessed_at: now,
+        access_count: 1,
+      }, {
+        onConflict: 'track_id',
+      });
+
+    if (error) {
+      console.error('[FeedContent] Save error:', error.message);
+      return false;
+    }
+
+    console.log(`[FeedContent] Saved: ${content.track_id}`);
+    return true;
+  },
+
+  /**
+   * Update access time and increment count
+   */
+  async updateAccess(trackId: string): Promise<void> {
+    if (!supabase) return;
+
+    await supabase.rpc('update_feed_content_access', {
+      track_id_param: trackId,
+    });
+  },
+
+  /**
+   * Batch get multiple feed content items
+   */
+  async getBatch(trackIds: string[]): Promise<FeedContentRow[]> {
+    if (!supabase || trackIds.length === 0) return [];
+
+    const { data, error } = await supabase
+      .from('voyo_feed_content')
+      .select('*')
+      .in('track_id', trackIds);
+
+    if (error || !data) return [];
+    return data as FeedContentRow[];
+  },
+
+  /**
+   * Batch save multiple feed content items
+   */
+  async saveBatch(contents: FeedContentInput[]): Promise<number> {
+    if (!supabase || contents.length === 0) return 0;
+
+    const now = new Date().toISOString();
+
+    const rows = contents.map((content) => ({
+      track_id: content.track_id,
+      title: content.title,
+      artist: content.artist,
+      thumbnail_url: content.thumbnail_url || `https://i.ytimg.com/vi/${content.track_id}/hqdefault.jpg`,
+      audio_extract_url: content.audio_extract_url || null,
+      duration: content.duration || null,
+      source: content.source || 'youtube',
+      metadata: content.metadata || {},
+      cached_at: now,
+      last_accessed_at: now,
+      access_count: 1,
+    }));
+
+    const { error, count } = await supabase
+      .from('voyo_feed_content')
+      .upsert(rows, {
+        onConflict: 'track_id',
+        count: 'exact',
+      });
+
+    if (error) {
+      console.error('[FeedContent] Batch save error:', error.message);
+      return 0;
+    }
+
+    console.log(`[FeedContent] Batch saved ${count} items`);
+    return count || 0;
+  },
+
+  /**
+   * Get recently accessed content
+   */
+  async getRecent(limit = 20): Promise<FeedContentRow[]> {
+    if (!supabase) return [];
+
+    const { data, error } = await supabase
+      .from('voyo_feed_content')
+      .select('*')
+      .order('last_accessed_at', { ascending: false })
+      .limit(limit);
+
+    if (error) return [];
+    return (data || []) as FeedContentRow[];
+  },
+
+  /**
+   * Get popular content by access count
+   */
+  async getPopular(limit = 20): Promise<FeedContentRow[]> {
+    if (!supabase) return [];
+
+    const { data, error } = await supabase
+      .from('voyo_feed_content')
+      .select('*')
+      .order('access_count', { ascending: false })
+      .limit(limit);
+
+    if (error) return [];
+    return (data || []) as FeedContentRow[];
+  },
+
+  /**
+   * Get content by source type
+   */
+  async getBySource(source: FeedContentSource, limit = 50): Promise<FeedContentRow[]> {
+    if (!supabase) return [];
+
+    const { data, error } = await supabase
+      .from('voyo_feed_content')
+      .select('*')
+      .eq('source', source)
+      .order('cached_at', { ascending: false })
+      .limit(limit);
+
+    if (error) return [];
+    return (data || []) as FeedContentRow[];
+  },
+
+  /**
+   * Check if content exists
+   */
+  async exists(trackId: string): Promise<boolean> {
+    if (!supabase) return false;
+
+    const { data } = await supabase
+      .from('voyo_feed_content')
+      .select('track_id')
+      .eq('track_id', trackId)
+      .single();
+
+    return !!data;
+  },
+};
+
 export default supabase;

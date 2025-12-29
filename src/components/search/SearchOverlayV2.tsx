@@ -464,6 +464,8 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
     setCurrentTrack(track);
     // FIX: Explicitly start playback when user selects search result
     setTimeout(() => usePlayerStore.getState().togglePlay(), 100);
+    // FIX A4: Signal to Classic mode that NowPlaying should open
+    usePlayerStore.getState().setShouldOpenNowPlaying(true);
     onClose();
   }, [resultToTrack, setCurrentTrack, onClose]);
 

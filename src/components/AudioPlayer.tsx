@@ -84,6 +84,7 @@ export const AudioPlayer = () => {
   const trackProgressRef = useRef<number>(0);
   const isInitialLoadRef = useRef<boolean>(true);
   const backgroundBoostingRef = useRef<string | null>(null);
+  const hotSwapAbortRef = useRef<AbortController | null>(null);
 
   // Store state
   const {
@@ -358,20 +359,50 @@ export const AudioPlayer = () => {
   }, [currentTrack]);
 
   // === HOT-SWAP: When boost completes mid-stream ===
+  // CRITICAL: Uses AbortController to prevent race conditions when track changes mid-swap
   useEffect(() => {
     if (!lastBoostCompletion || !currentTrack?.trackId) return;
 
     const completedId = lastBoostCompletion.trackId;
-    const isCurrentTrack = completedId === currentTrack.trackId ||
-                           completedId === currentTrack.trackId.replace('VOYO_', '');
+    const currentId = currentTrack.trackId.replace('VOYO_', '');
+    const isCurrentTrackMatch = completedId === currentId || completedId === currentTrack.trackId;
 
-    // Only hot-swap if currently streaming via iframe
-    if (!isCurrentTrack || playbackSource !== 'iframe') return;
+    // Only hot-swap if currently streaming via iframe AND boost is for current track
+    if (!isCurrentTrackMatch || playbackSource !== 'iframe') return;
+
+    // Cancel any previous hot-swap operation to prevent race condition
+    if (hotSwapAbortRef.current) {
+      hotSwapAbortRef.current.abort();
+      console.log('[VOYO] Cancelled previous hot-swap operation');
+    }
+    hotSwapAbortRef.current = new AbortController();
+    const signal = hotSwapAbortRef.current.signal;
+    const swapTrackId = currentTrack.trackId; // Capture at start
 
     console.log('🔄 [VOYO] Hot-swap: Boost complete, switching to cached audio...');
 
     const performHotSwap = async () => {
+      // Check if aborted before starting
+      if (signal.aborted) {
+        console.log('[VOYO] Hot-swap aborted before start');
+        return;
+      }
+
       const cachedUrl = await checkCache(currentTrack.trackId);
+
+      // Check AGAIN after async operation - track may have changed
+      if (signal.aborted) {
+        console.log('[VOYO] Hot-swap aborted after cache check');
+        return;
+      }
+
+      // Double-verify we're still on the same track (belt and suspenders)
+      const storeTrackId = usePlayerStore.getState().currentTrack?.trackId;
+      if (storeTrackId !== swapTrackId) {
+        console.log('[VOYO] Track changed during hot-swap, aborting. Expected:', swapTrackId, 'Got:', storeTrackId);
+        return;
+      }
+
       if (!cachedUrl || !audioRef.current) return;
 
       // Get current position from store (iframe was tracking it)
@@ -391,6 +422,11 @@ export const AudioPlayer = () => {
       audioRef.current.load();
 
       audioRef.current.oncanplaythrough = () => {
+        // Final check before applying - ensure we haven't been aborted
+        if (signal.aborted) {
+          console.log('[VOYO] Hot-swap aborted during canplaythrough');
+          return;
+        }
         if (!audioRef.current) return;
 
         // Resume from same position
@@ -409,6 +445,13 @@ export const AudioPlayer = () => {
     };
 
     performHotSwap();
+
+    // Cleanup: abort on unmount or when dependencies change
+    return () => {
+      if (hotSwapAbortRef.current) {
+        hotSwapAbortRef.current.abort();
+      }
+    };
   }, [lastBoostCompletion, currentTrack?.trackId, playbackSource, isPlaying, checkCache, setPlaybackSource, setupAudioEnhancement]);
 
   // Handle play/pause (only when cached mode)

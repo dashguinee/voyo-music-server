@@ -1,4 +1,22 @@
-// VOYO Music - Global Player State (Zustand)
+/**
+ * VOYO Music - Global Player State (Zustand)
+ *
+ * PLAYBACK PATTERN:
+ * 1. Call setCurrentTrack(track) - sets track, resets progress to 0
+ * 2. If in Classic mode: call setShowNowPlaying(true) to open full player
+ * 3. Call forcePlay() or togglePlay() after ~150ms delay for audio unlock
+ *
+ * Components should NOT auto-play - let AudioPlayer handle source detection.
+ * The AudioPlayer component watches currentTrack and manages the actual <audio> element.
+ *
+ * Example usage in a component:
+ *   const { setCurrentTrack, setShowNowPlaying, forcePlay } = usePlayerStore();
+ *   const handlePlay = (track: Track) => {
+ *     setCurrentTrack(track);
+ *     setShowNowPlaying(true);
+ *     setTimeout(() => forcePlay(), 150);
+ *   };
+ */
 import { create } from 'zustand';
 import { Track, ViewMode, QueueItem, HistoryItem, MoodType, Reaction, VoyoTab } from '../types';
 import {
@@ -18,6 +36,9 @@ import { prefetchTrack } from '../services/api';
 // Network quality types
 type NetworkQuality = 'slow' | 'medium' | 'fast' | 'unknown';
 type PrefetchStatus = 'idle' | 'loading' | 'ready' | 'error';
+
+// AbortController for cancelling async operations on rapid track changes
+let currentTrackAbortController: AbortController | null = null;
 
 // ============================================
 // PERSISTENCE HELPERS - Remember state on refresh
@@ -112,6 +133,9 @@ interface PlayerStore {
   videoTarget: 'hidden' | 'portrait' | 'landscape'; // Where to show the video iframe (replaces isVideoMode)
   seekPosition: number | null; // When set, AudioPlayer should seek to this position
 
+  // Flag to signal that a track was selected (from search, etc.) and NowPlaying should open
+  shouldOpenNowPlaying: boolean;
+
   // SKEEP (Fast-forward) State
   playbackRate: number; // 1 = normal, 2/4/8 = SKEEP mode
   isSkeeping: boolean; // True when holding skip button
@@ -173,6 +197,7 @@ interface PlayerStore {
   setDuration: (duration: number) => void;
   seekTo: (time: number) => void;
   clearSeekPosition: () => void;
+  setShouldOpenNowPlaying: (should: boolean) => void;
   setVolume: (volume: number) => void;
   nextTrack: () => void;
   prevTrack: () => void;
@@ -239,6 +264,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   duration: 0,
   volume: parseInt(localStorage.getItem('voyo-volume') || '100', 10),
   seekPosition: null,
+  shouldOpenNowPlaying: false,
   viewMode: 'card',
   videoTarget: 'hidden',
   shuffleMode: false,
@@ -289,6 +315,14 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   // Playback Actions
   setCurrentTrack: (track) => {
     const state = get();
+
+    // RACE CONDITION FIX: Cancel previous track's async operations
+    if (currentTrackAbortController) {
+      currentTrackAbortController.abort();
+    }
+    currentTrackAbortController = new AbortController();
+    const signal = currentTrackAbortController.signal;
+
     // Add current track to history before switching (only if played > 5 seconds)
     if (state.currentTrack && state.currentTime > 5) {
       get().addToHistory(state.currentTrack, state.currentTime);
@@ -305,31 +339,46 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       // isPlaying: true, // REMOVED - was causing auto-play bug
       progress: 0,
       currentTime: 0,
-      seekPosition: null // Clear seek position on track change
+      seekPosition: null, // Clear seek position on track change
+      // SKEEP FIX: Reset playback rate when changing tracks
+      playbackRate: 1,
+      isSkeeping: false,
     });
 
-    // POOL ENGAGEMENT: Record play
-    recordPoolEngagement(track.id, 'play');
+    // POOL ENGAGEMENT: Record play (check abort before async op)
+    if (!signal.aborted) {
+      recordPoolEngagement(track.id, 'play');
+    }
 
-    // AUTO-TRIGGER: Update smart discovery for this track
-    get().updateDiscoveryForTrack(track);
+    // AUTO-TRIGGER: Update smart discovery for this track (check abort)
+    if (!signal.aborted) {
+      get().updateDiscoveryForTrack(track);
+    }
 
     // REFRESH HOT TRACKS: Every 3rd track change, refresh hot recommendations
     // (Not every track to avoid performance hit, but often enough to stay fresh)
     const trackChangeCount = (window as any).__voyoTrackChangeCount || 0;
     (window as any).__voyoTrackChangeCount = trackChangeCount + 1;
     if (trackChangeCount % 3 === 0) {
-      setTimeout(() => get().refreshRecommendations(), 500);
+      const refreshTimeoutId = setTimeout(() => {
+        if (!signal.aborted) {
+          get().refreshRecommendations();
+        }
+      }, 500);
+      // Cleanup on abort
+      signal.addEventListener('abort', () => clearTimeout(refreshTimeoutId));
     }
 
     // PERSIST: Save track ID so it survives refresh
     const current = loadPersistedState();
     savePersistedState({ ...current, currentTrackId: track.id || track.trackId, currentTime: 0 });
 
-    // PORTAL SYNC: Update now_playing if portal is open
-    setTimeout(async () => {
+    // PORTAL SYNC: Update now_playing if portal is open (cancellable)
+    const portalSyncTimeoutId = setTimeout(async () => {
+      if (signal.aborted) return;
       try {
         const { useUniverseStore } = await import('./universeStore');
+        if (signal.aborted) return;
         const universeStore = useUniverseStore.getState();
         if (universeStore.isPortalOpen) {
           universeStore.updateNowPlaying();
@@ -338,6 +387,8 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         // Ignore sync errors
       }
     }, 100);
+    // Cleanup on abort
+    signal.addEventListener('abort', () => clearTimeout(portalSyncTimeoutId));
   },
 
   togglePlay: () => {
@@ -397,6 +448,8 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   seekTo: (time) => set({ seekPosition: time, currentTime: time }),
   clearSeekPosition: () => set({ seekPosition: null }),
 
+  setShouldOpenNowPlaying: (should) => set({ shouldOpenNowPlaying: should }),
+
   setVolume: (volume) => {
     localStorage.setItem('voyo-volume', String(volume));
     set({ volume });
@@ -412,6 +465,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         progress: 0,
         currentTime: 0,
         seekPosition: null, // Clear seek position
+        // SKEEP FIX: Reset playback rate on track restart
+        playbackRate: 1,
+        isSkeeping: false,
       });
       return;
     }
@@ -449,6 +505,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         progress: 0,
         currentTime: 0,
         seekPosition: null, // Clear seek position
+        // SKEEP FIX: Reset playback rate when changing tracks
+        playbackRate: 1,
+        isSkeeping: false,
       });
 
       // FIX 3: Persist queue after consuming track
@@ -481,6 +540,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         progress: 0,
         currentTime: 0,
         seekPosition: null, // Clear seek position
+        // SKEEP FIX: Reset playback rate when changing tracks
+        playbackRate: 1,
+        isSkeeping: false,
       });
       return;
     }
@@ -515,6 +577,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         progress: 0,
         currentTime: 0,
         seekPosition: null, // Clear seek position
+        // SKEEP FIX: Reset playback rate when changing tracks
+        playbackRate: 1,
+        isSkeeping: false,
       });
     }
   },
@@ -530,6 +595,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         progress: 0,
         currentTime: 0,
         seekPosition: 0, // Seek to start
+        // SKEEP FIX: Reset playback rate on track restart
+        playbackRate: 1,
+        isSkeeping: false,
       });
       return;
     }
@@ -544,6 +612,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         progress: 0,
         currentTime: 0,
         seekPosition: null, // Clear seek position
+        // SKEEP FIX: Reset playback rate when changing tracks
+        playbackRate: 1,
+        isSkeeping: false,
       });
     } else {
       // No history - restart current track
@@ -552,6 +623,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         progress: 0,
         currentTime: 0,
         seekPosition: 0,
+        // SKEEP FIX: Reset playback rate on track restart
+        playbackRate: 1,
+        isSkeeping: false,
       });
     }
   },

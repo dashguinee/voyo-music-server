@@ -567,6 +567,75 @@ CREATE INDEX IF NOT EXISTS idx_video_title_trgm
 ALTER PUBLICATION supabase_realtime ADD TABLE video_intelligence;
 
 -- ============================================
+-- FEED CONTENT TABLE (Cached Tracks, UGC, Social Imports)
+-- ============================================
+-- Stores cached track metadata for the feed experience
+-- Enables fast feed loading, access tracking, and content curation
+CREATE TABLE IF NOT EXISTS voyo_feed_content (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  track_id TEXT NOT NULL,                    -- YouTube ID
+  title TEXT NOT NULL,
+  artist TEXT NOT NULL,
+  thumbnail_url TEXT,                        -- CDN cached thumbnail
+  audio_extract_url TEXT,                    -- 30s audio clip URL
+  duration INTEGER,                          -- Track duration in seconds
+  source TEXT NOT NULL DEFAULT 'youtube',    -- 'youtube' | 'ugc' | 'social'
+  metadata JSONB DEFAULT '{}',               -- Extra data (tags, mood, etc)
+  cached_at TIMESTAMPTZ DEFAULT now(),
+  last_accessed_at TIMESTAMPTZ DEFAULT now(),
+  access_count INTEGER DEFAULT 0
+);
+
+-- Indexes for feed queries
+CREATE INDEX IF NOT EXISTS idx_feed_content_track ON voyo_feed_content(track_id);
+CREATE INDEX IF NOT EXISTS idx_feed_content_source ON voyo_feed_content(source);
+CREATE INDEX IF NOT EXISTS idx_feed_content_cached ON voyo_feed_content(cached_at DESC);
+CREATE INDEX IF NOT EXISTS idx_feed_content_accessed ON voyo_feed_content(last_accessed_at DESC);
+
+-- ============================================
+-- FEED CONTENT RLS
+-- ============================================
+ALTER TABLE voyo_feed_content ENABLE ROW LEVEL SECURITY;
+
+-- Anyone can read feed content (it's all public discovery)
+CREATE POLICY "Feed content is viewable by everyone"
+  ON voyo_feed_content FOR SELECT USING (true);
+
+-- Anyone can add feed content (from search, discovery)
+CREATE POLICY "Anyone can add feed content"
+  ON voyo_feed_content FOR INSERT WITH CHECK (true);
+
+-- Anyone can update feed content (increment access, update metadata)
+CREATE POLICY "Anyone can update feed content"
+  ON voyo_feed_content FOR UPDATE USING (true) WITH CHECK (true);
+
+-- ============================================
+-- FEED CONTENT FUNCTIONS
+-- ============================================
+
+-- Increment access count and update last_accessed_at
+CREATE OR REPLACE FUNCTION update_feed_content_access(track_id_param TEXT)
+RETURNS void AS $$
+BEGIN
+  UPDATE voyo_feed_content
+  SET access_count = access_count + 1,
+      last_accessed_at = now()
+  WHERE track_id = track_id_param;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Auto-update trigger for feed content
+CREATE TRIGGER voyo_feed_content_updated_at
+  BEFORE UPDATE ON voyo_feed_content
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at();
+
+-- ============================================
+-- REALTIME FOR FEED CONTENT
+-- ============================================
+ALTER PUBLICATION supabase_realtime ADD TABLE voyo_feed_content;
+
+-- ============================================
 -- SAMPLE DATA (for testing)
 -- ============================================
 -- INSERT INTO universes (username, pin_hash, public_profile)

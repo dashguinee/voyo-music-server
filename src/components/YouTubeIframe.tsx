@@ -88,6 +88,10 @@ export const YouTubeIframe = memo(() => {
   const currentVideoIdRef = useRef<string | null>(null);
   const initializingRef = useRef(false);
 
+  // Interval management refs to prevent leaks
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isIntervalRunningRef = useRef(false);
+
   const currentTrack = usePlayerStore((s) => s.currentTrack);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const volume = usePlayerStore((s) => s.volume);
@@ -185,12 +189,18 @@ export const YouTubeIframe = memo(() => {
           if (ytState === YT_STATES.ENDED && state.playbackSource === 'iframe') {
             nextTrack();
           } else if (ytState === YT_STATES.PLAYING) {
-            setBufferHealth(100, 'healthy');
+            // Only update buffer health if we're the active playback source
+            if (state.playbackSource === 'iframe') {
+              setBufferHealth(100, 'healthy');
+            }
             if (state.playbackSource === 'iframe' && !state.isPlaying) {
               usePlayerStore.getState().togglePlay();
             }
           } else if (ytState === YT_STATES.BUFFERING) {
-            setBufferHealth(50, 'warning');
+            // Only update buffer health if we're the active playback source
+            if (state.playbackSource === 'iframe') {
+              setBufferHealth(50, 'warning');
+            }
           }
         },
         onError: (event: any) => {
@@ -245,28 +255,54 @@ export const YouTubeIframe = memo(() => {
   }, [volume, playbackSource]);
 
   useEffect(() => {
+    // ONLY handle seek if we're the active playback source (iframe mode)
+    // In cached mode, AudioPlayer handles the seek
+    if (playbackSource !== 'iframe') return;
     if (seekPosition === null || !playerRef.current) return;
-    if (playbackSource === 'cached' && showVideo) {
-      try { playerRef.current.seekTo(seekPosition, true); } catch (e) {}
-    }
-    clearSeekPosition();
-  }, [seekPosition, playbackSource, showVideo, clearSeekPosition]);
 
+    try { playerRef.current.seekTo(seekPosition, true); } catch (e) {}
+    clearSeekPosition();
+  }, [seekPosition, playbackSource, clearSeekPosition]);
+
+  // Progress tracking interval with leak prevention
   useEffect(() => {
-    if (playbackSource !== 'iframe' || !playerRef.current) return;
-    const interval = setInterval(() => {
+    // Clear any existing interval first to prevent stacking
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+
+    if (playbackSource !== 'iframe' || !playerRef.current) {
+      isIntervalRunningRef.current = false;
+      return;
+    }
+
+    // Guard against re-entry during rapid mode switches
+    if (isIntervalRunningRef.current) return;
+    isIntervalRunningRef.current = true;
+
+    intervalRef.current = setInterval(() => {
       if (!playerRef.current) return;
       try {
-        const currentTime = playerRef.current.getCurrentTime();
-        const duration = playerRef.current.getDuration();
-        if (duration > 0) {
-          setCurrentTime(currentTime);
-          setProgress((currentTime / duration) * 100);
+        const time = playerRef.current.getCurrentTime();
+        const dur = playerRef.current.getDuration();
+        setCurrentTime(time);
+        if (dur > 0) {
+          setProgress((time / dur) * 100);
         }
-      } catch (e) {}
+      } catch (e) {
+        // Player not ready, ignore
+      }
     }, 250);
-    return () => clearInterval(interval);
-  }, [playbackSource, setCurrentTime, setProgress]);
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      isIntervalRunningRef.current = false;
+    };
+  }, [playbackSource]); // Minimal deps - setCurrentTime/setProgress are stable store functions
 
   // The iframe content
   const iframeContent = (

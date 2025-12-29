@@ -8,7 +8,6 @@
  * - FeedCard: Individual track card
  * - VideoSnippet: YouTube iframe embed
  * - AnimatedArtCard: Album art with visual effects
- * - TikTokEmbed: TikTok video embed (future)
  * - ContentMixer: Chooses content type per track
  * - FloatingReactions: TikTok Live style rising reactions
  * - ContinuePlayingButton: Engagement hook to full player
@@ -18,7 +17,6 @@
 export { VoyoVerticalFeed } from './VoyoVerticalFeed';
 export { VideoSnippet } from './VideoSnippet';
 export { AnimatedArtCard, extractDominantColor, type ArtDisplayMode } from './AnimatedArtCard';
-export { TikTokEmbed, extractTikTokId, type TikTokMatch } from './TikTokEmbed';
 export { ContentMixer, type ContentType } from './ContentMixer';
 export { DynamicVignette, useVignetteController, VignettePresets } from './DynamicVignette';
 export { FloatingReactions, useFloatingReactions, useDoubleTap } from './FloatingReactions';

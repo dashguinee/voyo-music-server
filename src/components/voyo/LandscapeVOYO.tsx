@@ -127,6 +127,20 @@ const PlayCircle = ({ onTripleTap, onHold }: { onTripleTap: () => void; onHold: 
     }
   }, [isPlaying, controls]);
 
+  // Cleanup tap and hold timeouts on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (tapTimeoutRef.current) {
+        clearTimeout(tapTimeoutRef.current);
+        tapTimeoutRef.current = undefined;
+      }
+      if (holdTimeoutRef.current) {
+        clearTimeout(holdTimeoutRef.current);
+        holdTimeoutRef.current = undefined;
+      }
+    };
+  }, []);
+
   const handlePointerDown = () => {
     isHoldingRef.current = false;
     holdTimeoutRef.current = setTimeout(() => {

@@ -20,6 +20,9 @@ import { useMobilePlay } from '../../hooks/useMobilePlay';
 import { getYouTubeThumbnail } from '../../data/tracks';
 import { SmartImage } from '../ui/SmartImage';
 import { Track } from '../../types';
+import { PlaylistModal } from '../playlist/PlaylistModal';
+import { useReactionStore } from '../../store/reactionStore';
+import { useUniverseStore } from '../../store/universeStore';
 
 type ClassicTab = 'home' | 'hub' | 'library';
 
@@ -36,10 +39,28 @@ const MiniPlayer = ({ onVOYOClick }: { onVOYOClick: () => void }) => {
     currentTrack, isPlaying, togglePlay, progress, nextTrack, prevTrack,
     shuffleMode, repeatMode, toggleShuffle, cycleRepeat
   } = usePlayerStore();
+  const { createReaction } = useReactionStore();
+  const { currentUsername } = useUniverseStore();
   const [shouldScroll, setShouldScroll] = useState(false);
   const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
   const [showBubbles, setShowBubbles] = useState(false);
+  const [showPlaylistModal, setShowPlaylistModal] = useState(false);
   const titleRef = useRef<HTMLParagraphElement>(null);
+
+  // Handle OYE reaction
+  const handleOye = useCallback(() => {
+    if (!currentTrack) return;
+    createReaction({
+      username: currentUsername || 'anonymous',
+      trackId: currentTrack.trackId || currentTrack.id,
+      trackTitle: currentTrack.title,
+      trackArtist: currentTrack.artist,
+      trackThumbnail: currentTrack.coverUrl,
+      category: 'afro-heat',
+      emoji: '⚡',
+      reactionType: 'oye',
+    });
+  }, [currentTrack, currentUsername, createReaction]);
 
   // Check if title needs scrolling (longer than container)
   useEffect(() => {
@@ -231,7 +252,7 @@ const MiniPlayer = ({ onVOYOClick }: { onVOYOClick: () => void }) => {
             style={{ width: '30px', height: '30px' }}
             onClick={(e) => {
               e.stopPropagation();
-              // TODO: Add to playlist
+              setShowPlaylistModal(true);
             }}
             whileHover={{ scale: 1.1, backgroundColor: 'rgba(255,255,255,0.2)' }}
             whileTap={{ scale: 0.9 }}
@@ -244,7 +265,7 @@ const MiniPlayer = ({ onVOYOClick }: { onVOYOClick: () => void }) => {
             className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center"
             onClick={(e) => {
               e.stopPropagation();
-              // TODO: OYÉ action
+              handleOye();
             }}
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
@@ -282,6 +303,16 @@ const MiniPlayer = ({ onVOYOClick }: { onVOYOClick: () => void }) => {
           100% { transform: translateX(-50%); }
         }
       `}</style>
+
+      {/* Playlist Modal */}
+      {currentTrack && (
+        <PlaylistModal
+          isOpen={showPlaylistModal}
+          onClose={() => setShowPlaylistModal(false)}
+          trackId={currentTrack.trackId || currentTrack.id}
+          trackTitle={currentTrack.title}
+        />
+      )}
     </motion.div>
   );
 };
@@ -416,13 +447,21 @@ export const ClassicMode = ({ onSwitchToVOYO, onSearch }: ClassicModeProps) => {
   const [activeTab, setActiveTab] = useState<ClassicTab>('home');
   const [showNowPlaying, setShowNowPlaying] = useState(false);
   const [navVisible, setNavVisible] = useState(true);
-  const { currentTrack } = usePlayerStore();
+  const { currentTrack, shouldOpenNowPlaying, setShouldOpenNowPlaying } = usePlayerStore();
   const { forcePlay } = useMobilePlay();
+
+  // FIX A4: Listen for shouldOpenNowPlaying flag (set by search overlay)
+  useEffect(() => {
+    if (shouldOpenNowPlaying) {
+      setShowNowPlaying(true);
+      setShouldOpenNowPlaying(false); // Clear the flag
+    }
+  }, [shouldOpenNowPlaying, setShouldOpenNowPlaying]);
 
   const handleTrackClick = async (track: Track) => {
     const { setCurrentTrack } = usePlayerStore.getState();
     setCurrentTrack(track);
-    // Mini player only - let user discover VOYO player via bubble or nav
+    setShowNowPlaying(true);  // Open full NowPlaying view
     // Small delay to let AudioPlayer set the source, then force play
     setTimeout(async () => {
       await forcePlay();

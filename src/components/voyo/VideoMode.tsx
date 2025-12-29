@@ -100,6 +100,16 @@ export const VideoMode = ({ onExit }: VideoModeProps) => {
     };
   }, [showControls]);
 
+  // Cleanup tap timeout on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (tapTimeoutRef.current) {
+        clearTimeout(tapTimeoutRef.current);
+        tapTimeoutRef.current = undefined;
+      }
+    };
+  }, []);
+
   // Add a single floating reaction
   const addReaction = useCallback((emoji?: string) => {
     const newReaction: FloatingReaction = {
