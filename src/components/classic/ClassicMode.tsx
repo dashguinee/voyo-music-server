@@ -483,7 +483,7 @@ export const ClassicMode = ({ onSwitchToVOYO, onSearch }: ClassicModeProps) => {
   // Communal sections (Top 10, African Vibes, Trending) → open full player
   // Personal sections (Continue Listening, Made For You) → mini player only
   const handleTrackClick = async (track: Track, options?: { openFull?: boolean }) => {
-    const { setCurrentTrack } = usePlayerStore.getState();
+    const { setCurrentTrack, isPlaying } = usePlayerStore.getState();
     setCurrentTrack(track);
 
     // Only open full player for communal/discovery sections
@@ -492,10 +492,17 @@ export const ClassicMode = ({ onSwitchToVOYO, onSearch }: ClassicModeProps) => {
     }
     // Personal sections: track plays but stays in mini player
 
-    // Small delay to let AudioPlayer set the source, then force play
-    setTimeout(async () => {
-      await forcePlay();
-    }, 150);
+    // AUTO-PLAY: Set isPlaying to true and let AudioPlayer handle playback
+    // The AudioPlayer component watches isPlaying and currentTrack changes
+    if (!isPlaying) {
+      // Small delay to let AudioPlayer set the source, then toggle play
+      setTimeout(() => {
+        const { togglePlay, isPlaying: stillPaused } = usePlayerStore.getState();
+        if (!stillPaused) {
+          togglePlay(); // This updates state AND triggers playback
+        }
+      }, 200);
+    }
   };
 
   const handleArtistClick = (artist: { name: string; tracks: Track[] }) => {

@@ -31,7 +31,9 @@ import {
   X,
   Share2,
   ListMusic,
-  Zap
+  Zap,
+  Video,
+  Image
 } from 'lucide-react';
 import { usePlayerStore } from '../../store/playerStore';
 import { usePreferenceStore } from '../../store/preferenceStore';
@@ -285,6 +287,7 @@ export const NowPlaying = ({ isOpen, onClose }: NowPlayingProps) => {
   const [floatingReactions, setFloatingReactions] = useState<FloatingReaction[]>([]);
   const [showQueue, setShowQueue] = useState(false);
   const [shareToast, setShareToast] = useState(false);
+  const [videoMode, setVideoMode] = useState(false); // Video toggle - shows YouTube iframe
 
   // Reactions data
   const currentTrackId = currentTrack?.id || '';
@@ -413,12 +416,54 @@ export const NowPlaying = ({ isOpen, onClose }: NowPlayingProps) => {
           exit={{ y: '100%' }}
           transition={{ type: 'spring', damping: 25, stiffness: 200 }}
         >
-          {/* BACKGROUND - Album Art */}
-          <AlbumArtBackground coverUrl={getTrackThumbnailUrl(currentTrack, 'max')} />
+          {/* BACKGROUND - Album Art or Video */}
+          {videoMode ? (
+            <div className="absolute inset-0 bg-black z-0">
+              <iframe
+                src={`https://www.youtube.com/embed/${currentTrack.trackId}?autoplay=0&controls=0&showinfo=0&rel=0&modestbranding=1&playsinline=1`}
+                className="w-full h-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                title={currentTrack.title}
+              />
+            </div>
+          ) : (
+            <AlbumArtBackground coverUrl={getTrackThumbnailUrl(currentTrack, 'max')} />
+          )}
+
+          {/* VIDEO TOGGLE - Left side vertical toggle */}
+          <motion.div
+            className="absolute left-3 top-1/2 -translate-y-1/2 z-40"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.3 }}
+          >
+            <motion.button
+              className={`flex flex-col items-center gap-2 px-2 py-3 rounded-full backdrop-blur-xl border transition-all duration-300 ${
+                videoMode
+                  ? 'bg-purple-500/30 border-purple-400/50'
+                  : 'bg-black/40 border-white/10 hover:border-white/20'
+              }`}
+              onClick={() => setVideoMode(!videoMode)}
+              whileTap={{ scale: 0.95 }}
+            >
+              {videoMode ? (
+                <Image className="w-4 h-4 text-white" />
+              ) : (
+                <Video className="w-4 h-4 text-white" />
+              )}
+              <span
+                className="text-[9px] text-white/80 font-medium"
+                style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+              >
+                {videoMode ? 'ART' : 'VIDEO'}
+              </span>
+            </motion.button>
+          </motion.div>
 
           {/* GRADIENT OVERLAYS - Black Contour Style */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent z-10" />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-transparent to-transparent z-10" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent z-10 pointer-events-none" />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-transparent to-transparent z-10 pointer-events-none" />
 
           {/* FLOATING REACTIONS */}
           <FloatingReactions reactions={floatingReactions} />

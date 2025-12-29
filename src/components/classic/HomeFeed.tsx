@@ -1287,12 +1287,12 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
       {/* TIVI+ Cross-Promo - "Take a Break with Family" */}
       <TiviPlusCrossPromo immersiveRef={tiviBreakRef} />
 
-      {/* New Releases - Center-focused carousel → COMMUNAL */}
+      {/* New Releases - Center-focused carousel → PERSONAL (entry point to VOYO player) */}
       <div className="mb-12">
         <div className="px-4 mb-5">
           <h2 className="text-white font-semibold text-base">New Releases</h2>
         </div>
-        <CenterFocusedCarousel tracks={newReleases} onPlay={(track) => onTrackPlay(track, { openFull: true })} />
+        <CenterFocusedCarousel tracks={newReleases} onPlay={(track) => onTrackPlay(track)} />
       </div>
 
       {/* Empty State */}
