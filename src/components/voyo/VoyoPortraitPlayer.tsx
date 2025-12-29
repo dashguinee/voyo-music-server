@@ -3529,8 +3529,8 @@ const LyricsOverlay = memo(({ track, isOpen, onClose, currentTime }: LyricsOverl
         {/* Error state */}
         {error && (
           <div className="text-center">
-            <p className="text-red-400 text-sm mb-2">⚠️ {error}</p>
-            <p className="text-white/40 text-xs">Lyrics generation requires OpenAI API key</p>
+            <p className="text-yellow-400 text-sm mb-2">🔍 {error}</p>
+            <p className="text-white/40 text-xs">Not found in LRCLIB (3M+ songs)</p>
           </div>
         )}
 

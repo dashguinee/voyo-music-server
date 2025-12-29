@@ -1,17 +1,24 @@
 /**
- * VOYO Music - Lyrics Engine
+ * VOYO Music - Lyrics Engine v2.0
  *
- * The complete pipeline for African music lyrics:
+ * SMART LYRICS PIPELINE:
  *
- * 1. CAPTURE - Whisper transcribes audio phonetically
- * 2. TRANSLATE - Lexicon service matches against dictionary
- * 3. DISPLAY - Synced lyrics with translations
- * 4. POLISH - Community corrections and annotations
- * 5. SHARE - Export and share lyrics
+ * 1. CHECK LRCLIB (free, 3M songs, synced lyrics) - NO API KEY NEEDED!
+ * 2. CHECK LOCAL CACHE (localStorage/Supabase)
+ * 3. FALLBACK TO WHISPER (only for truly obscure tracks)
  *
  * This is THE killer feature for African music discovery.
  * Users can finally understand what they're listening to.
  */
+
+import {
+  getLyricsWithCache as getLRCLibLyrics,
+  parseLRC,
+  getCurrentLine,
+  getLyricWindow,
+  type LRCLibResult,
+  type ParsedLyricLine,
+} from './lrclib';
 
 import {
   type PhoneticLyrics,
@@ -35,6 +42,10 @@ import {
 
 import { lyricsAPI, isSupabaseConfigured, type LyricsRow, type LyricSegmentRow } from '../lib/supabase';
 import { type Track } from '../types';
+
+// Re-export LRCLIB types for convenience
+export type { LRCLibResult, ParsedLyricLine };
+export { getCurrentLine, getLyricWindow, parseLRC };
 
 // ============================================================================
 // TYPES
@@ -101,7 +112,106 @@ export interface LyricsGenerationProgress {
 type ProgressCallback = (progress: LyricsGenerationProgress) => void;
 
 /**
+ * FAST LYRICS - Try LRCLIB first (free, instant, synced)
+ * This is the NEW primary method - no API key needed!
+ */
+export async function fetchLyricsSimple(
+  track: Track,
+  onProgress?: ProgressCallback
+): Promise<LRCLibResult & { enriched?: EnrichedLyrics }> {
+  const updateProgress = (stage: LyricsGenerationProgress['stage'], progress: number, message: string) => {
+    if (onProgress) {
+      onProgress({ stage, progress, message });
+    }
+    console.log(`[LyricsEngine] ${stage}: ${message} (${progress}%)`);
+  };
+
+  updateProgress('fetching', 10, 'Checking LRCLIB...');
+
+  // Try LRCLIB first - FREE, INSTANT, NO API KEY!
+  const lrcResult = await getLRCLibLyrics(
+    track.title,
+    track.artist,
+    track.duration
+  );
+
+  if (lrcResult.found && lrcResult.lines) {
+    updateProgress('complete', 100, `Found! ${lrcResult.lines.length} synced lines`);
+
+    // Convert to EnrichedLyrics format for compatibility
+    const enriched = lrcResultToEnriched(lrcResult, track);
+
+    return {
+      ...lrcResult,
+      enriched,
+    };
+  }
+
+  updateProgress('error', 0, 'Lyrics not found in LRCLIB');
+  return lrcResult;
+}
+
+/**
+ * Convert LRCLIB result to EnrichedLyrics format
+ */
+function lrcResultToEnriched(lrc: LRCLibResult, track: Track): EnrichedLyrics {
+  const lines = lrc.lines || [];
+
+  // Build translated segments from LRC lines
+  const translated: TranslatedSegment[] = lines.map((line, i) => {
+    const nextLine = lines[i + 1];
+    const endTime = nextLine ? nextLine.time : line.time + 5;
+
+    return {
+      startTime: line.time,
+      endTime,
+      original: line.text,
+      phonetic: line.text,
+      translations: [],  // No translations yet
+      isVerified: true,  // LRCLIB is crowd-verified
+    };
+  });
+
+  // Build phonetic structure
+  const phonetic: PhoneticLyrics = {
+    trackId: track.id,
+    originalText: lrc.plain || lines.map(l => l.text).join('\n'),
+    cleanedText: lrc.plain || lines.map(l => l.text).join('\n'),
+    segments: lines.map((line, i) => {
+      const nextLine = lines[i + 1];
+      return {
+        startTime: line.time,
+        endTime: nextLine ? nextLine.time : line.time + 5,
+        text: line.text,
+        phonetic: line.text,
+      };
+    }),
+    language: 'en',  // LRCLIB doesn't provide language
+    confidence: 1.0,  // High confidence - crowd-sourced
+    generatedAt: new Date(),
+    polishedBy: ['lrclib-community'],
+  };
+
+  return {
+    trackId: track.id,
+    trackTitle: track.title,
+    artist: track.artist,
+    phonetic,
+    translated,
+    language: 'en',
+    confidence: 1.0,
+    generatedAt: new Date(),
+    polishedBy: ['lrclib-community'],
+    approvedBy: [],
+    reportedIssues: [],
+    translationCoverage: 0,  // No translations
+    communityScore: 100,  // High score - crowd-sourced
+  };
+}
+
+/**
  * Generate full enriched lyrics for a track
+ * UPDATED: Now tries LRCLIB first before falling back to Whisper
  *
  * This is the main entry point - give it a track, get back translated lyrics
  */
@@ -118,6 +228,20 @@ export async function generateLyrics(
   };
 
   try {
+    // =====================================
+    // PRIORITY 1: LRCLIB (FREE, INSTANT!)
+    // =====================================
+    updateProgress('fetching', 5, 'Checking LRCLIB (free lyrics database)...');
+    const lrcResult = await getLRCLibLyrics(track.title, track.artist, track.duration);
+
+    if (lrcResult.found && lrcResult.lines) {
+      updateProgress('complete', 100, `Found in LRCLIB! ${lrcResult.lines.length} synced lines`);
+      return lrcResultToEnriched(lrcResult, track);
+    }
+
+    // =====================================
+    // PRIORITY 2: LOCAL CACHE
+    // =====================================
     // Check Supabase first (persistent cache), then localStorage (offline fallback)
     if (isSupabaseConfigured) {
       const supabaseExisting = await lyricsAPI.get(track.id);
@@ -136,13 +260,16 @@ export async function generateLyrics(
       return enrichLyrics(localExisting, track);
     }
 
+    // =====================================
+    // PRIORITY 3: WHISPER (LAST RESORT)
+    // =====================================
     // Check Whisper configuration
     if (!isWhisperConfigured()) {
-      throw new Error('Whisper API not configured. Set VITE_OPENAI_API_KEY in .env');
+      throw new Error('Lyrics not found. Track not in LRCLIB database.');
     }
 
     // Stage 1: Fetch audio
-    updateProgress('fetching', 10, 'Fetching audio...');
+    updateProgress('fetching', 10, 'Fetching audio for Whisper transcription...');
     const audioResponse = await fetch(audioUrl);
     if (!audioResponse.ok) {
       throw new Error(`Failed to fetch audio: ${audioResponse.statusText}`);
