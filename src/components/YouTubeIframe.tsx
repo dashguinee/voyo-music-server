@@ -52,7 +52,6 @@ export const YouTubeIframe = memo(() => {
   const volume = usePlayerStore((s) => s.volume);
   const playbackSource = usePlayerStore((s) => s.playbackSource);
   const videoTarget = usePlayerStore((s) => s.videoTarget);
-  const videoPolitePosition = usePlayerStore((s) => s.videoPolitePosition);
   const seekPosition = usePlayerStore((s) => s.seekPosition);
   const currentTime = usePlayerStore((s) => s.currentTime);
   const duration = usePlayerStore((s) => s.duration);
@@ -294,48 +293,19 @@ export const YouTubeIframe = memo(() => {
     }
 
     if (videoTarget === 'portrait' && isPlaying) {
-      // Polite position - video moves out of the way based on page context
-      // NO transition on position - framer-motion handles smooth movement
-      // z-60 to be above search overlay (z-50)
-      let top: string, left: string, right: string | undefined, bottom: string | undefined;
-
-      switch (videoPolitePosition) {
-        case 'bottom':
-          top = 'auto';
-          bottom = '120px';
-          left = 'calc(50% - 104px)';
-          break;
-        case 'top-right':
-          top = '100px';
-          right = '20px';
-          left = 'auto';
-          break;
-        case 'top-left':
-          top = '100px';
-          left = '20px';
-          break;
-        case 'center':
-        default:
-          top = 'calc(50% - 104px)';
-          left = 'calc(50% - 104px)';
-          break;
-      }
-
+      // Center over BigCenterCard area
       return {
         position: 'fixed',
         overflow: 'hidden',
         background: '#000',
-        top,
-        left,
-        right,
-        bottom,
+        top: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
         width: '208px',
         height: '208px',
         borderRadius: '2rem',
         zIndex: 60,
         opacity: 1,
-        // No transition - instant position changes avoid mobile keyboard weirdness
-        // Drag still feels smooth via framer-motion
       };
     }
 
