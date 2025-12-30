@@ -1,11 +1,11 @@
 /**
- * VOYO Universe Panel
+ * VOYO Verse Panel
  *
  * voyomusic.com/username management
  *
  * Features:
  * - Login/Signup (PIN-based, no email)
- * - Universe stats (likes, listens, etc.)
+ * - Verse stats (likes, listens, etc.)
  * - Backup to JSON file
  * - Passphrase backup
  * - Portal sharing
@@ -221,7 +221,7 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
     const success = await saveToCloud(passphrase);
     setIsSaving(false);
     setMessage(success
-      ? { type: 'success', text: 'Universe saved!' }
+      ? { type: 'success', text: 'Verse saved!' }
       : { type: 'error', text: 'Save failed' }
     );
   };
@@ -236,7 +236,7 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
     const success = await restoreFromCloud(passphraseInput);
     setIsRestoring(false);
     setMessage(success
-      ? { type: 'success', text: 'Universe restored!' }
+      ? { type: 'success', text: 'Verse restored!' }
       : { type: 'error', text: 'Invalid passphrase' }
     );
   };
@@ -302,7 +302,7 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
                 </div>
                 <div>
                   <h2 className="text-white font-bold text-xl">
-                    {isLoggedIn ? 'My Universe' : 'VOYO Universe'}
+                    {isLoggedIn ? 'My Verse' : 'VOYO Verse'}
                   </h2>
                   <p className="text-white/50 text-sm">
                     {isLoggedIn
@@ -487,7 +487,7 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
                     ) : (
                       <>
                         <LogIn className="w-5 h-5" />
-                        Enter Universe
+                        Enter Verse
                       </>
                     )}
                   </button>
@@ -560,7 +560,7 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
 
                   {/* Share URL */}
                   <div className="p-4 rounded-xl bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20">
-                    <p className="text-white/50 text-xs mb-2">Your Universe URL</p>
+                    <p className="text-white/50 text-xs mb-2">Your Verse URL</p>
                     <div className="flex items-center gap-2">
                       <code className="flex-1 text-white text-sm">
                         voyomusic.com/{currentUsername}
@@ -701,7 +701,7 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
                       className="w-full py-3 rounded-xl bg-purple-500/20 border border-purple-500/30 text-purple-400 flex items-center justify-center gap-2 hover:bg-purple-500/30"
                     >
                       <Download className="w-5 h-5" />
-                      Download Universe
+                      Download Verse
                     </button>
                   </div>
 
@@ -744,7 +744,7 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
 
                   {/* Restore */}
                   <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-                    <h3 className="text-white font-semibold mb-2">Restore Universe</h3>
+                    <h3 className="text-white font-semibold mb-2">Restore Verse</h3>
                     <div className="flex gap-2">
                       <input
                         type="text"
