@@ -225,6 +225,7 @@ export const YouTubeIframe = memo(() => {
 
   // Fallback sync: When boosted, video should follow audio (not vice versa)
   // Only kicks in if drift exceeds threshold - YouTube rarely buffers
+  // NOTE: Don't include currentTime in deps - read it fresh each check
   useEffect(() => {
     if (playbackSource !== 'cached' || !isPlaying) return;
 
@@ -236,7 +237,7 @@ export const YouTubeIframe = memo(() => {
       if (!player?.getCurrentTime || !player?.seekTo) return;
 
       const videoTime = player.getCurrentTime() || 0;
-      const audioTime = currentTime; // From store (audio is updating this)
+      const audioTime = usePlayerStore.getState().currentTime; // Read fresh from store
       const drift = Math.abs(videoTime - audioTime);
 
       if (drift > DRIFT_THRESHOLD) {
@@ -246,7 +247,7 @@ export const YouTubeIframe = memo(() => {
     }, CHECK_INTERVAL);
 
     return () => clearInterval(syncInterval);
-  }, [playbackSource, isPlaying, currentTime]);
+  }, [playbackSource, isPlaying]);
 
   // Time update interval (only when streaming from iframe)
   useEffect(() => {
@@ -295,9 +296,7 @@ export const YouTubeIframe = memo(() => {
     if (videoTarget === 'portrait' && isPlaying) {
       // Center over BigCenterCard area
       return {
-        position: 'fixed',
-        overflow: 'hidden',
-        background: '#000',
+        ...base,
         top: '50%',
         left: '50%',
         transform: 'translate(-50%, -50%)',
@@ -310,12 +309,13 @@ export const YouTubeIframe = memo(() => {
     }
 
     // Hidden - offscreen for audio streaming
+    // Keep same size as portrait to prevent YouTube rebuffer on transition
     return {
       ...base,
-      bottom: '-200px',
-      right: '-200px',
-      width: '160px',
-      height: '90px',
+      bottom: '-300px',
+      right: '-300px',
+      width: '208px',
+      height: '208px',
       zIndex: -1,
       opacity: 0,
       pointerEvents: 'none',
