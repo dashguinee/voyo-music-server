@@ -1801,8 +1801,10 @@ const BigCenterCard = memo(({ track, onExpandVideo, onShowLyrics, showVideo = fa
   onShowLyrics?: () => void;
   showVideo?: boolean;
 }) => {
-  // Video mode: when showVideo=true, the global YouTubeIframe (in App.tsx) renders fullscreen
-  // with tap-to-close and all overlays. This component just hides its thumbnail during video.
+  // Video embedded IN card (5338ed1 approach):
+  // - When showVideo=true (playing + video mode): show muted iframe in card
+  // - When showVideo=false (paused or no video): show thumbnail
+  // Audio comes from global YouTubeIframe - this is just for video display
 
   return (
   <motion.div
@@ -1816,11 +1818,46 @@ const BigCenterCard = memo(({ track, onExpandVideo, onShowLyrics, showVideo = fa
     whileHover={{ scale: 1.02 }}
     key={track.id}
   >
-    {/* YouTubeIframe is now GLOBAL (in App.tsx) - no duplicate here */}
-    {/* When videoTarget='portrait', global iframe shows fullscreen with tap-to-close */}
-    {/* The PortraitVideoContainer in YouTubeIframe.tsx handles all video overlays */}
+    {/* VIDEO - embedded muted iframe when playing in video mode */}
+    {showVideo && (
+      <div className="absolute inset-0 z-10 bg-black overflow-hidden">
+        <iframe
+          src={`https://www.youtube.com/embed/${track.trackId}?autoplay=1&controls=0&modestbranding=1&rel=0&playsinline=1&showinfo=0&iv_load_policy=3&fs=0&mute=1&loop=1`}
+          className="w-full h-full pointer-events-none"
+          style={{
+            transform: 'scale(2)',
+            transformOrigin: 'center center',
+          }}
+          allow="autoplay; encrypted-media"
+          allowFullScreen={false}
+          title="Video"
+        />
+        {/* Purple gradient overlays to hide YouTube branding */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background: 'linear-gradient(to top, rgba(139,92,246,0.4) 0%, transparent 30%)',
+          }}
+        />
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background: 'linear-gradient(to bottom, rgba(139,92,246,0.3) 0%, transparent 25%)',
+          }}
+        />
+        {/* Track title overlay */}
+        <div className="absolute bottom-3 left-3 right-3 z-20">
+          <p className="text-white text-sm font-medium truncate drop-shadow-lg">
+            {track.title}
+          </p>
+          <p className="text-white/70 text-xs truncate">
+            {track.artist}
+          </p>
+        </div>
+      </div>
+    )}
 
-    {/* THUMBNAIL - visible when NOT showing video */}
+    {/* THUMBNAIL - visible when NOT showing video (paused or no video mode) */}
     {!showVideo && (
       <div
         onClick={onShowLyrics}
@@ -1853,20 +1890,31 @@ const BigCenterCard = memo(({ track, onExpandVideo, onShowLyrics, showVideo = fa
 
     {/* Subtle vignette for depth - always visible */}
     <div
-      className="absolute inset-0 pointer-events-none opacity-40"
+      className="absolute inset-0 pointer-events-none opacity-40 z-15"
       style={{
         background: 'radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.6) 100%)',
       }}
     />
 
-    {/* Expand Video Button - hidden when video is showing */}
+    {/* Expand to Landscape Button - visible in video mode */}
+    {onExpandVideo && showVideo && (
+      <button
+        onClick={onExpandVideo}
+        className="absolute top-3 right-3 z-30 bg-black/60 backdrop-blur-sm rounded-full p-2 hover:bg-black/80 transition-colors"
+        aria-label="Expand to landscape"
+      >
+        <Maximize2 size={16} className="text-white" />
+      </button>
+    )}
+
+    {/* Video mode button - visible on thumbnail */}
     {onExpandVideo && !showVideo && (
       <ExpandVideoButton onClick={onExpandVideo} />
     )}
 
     {/* Glowing border accent */}
     <div
-      className="absolute inset-0 rounded-[2rem] pointer-events-none transition-all duration-500"
+      className="absolute inset-0 rounded-[2rem] pointer-events-none transition-all duration-500 z-25"
       style={{
         border: '1px solid rgba(139, 92, 246, 0.3)',
         boxShadow: 'inset 0 0 30px rgba(139, 92, 246, 0.1)',
