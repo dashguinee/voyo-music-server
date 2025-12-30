@@ -878,7 +878,7 @@ const DynamicIsland = () => {
 };
 
 function App() {
-  const { currentTrack, setVoyoTab, setVideoPolitePosition } = usePlayerStore();
+  const { currentTrack, setVoyoTab } = usePlayerStore();
   const [bgError, setBgError] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   // VOYO PLAYER FIRST - Default to player, but remember user preference
@@ -1081,25 +1081,6 @@ function App() {
   useEffect(() => {
     localStorage.setItem('voyo-app-mode', appMode);
   }, [appMode]);
-
-  // POLITE VIDEO POSITION: Auto-move based on context
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>;
-
-    if (isSearchOpen) {
-      // Search open - delay then drift to bottom so results are visible
-      timer = setTimeout(() => {
-        setVideoPolitePosition('bottom');
-      }, 800);
-    } else {
-      // Search closed OR classic mode - go to top-right
-      // Keeps thumbnail tappable for lyrics, video out of the way
-      // Users can drag it or tap thumbnail as they wish
-      setVideoPolitePosition('center');
-    }
-
-    return () => clearTimeout(timer);
-  }, [isSearchOpen, appMode, setVideoPolitePosition]);
 
   // Get background image URL with fallback
   const getBackgroundUrl = () => {
