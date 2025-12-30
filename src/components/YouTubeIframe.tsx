@@ -231,7 +231,7 @@ export const YouTubeIframe = memo(() => {
         setProgress((time / dur) * 100);
         setDuration(dur);
         const buffered = player.getVideoLoadedFraction?.() || 0;
-        setBufferHealth(Math.round(buffered * 100));
+        setBufferHealth(Math.round(buffered * 100), 'healthy');
       }
     }, 250);
 
