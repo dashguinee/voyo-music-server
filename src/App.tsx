@@ -1095,7 +1095,7 @@ function App() {
       // Search closed OR classic mode - go to top-right
       // Keeps thumbnail tappable for lyrics, video out of the way
       // Users can drag it or tap thumbnail as they wish
-      setVideoPolitePosition('top-right');
+      setVideoPolitePosition('center');
     }
 
     return () => clearTimeout(timer);
