@@ -11,7 +11,7 @@
  * - Portal sharing
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X,
@@ -39,11 +39,12 @@ import {
   Edit3,
   Camera,
   Save,
-  Search
+  Search,
+  Trash2
 } from 'lucide-react';
 import { useUniverseStore } from '../../store/universeStore';
 import { usePreferenceStore } from '../../store/preferenceStore';
-import { universeAPI } from '../../lib/supabase';
+import { universeAPI, avatarAPI } from '../../lib/supabase';
 import { UserSearch } from './UserSearch';
 
 interface UniversePanelProps {
@@ -88,6 +89,10 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
   const [editAvatarUrl, setEditAvatarUrl] = useState('');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileLoaded, setProfileLoaded] = useState(false);
+
+  // Avatar upload state
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
   // Auth form state
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
@@ -202,6 +207,60 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
     } else {
       setMessage({ type: 'error', text: 'Failed to save profile' });
     }
+  };
+
+  // Handle avatar file selection and upload
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !currentUsername) return;
+
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      setMessage({ type: 'error', text: 'Please upload a JPG, PNG, GIF or WebP image' });
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setMessage({ type: 'error', text: 'Image must be under 5MB' });
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+    const success = await avatarAPI.uploadAndUpdateProfile(currentUsername, file);
+    setIsUploadingAvatar(false);
+
+    if (success) {
+      // Get the new avatar URL and update state
+      const avatarUrl = avatarAPI.getAvatarUrl(currentUsername);
+      // Add cache buster to force refresh
+      setEditAvatarUrl(avatarUrl ? `${avatarUrl}?t=${Date.now()}` : '');
+      setMessage({ type: 'success', text: 'Avatar uploaded!' });
+    } else {
+      setMessage({ type: 'error', text: 'Failed to upload avatar' });
+    }
+
+    // Reset input
+    if (avatarInputRef.current) {
+      avatarInputRef.current.value = '';
+    }
+  };
+
+  // Handle avatar deletion
+  const handleDeleteAvatar = async () => {
+    if (!currentUsername) return;
+
+    setIsUploadingAvatar(true);
+    const deleted = await avatarAPI.deleteAvatar(currentUsername);
+    if (deleted) {
+      await universeAPI.updateProfile(currentUsername, { avatarUrl: null });
+      setEditAvatarUrl('');
+      setMessage({ type: 'success', text: 'Avatar removed' });
+    } else {
+      setMessage({ type: 'error', text: 'Failed to remove avatar' });
+    }
+    setIsUploadingAvatar(false);
   };
 
   // Generate new passphrase
@@ -588,6 +647,15 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
               {/* PROFILE TAB */}
               {activeTab === 'profile' && isLoggedIn && (
                 <div className="space-y-4">
+                  {/* Hidden file input for avatar upload */}
+                  <input
+                    ref={avatarInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/gif,image/webp"
+                    onChange={handleAvatarChange}
+                    className="hidden"
+                  />
+
                   {/* Avatar */}
                   <div className="flex flex-col items-center">
                     <div className="relative mb-4">
@@ -605,11 +673,41 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
                           </span>
                         </div>
                       )}
-                      <button className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center border-2 border-[#1a1a2e]">
-                        <Camera className="w-4 h-4 text-white" />
+                      <button
+                        onClick={() => avatarInputRef.current?.click()}
+                        disabled={isUploadingAvatar}
+                        className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center border-2 border-[#1a1a2e] hover:bg-purple-600 transition-colors disabled:opacity-50"
+                      >
+                        {isUploadingAvatar ? (
+                          <RefreshCw className="w-4 h-4 text-white animate-spin" />
+                        ) : (
+                          <Camera className="w-4 h-4 text-white" />
+                        )}
                       </button>
                     </div>
                     <p className="text-white/40 text-sm">@{currentUsername}</p>
+
+                    {/* Avatar action buttons */}
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        onClick={() => avatarInputRef.current?.click()}
+                        disabled={isUploadingAvatar}
+                        className="px-3 py-1.5 text-xs rounded-lg bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 disabled:opacity-50 flex items-center gap-1"
+                      >
+                        <Upload className="w-3 h-3" />
+                        Upload Photo
+                      </button>
+                      {editAvatarUrl && (
+                        <button
+                          onClick={handleDeleteAvatar}
+                          disabled={isUploadingAvatar}
+                          className="px-3 py-1.5 text-xs rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 disabled:opacity-50 flex items-center gap-1"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          Remove
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* Display Name */}
@@ -641,20 +739,6 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
                     <p className="text-white/30 text-xs mt-1">{editBio.length}/150</p>
                   </div>
 
-                  {/* Avatar URL */}
-                  <div>
-                    <label className="text-white/50 text-xs uppercase tracking-wider mb-2 block">
-                      Avatar URL (optional)
-                    </label>
-                    <input
-                      type="url"
-                      value={editAvatarUrl}
-                      onChange={(e) => setEditAvatarUrl(e.target.value)}
-                      placeholder="https://example.com/your-photo.jpg"
-                      className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/30 focus:outline-none focus:border-purple-500/50"
-                    />
-                  </div>
-
                   {/* Save Button */}
                   <button
                     onClick={handleSaveProfile}
@@ -677,7 +761,7 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
                       rel="noopener noreferrer"
                       className="text-purple-400 text-sm hover:underline"
                     >
-                      Preview your public profile →
+                      Preview your public profile
                     </a>
                   </div>
                 </div>

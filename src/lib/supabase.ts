@@ -113,6 +113,138 @@ export async function verifyPin(pin: string, hash: string): Promise<boolean> {
 }
 
 // ============================================
+// AVATAR API - Profile Photo Uploads
+// ============================================
+
+export const avatarAPI = {
+  /**
+   * Upload avatar to Supabase Storage
+   * @param username - User's username (used as folder name)
+   * @param file - The image file to upload
+   * @returns Public URL of uploaded avatar or null on error
+   */
+  async uploadAvatar(username: string, file: File): Promise<string | null> {
+    if (!supabase) {
+      console.error('[Avatar] Supabase not configured');
+      return null;
+    }
+
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      console.error('[Avatar] Invalid file type:', file.type);
+      return null;
+    }
+
+    // Validate file size (max 5MB)
+    const maxSize = 5 * 1024 * 1024;
+    if (file.size > maxSize) {
+      console.error('[Avatar] File too large:', file.size);
+      return null;
+    }
+
+    const normalizedUsername = username.toLowerCase();
+    const fileExt = file.name.split('.').pop() || 'jpg';
+    const fileName = `${normalizedUsername}/avatar.${fileExt}`;
+
+    // Delete existing avatar first (to handle extension changes)
+    await this.deleteAvatar(username);
+
+    // Upload new avatar
+    const { data, error } = await supabase.storage
+      .from('avatars')
+      .upload(fileName, file, {
+        cacheControl: '3600',
+        upsert: true,
+        contentType: file.type,
+      });
+
+    if (error) {
+      console.error('[Avatar] Upload error:', error.message);
+      return null;
+    }
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from('avatars')
+      .getPublicUrl(data.path);
+
+    console.log(`[Avatar] Uploaded: ${urlData.publicUrl}`);
+    return urlData.publicUrl;
+  },
+
+  /**
+   * Get avatar public URL for a user
+   * @param username - User's username
+   * @returns Public URL or null if no avatar
+   */
+  getAvatarUrl(username: string): string | null {
+    if (!supabase) return null;
+
+    const normalizedUsername = username.toLowerCase();
+
+    // Return the base URL pattern - actual file may have different extensions
+    const { data } = supabase.storage
+      .from('avatars')
+      .getPublicUrl(`${normalizedUsername}/avatar`);
+
+    return data.publicUrl;
+  },
+
+  /**
+   * Delete user's avatar
+   * @param username - User's username
+   * @returns true if deleted successfully
+   */
+  async deleteAvatar(username: string): Promise<boolean> {
+    if (!supabase) return false;
+
+    const normalizedUsername = username.toLowerCase();
+
+    // List files in user's folder to find the avatar (could have different extensions)
+    const { data: files, error: listError } = await supabase.storage
+      .from('avatars')
+      .list(normalizedUsername);
+
+    if (listError || !files || files.length === 0) {
+      return true; // No files to delete
+    }
+
+    // Delete all files in user's avatar folder
+    const filesToDelete = files.map(f => `${normalizedUsername}/${f.name}`);
+    const { error } = await supabase.storage
+      .from('avatars')
+      .remove(filesToDelete);
+
+    if (error) {
+      console.error('[Avatar] Delete error:', error.message);
+      return false;
+    }
+
+    console.log(`[Avatar] Deleted avatar for ${normalizedUsername}`);
+    return true;
+  },
+
+  /**
+   * Upload avatar and update user profile in one operation
+   * @param username - User's username
+   * @param file - The image file to upload
+   * @returns true if successful
+   */
+  async uploadAndUpdateProfile(username: string, file: File): Promise<boolean> {
+    const avatarUrl = await this.uploadAvatar(username, file);
+    if (!avatarUrl) return false;
+
+    // Update the user's profile with the new avatar URL
+    const success = await universeAPI.updateProfile(username, {
+      avatarUrl: avatarUrl,
+    });
+
+    return success;
+  },
+};
+
+// ============================================
 // UNIVERSE API
 // ============================================
 
@@ -1479,6 +1611,171 @@ export const feedContentAPI = {
       .single();
 
     return !!data;
+  },
+};
+
+// ============================================
+// PLAYLIST API - Dedicated Playlist Cloud Storage
+// ============================================
+
+export interface PlaylistRow {
+  id: string;
+  username: string;
+  name: string;
+  track_ids: string[];
+  cover_url: string | null;
+  is_public: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PlaylistInput {
+  id: string;
+  name: string;
+  trackIds: string[];
+  coverUrl?: string | null;
+  isPublic: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const playlistAPI = {
+  /**
+   * Save a playlist to the cloud (upsert)
+   */
+  async savePlaylist(username: string, playlist: PlaylistInput): Promise<boolean> {
+    if (!supabase) return false;
+
+    const { error } = await supabase
+      .from('voyo_playlists')
+      .upsert({
+        id: playlist.id,
+        username: username.toLowerCase(),
+        name: playlist.name,
+        track_ids: playlist.trackIds,
+        cover_url: playlist.coverUrl || null,
+        is_public: playlist.isPublic,
+        created_at: playlist.createdAt,
+        updated_at: playlist.updatedAt,
+      }, {
+        onConflict: 'id',
+      });
+
+    if (error) {
+      console.error('[Playlist] Save error:', error.message);
+      return false;
+    }
+
+    console.log(`[Playlist] Saved: ${playlist.name} (${playlist.id})`);
+    return true;
+  },
+
+  /**
+   * Get all playlists for a user
+   */
+  async getPlaylists(username: string): Promise<PlaylistInput[]> {
+    if (!supabase) return [];
+
+    const { data, error } = await supabase
+      .from('voyo_playlists')
+      .select('*')
+      .eq('username', username.toLowerCase())
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('[Playlist] Get error:', error.message);
+      return [];
+    }
+
+    return (data || []).map((row: PlaylistRow) => ({
+      id: row.id,
+      name: row.name,
+      trackIds: row.track_ids || [],
+      coverUrl: row.cover_url,
+      isPublic: row.is_public,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+  },
+
+  /**
+   * Delete a playlist from the cloud
+   */
+  async deletePlaylist(username: string, playlistId: string): Promise<boolean> {
+    if (!supabase) return false;
+
+    const { error } = await supabase
+      .from('voyo_playlists')
+      .delete()
+      .eq('id', playlistId)
+      .eq('username', username.toLowerCase());
+
+    if (error) {
+      console.error('[Playlist] Delete error:', error.message);
+      return false;
+    }
+
+    console.log(`[Playlist] Deleted: ${playlistId}`);
+    return true;
+  },
+
+  /**
+   * Batch save multiple playlists (for full sync)
+   */
+  async savePlaylists(username: string, playlists: PlaylistInput[]): Promise<number> {
+    if (!supabase || playlists.length === 0) return 0;
+
+    const rows = playlists.map((playlist) => ({
+      id: playlist.id,
+      username: username.toLowerCase(),
+      name: playlist.name,
+      track_ids: playlist.trackIds,
+      cover_url: playlist.coverUrl || null,
+      is_public: playlist.isPublic,
+      created_at: playlist.createdAt,
+      updated_at: playlist.updatedAt,
+    }));
+
+    const { error, count } = await supabase
+      .from('voyo_playlists')
+      .upsert(rows, {
+        onConflict: 'id',
+        count: 'exact',
+      });
+
+    if (error) {
+      console.error('[Playlist] Batch save error:', error.message);
+      return 0;
+    }
+
+    console.log(`[Playlist] Batch saved ${count} playlists`);
+    return count || 0;
+  },
+
+  /**
+   * Get public playlists from a user (for profile viewing)
+   */
+  async getPublicPlaylists(username: string): Promise<PlaylistInput[]> {
+    if (!supabase) return [];
+
+    const { data, error } = await supabase
+      .from('voyo_playlists')
+      .select('*')
+      .eq('username', username.toLowerCase())
+      .eq('is_public', true)
+      .order('created_at', { ascending: false });
+
+    if (error) return [];
+
+    return (data || []).map((row: PlaylistRow) => ({
+      id: row.id,
+      name: row.name,
+      trackIds: row.track_ids || [],
+      coverUrl: row.cover_url,
+      isPublic: row.is_public,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
   },
 };
 

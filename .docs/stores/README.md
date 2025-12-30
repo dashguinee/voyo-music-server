@@ -84,14 +84,13 @@ Visual and architectural overview of the entire state management system.
 | 1 | playerStore | playerStore.ts | 764 | Audio player state, queue, history, recommendations |
 | 2 | playlistStore | playlistStore.ts | 182 | Playlist CRUD and cloud sync |
 | 3 | preferenceStore | preferenceStore.ts | 365 | User behavior learning and personalization |
-| 4 | accountStore | accountStore.ts | 418 | WhatsApp-based authentication system |
-| 5 | downloadStore | downloadStore.ts | 474 | Boost HD downloads and auto-cache |
-| 6 | intentStore | intentStore.ts | 410 | User intent tracking from MixBoard |
-| 7 | reactionStore | reactionStore.ts | 595 | Social reactions and engagement |
-| 8 | trackPoolStore | trackPoolStore.ts | 442 | Dynamic track pool management |
-| 9 | universeStore | universeStore.ts | 757 | Universe sync and portal system |
+| 4 | downloadStore | downloadStore.ts | 474 | Boost HD downloads and auto-cache |
+| 5 | intentStore | intentStore.ts | 410 | User intent tracking from MixBoard |
+| 6 | reactionStore | reactionStore.ts | 595 | Social reactions and engagement |
+| 7 | trackPoolStore | trackPoolStore.ts | 442 | Dynamic track pool management |
+| 8 | universeStore | universeStore.ts | 757 | Universe sync, portal system, and authentication |
 
-**Total**: 4,407 lines of production code
+**Total**: 3,989 lines of production code
 
 ---
 
@@ -183,7 +182,6 @@ trackPoolStore    preferenceStore      universeStore
 | playerStore | localStorage | Manual | ~1KB |
 | playlistStore | localStorage | persist | ~10KB |
 | preferenceStore | localStorage | persist | ~50KB |
-| accountStore | localStorage | Manual | ~2KB |
 | downloadStore | IndexedDB + localStorage | Manual | Varies (user controlled) |
 | intentStore | localStorage | persist | ~5KB |
 | reactionStore | None (Realtime) | - | - |
@@ -289,7 +287,6 @@ window.__VOYO_STORES__ = {
   download: useDownloadStore,
   reaction: useReactionStore,
   playlist: usePlaylistStore,
-  account: useAccountStore,
 };
 
 // Example usage

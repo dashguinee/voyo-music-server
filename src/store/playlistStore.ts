@@ -6,7 +6,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { universeAPI, isSupabaseConfigured } from '../lib/supabase';
+import { playlistAPI, isSupabaseConfigured } from '../lib/supabase';
 
 export interface Playlist {
   id: string;
@@ -126,40 +126,46 @@ export const usePlaylistStore = create<PlaylistStore>()(
         if (!isSupabaseConfigured) return false;
 
         const { playlists } = get();
-        const cloudPlaylists = playlists.map((p) => ({
+
+        // Batch save all playlists to the dedicated playlists table
+        const count = await playlistAPI.savePlaylists(username, playlists.map((p) => ({
           id: p.id,
           name: p.name,
           trackIds: p.trackIds,
+          coverUrl: p.coverUrl,
           isPublic: p.isPublic,
           createdAt: p.createdAt,
-        }));
+          updatedAt: p.updatedAt,
+        })));
 
-        return universeAPI.updateState(username, { playlists: cloudPlaylists });
+        console.log(`[PlaylistStore] Synced ${count} playlists to cloud`);
+        return count > 0 || playlists.length === 0;
       },
 
       syncFromCloud: async (username: string) => {
         if (!isSupabaseConfigured) return false;
 
         try {
-          const { supabase } = await import('../lib/supabase');
-          if (!supabase) return false;
+          const cloudPlaylists = await playlistAPI.getPlaylists(username);
 
-          const { data } = await supabase
-            .from('universes')
-            .select('state')
-            .eq('username', username)
-            .single();
-
-          if (data?.state?.playlists) {
-            const cloudPlaylists = data.state.playlists.map((p: any) => ({
-              ...p,
-              updatedAt: p.updatedAt || p.createdAt,
-            }));
-            set({ playlists: cloudPlaylists });
+          if (cloudPlaylists.length > 0) {
+            set({
+              playlists: cloudPlaylists.map((p) => ({
+                id: p.id,
+                name: p.name,
+                trackIds: p.trackIds,
+                coverUrl: p.coverUrl || undefined,
+                isPublic: p.isPublic,
+                createdAt: p.createdAt,
+                updatedAt: p.updatedAt,
+              })),
+            });
+            console.log(`[PlaylistStore] Loaded ${cloudPlaylists.length} playlists from cloud`);
           }
 
           return true;
-        } catch {
+        } catch (error) {
+          console.error('[PlaylistStore] syncFromCloud error:', error);
           return false;
         }
       },

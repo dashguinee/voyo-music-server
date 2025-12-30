@@ -59,8 +59,7 @@ Complete TypeScript type system documentation for the VOYO Music application.
 /src/store/
 ├── playerStore.ts     # Player state + actions
 ├── preferenceStore.ts # User preference tracking
-├── accountStore.ts    # Account & authentication
-├── universeStore.ts   # Sync & backup
+├── universeStore.ts   # Auth, sync, portal & backup
 ├── downloadStore.ts   # Caching & downloads
 ├── trackPoolStore.ts  # Dynamic track pool
 ├── intentStore.ts     # User intent tracking

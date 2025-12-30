@@ -1729,8 +1729,7 @@ Record<string, TrackPreference>    // Preference lookup
 ### Store Files
 - `/src/store/playerStore.ts` - `PlayerStore`, `QueueItem`, `HistoryItem`
 - `/src/store/preferenceStore.ts` - `TrackPreference`, `ArtistPreference`
-- `/src/store/accountStore.ts` - `VOYOAccount`, `SubscriptionStatus`
-- `/src/store/universeStore.ts` - `UniverseData`, `PortalSession`
+- `/src/store/universeStore.ts` - `UniverseData`, `PortalSession`, Auth state
 - `/src/store/downloadStore.ts` - `DownloadProgress`, `CachedTrackInfo`
 - `/src/store/trackPoolStore.ts` - `PooledTrack`
 - `/src/store/intentStore.ts` - `ModeIntent`, `VibeMode`

@@ -97,21 +97,7 @@ Quick navigation guide to all store documentation.
 
 ---
 
-### 4. accountStore.ts (418 lines)
-**Purpose**: WhatsApp-based authentication
-
-**Documentation**:
-- [Complete Docs](./STORES-DOCUMENTATION.md#4-accountstorests)
-- [Quick Actions](./QUICK-REFERENCE.md#accountstore)
-
-**Key Actions**:
-- `startSignup(username, whatsapp)` - Start signup
-- `login(username, pin)` - Login
-- `logout()` - Logout
-
----
-
-### 5. downloadStore.ts (474 lines)
+### 4. downloadStore.ts (474 lines)
 **Purpose**: Boost HD downloads and auto-cache
 
 **Documentation**:
@@ -126,11 +112,11 @@ Quick navigation guide to all store documentation.
 
 ---
 
-### 6. intentStore.ts (410 lines)
+### 5. intentStore.ts (410 lines)
 **Purpose**: User intent tracking from MixBoard
 
 **Documentation**:
-- [Complete Docs](./STORES-DOCUMENTATION.md#6-intentstorests)
+- [Complete Docs](./STORES-DOCUMENTATION.md#5-intentstorests)
 - [Quick Actions](./QUICK-REFERENCE.md#intentstore)
 - [Architecture](./ARCHITECTURE.md#pattern-2-intent-learning-flow)
 
@@ -141,7 +127,7 @@ Quick navigation guide to all store documentation.
 
 ---
 
-### 7. reactionStore.ts (595 lines)
+### 6. reactionStore.ts (595 lines)
 **Purpose**: Social reactions and engagement
 
 **Documentation**:
@@ -156,11 +142,11 @@ Quick navigation guide to all store documentation.
 
 ---
 
-### 8. trackPoolStore.ts (442 lines)
+### 7. trackPoolStore.ts (442 lines)
 **Purpose**: Dynamic track pool management
 
 **Documentation**:
-- [Complete Docs](./STORES-DOCUMENTATION.md#8-trackpoolstorests)
+- [Complete Docs](./STORES-DOCUMENTATION.md#7-trackpoolstorests)
 - [Quick Actions](./QUICK-REFERENCE.md#trackpoolstore)
 
 **Key Actions**:
@@ -170,16 +156,18 @@ Quick navigation guide to all store documentation.
 
 ---
 
-### 9. universeStore.ts (757 lines)
-**Purpose**: Universe sync and portal system
+### 8. universeStore.ts (757 lines)
+**Purpose**: Universe sync, portal system, and authentication
 
 **Documentation**:
-- [Complete Docs](./STORES-DOCUMENTATION.md#9-universestorests)
+- [Complete Docs](./STORES-DOCUMENTATION.md#8-universestorests)
 - [Quick Actions](./QUICK-REFERENCE.md#universestore)
 - [Architecture](./ARCHITECTURE.md#pattern-5-cloud-sync-flow)
 
 **Key Actions**:
 - `signup(username, pin)` - Sign up
+- `login(username, pin)` - Login
+- `logout()` - Logout
 - `syncToCloud()` - Push to cloud
 - `openPortal()` - Open portal
 - `exportUniverse()` - Export backup
@@ -204,7 +192,7 @@ Quick navigation guide to all store documentation.
 - universeStore (Portal): [Docs](./STORES-DOCUMENTATION.md#9-universestorests)
 
 ### Authentication
-- accountStore: [Docs](./STORES-DOCUMENTATION.md#4-accountstorests)
+- universeStore: [Docs](./STORES-DOCUMENTATION.md#8-universestorests)
 
 ### Cloud Sync
 - universeStore: [Docs](./STORES-DOCUMENTATION.md#9-universestorests)

@@ -65,13 +65,6 @@ Visual representation of the VOYO Music state management architecture.
 │ • IndexedDB  │      │ • For You    │      └──────────────┘
 └──────────────┘      └──────────────┘
 
-┌──────────────┐
-│   account    │
-│   Store      │
-│              │
-│ • WhatsApp   │
-│ • PIN Auth   │
-└──────────────┘
 ```
 
 ---
@@ -235,7 +228,6 @@ User Action (Login/Explicit Save)
 | downloadStore | ✓ | ✓ | ✗ | ✗ | ✗ |
 | reactionStore | ✓ | ✓ | ✓ (hotspots) | ✓ Supabase | ✓ Reactions |
 | playlistStore | ✓ | ✓ | ✗ | ✓ Supabase | ✗ |
-| accountStore | ✓ | ✓ | ✗ | ✗ | ✗ |
 
 ---
 
@@ -254,7 +246,6 @@ User Action (Login/Explicit Save)
 │  • Intent (MixBoard state)                                 │
 │  • Track pool (hot/cold pools)                             │
 │  • Playlists (local-first)                                 │
-│  • Account (current user)                                  │
 │  • Download settings                                       │
 │  • Encrypted backups                                       │
 └─────────────────────────────────────────────────────────────┘
@@ -294,8 +285,7 @@ User Action (Login/Explicit Save)
    ├─→ preferenceStore: Restore learning data
    ├─→ intentStore: Restore intent state
    ├─→ trackPoolStore: Restore pools
-   ├─→ accountStore: Check logged in
-   └─→ universeStore: Check username
+   └─→ universeStore: Check username & auth
    │
    ▼
 3. Initialize downloadStore
@@ -525,7 +515,6 @@ if (process.env.NODE_ENV === 'development') {
     download: useDownloadStore,
     reaction: useReactionStore,
     playlist: usePlaylistStore,
-    account: useAccountStore,
   };
 }
 

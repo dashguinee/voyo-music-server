@@ -11,12 +11,11 @@ Fast lookup guide for all Zustand stores in VOYO Music.
 | **playerStore** | playerStore.ts | Audio player state | `voyo-player-state` |
 | **playlistStore** | playlistStore.ts | Playlist management | `voyo-playlists` |
 | **preferenceStore** | preferenceStore.ts | User behavior learning | `voyo-preferences` |
-| **accountStore** | accountStore.ts | WhatsApp authentication | `voyo-account` |
 | **downloadStore** | downloadStore.ts | Boost HD & auto-cache | IndexedDB + localStorage |
 | **intentStore** | intentStore.ts | User intent tracking | `voyo-intent` |
 | **reactionStore** | reactionStore.ts | Social reactions | Realtime (no persistence) |
 | **trackPoolStore** | trackPoolStore.ts | Dynamic track pool | `voyo-track-pool` |
-| **universeStore** | universeStore.ts | Universe sync & portal | `voyo-username` |
+| **universeStore** | universeStore.ts | Universe sync, portal & auth | `voyo-username` |
 
 ---
 
@@ -45,14 +44,6 @@ recordCompletion(trackId, duration, reactions)  // Track completion
 recordSkip(trackId, listenDuration)            // Track skip
 setExplicitLike(trackId, liked)                // Like/dislike
 getTrackPreference(trackId)                    // Get preference data
-```
-
-### accountStore
-```typescript
-startSignup(username, whatsapp)     // Start signup flow
-verifyPin(enteredPin)              // Verify PIN
-login(username, pin)               // Login
-logout()                           // Logout
 ```
 
 ### downloadStore

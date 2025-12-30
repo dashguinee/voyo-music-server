@@ -207,8 +207,7 @@ voyo-music/
 │   │   ├── playlistStore.ts        # Playlist management
 │   │   ├── downloadStore.ts        # Offline downloads
 │   │   ├── reactionStore.ts        # OYÉ reactions
-│   │   ├── accountStore.ts         # User account (Supabase)
-│   │   └── universeStore.ts        # Universe panel state
+│   │   └── universeStore.ts        # Universe sync, portal & auth
 │   │
 │   ├── types/                      # TypeScript type definitions
 │   │   └── index.ts                # All app types
@@ -557,17 +556,12 @@ VOYO uses **9 specialized Zustand stores** for clean separation of concerns:
 │  └─────────────────────────────────────────────────────┘    │
 │                                                               │
 │  ┌─────────────────────────────────────────────────────┐    │
-│  │ 8. accountStore.ts (USER/SUPABASE)                   │    │
-│  │    ├─ user: Supabase user object                    │    │
-│  │    ├─ isLoggedIn: Boolean                           │    │
-│  │    ├─ signIn(email, password): Auth                 │    │
-│  │    └─ signOut(): Clear session                      │    │
-│  └─────────────────────────────────────────────────────┘    │
-│                                                               │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │ 9. universeStore.ts (UI STATE)                       │    │
-│  │    ├─ isProfileOpen, isSearchOpen, etc.             │    │
-│  │    └─ UI panel toggles                               │    │
+│  │ 8. universeStore.ts (AUTH + SYNC + PORTAL)          │    │
+│  │    ├─ isLoggedIn, currentUsername: Auth state       │    │
+│  │    ├─ signup/login/logout: PIN-based auth           │    │
+│  │    ├─ syncToCloud/syncFromCloud: State sync         │    │
+│  │    ├─ openPortal/closePortal: Portal system         │    │
+│  │    └─ exportUniverse/importUniverse: Backup         │    │
 │  └─────────────────────────────────────────────────────┘    │
 │                                                               │
 └──────────────────────────────────────────────────────────────┘
@@ -611,8 +605,7 @@ intentStore + preferenceStore + trackPoolStore
 | playlistStore | Full | localStorage + Supabase | Two-way sync |
 | downloadStore | Metadata | localStorage | Blobs in IndexedDB |
 | reactionStore | Full | localStorage | All reactions |
-| accountStore | Session | Supabase | Token-based |
-| universeStore | None | Memory | UI state only |
+| universeStore | Partial | localStorage + Supabase | Username, sync state |
 
 ---
 

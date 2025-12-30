@@ -36,7 +36,7 @@
 
 ### Key Architecture Concepts
 - **3 UI Modes:** Classic (Spotify-like), VOYO (Netflix-like), Video (Immersive)
-- **9 Zustand Stores:** playerStore, playlistStore, preferenceStore, accountStore, downloadStore, intentStore, reactionStore, trackPoolStore, universeStore
+- **8 Zustand Stores:** playerStore, playlistStore, preferenceStore, downloadStore, intentStore, reactionStore, trackPoolStore, universeStore
 - **YouTube-powered:** Uses Innertube API + Piped for unlimited catalog
 
 ---
@@ -59,12 +59,11 @@ Zustand state management layer - the brain of VOYO.
 | `playerStore` | Audio playback, queue, progress | localStorage |
 | `playlistStore` | User playlists CRUD | localStorage + Supabase |
 | `preferenceStore` | Behavior learning (listens, skips) | localStorage |
-| `accountStore` | WhatsApp-based auth, profiles | localStorage |
 | `downloadStore` | Offline downloads, boost system | IndexedDB |
 | `intentStore` | MixBoard intent capture | localStorage |
 | `reactionStore` | OYE social reactions | localStorage |
 | `trackPoolStore` | Dynamic track pool management | Memory |
-| `universeStore` | Cross-device sync, portal | Supabase realtime |
+| `universeStore` | Cross-device sync, portal, authentication | Supabase realtime |
 
 ---
 

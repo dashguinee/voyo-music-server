@@ -9,12 +9,11 @@ Complete documentation of all Zustand state management stores in the VOYO music 
 1. [playerStore.ts](#1-playerstorests) - Audio Player State
 2. [playlistStore.ts](#2-playliststorests) - Playlist Management
 3. [preferenceStore.ts](#3-preferencestorests) - User Preferences & Behavior Learning
-4. [accountStore.ts](#4-accountstorests) - User Authentication & Accounts
-5. [downloadStore.ts](#5-downloadstorests) - Download Management & Boost System
-6. [intentStore.ts](#6-intentstorests) - User Intent & AI DJ
-7. [reactionStore.ts](#7-reactionstorests) - Social Reactions & Engagement
-8. [trackPoolStore.ts](#8-trackpoolstorests) - Dynamic Track Pool Management
-9. [universeStore.ts](#9-universestorests) - Universe Sync & Portal System
+4. [downloadStore.ts](#4-downloadstorests) - Download Management & Boost System
+5. [intentStore.ts](#5-intentstorests) - User Intent & AI DJ
+6. [reactionStore.ts](#6-reactionstorests) - Social Reactions & Engagement
+7. [trackPoolStore.ts](#7-trackpoolstorests) - Dynamic Track Pool Management
+8. [universeStore.ts](#8-universestorests) - Universe Sync, Portal System & Authentication
 
 ---
 
@@ -865,7 +864,12 @@ const calculateCompletionRate = (pref: TrackPreference): number => {
 
 ---
 
-## 4. accountStore.ts
+## DEPRECATED: accountStore.ts (REMOVED)
+
+> **NOTE**: accountStore has been deprecated and removed. Authentication is now handled by universeStore.
+> See [universeStore.ts](#8-universestorests) for the current authentication system.
+
+## SKIP TO NEXT SECTION
 
 **Purpose**: WhatsApp-based authentication system for voyomusic.com/username architecture.
 
@@ -1085,11 +1089,9 @@ startSignup: async (username: string, whatsapp: string) => {
 
 ### Interactions with Other Stores
 
-None directly - standalone authentication system.
-
 ---
 
-## 5. downloadStore.ts
+## 4. downloadStore.ts
 
 **Purpose**: Local caching and HD download management for VOYO Boost system.
 
@@ -1507,7 +1509,7 @@ lastBoostCompletion: BoostCompletion | null;  // Last completed boost
 
 ---
 
-## 6. intentStore.ts
+## 5. intentStore.ts
 
 **Purpose**: Captures ACTIVE user intent from MixBoard interactions to power AI DJ recommendations.
 
@@ -1773,7 +1775,7 @@ export function matchTrackToMode(track: { title, artist, tags, mood }): VibeMode
 
 ---
 
-## 7. reactionStore.ts
+## 6. reactionStore.ts
 
 **Purpose**: The Social Spine - connects Users, Tracks, and Categories through realtime reactions.
 
@@ -2115,7 +2117,7 @@ Call this on app start to subscribe to realtime reactions.
 
 ---
 
-## 8. trackPoolStore.ts
+## 7. trackPoolStore.ts
 
 **Purpose**: Intelligent dynamic track pool that grows, scores, and ages tracks based on intent + behavior.
 
@@ -2386,7 +2388,7 @@ Call `startPoolMaintenance()` on app start.
 
 ---
 
-## 9. universeStore.ts
+## 8. universeStore.ts
 
 **Purpose**: The CORE of voyomusic.com/username architecture - manages authentication, sync, and portal system.
 
@@ -2750,12 +2752,6 @@ syncToCloud: async () => {
 │  - IndexedDB     │ │ - For You algo   │ │                  │
 └──────────────────┘ └──────────────────┘ └──────────────────┘
 
-┌──────────────────┐
-│  accountStore    │
-│  - WhatsApp auth │
-│  - PIN system    │
-│  - Friends       │
-└──────────────────┘
 ```
 
 ---
@@ -2767,12 +2763,11 @@ syncToCloud: async () => {
 | playerStore | `voyo-player-state` | Manual | currentTrackId, currentTime, voyoActiveTab |
 | playlistStore | `voyo-playlists` | persist | playlists array |
 | preferenceStore | `voyo-preferences` | persist | trackPreferences, artistPreferences, tagPreferences, moodPreferences, currentSession |
-| accountStore | `voyo-account` | Manual | VOYOAccount, sessionToken |
 | downloadStore | `voyo-downloads` + IndexedDB | Manual | downloads map, boostedTracks (audio files in IndexedDB) |
 | intentStore | `voyo-intent` | persist | modeIntents, currentSession, totalDragEvents, totalTracksQueued |
 | reactionStore | None | None | Realtime from Supabase |
 | trackPoolStore | `voyo-track-pool` | persist | hotPool, coldPool, settings |
-| universeStore | `voyo-username`, `voyo-session` | Manual | username, encrypted backups |
+| universeStore | `voyo-username`, `voyo-session` | Manual | username, auth state, encrypted backups |
 
 ---
 

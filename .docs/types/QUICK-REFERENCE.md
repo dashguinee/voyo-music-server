@@ -98,10 +98,6 @@ type DownloadStatus = 'queued' | 'downloading' | 'complete' | 'failed'
 - `ArtistPreference`, `TagPreference`, `MoodPreference`
 - `ListenSession` - Current session tracking
 
-### accountStore.ts
-- `VOYOAccount` - Full account system
-- `SubscriptionStatus`, `VerificationState`
-
 ### universeStore.ts
 - `UniverseData` - Exportable state
 - `UniverseRow` - Database schema
@@ -206,7 +202,6 @@ import { Track, MoodType, ViewMode } from '@/types';
 // Store types
 import { usePlayerStore } from '@/store/playerStore';
 import { usePreferenceStore } from '@/store/preferenceStore';
-import { useAccountStore } from '@/store/accountStore';
 import { useUniverseStore } from '@/store/universeStore';
 import { useDownloadStore } from '@/store/downloadStore';
 import { useTrackPoolStore } from '@/store/trackPoolStore';

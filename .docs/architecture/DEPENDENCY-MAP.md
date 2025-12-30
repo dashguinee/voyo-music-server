@@ -146,10 +146,6 @@ universeStore
     ├── playerStore (store)
     └── supabase (lib)
 
-accountStore
-    ↓ imports
-    └── types (types)
-
 downloadStore
     ↓ imports
     └── downloadManager (service)
@@ -480,9 +476,6 @@ setTimeout(async () => {
 │  reactionStore                                               │
 │       └─→ supabase (lib)                                    │
 │                                                              │
-│  accountStore                                                │
-│       └─→ types                                             │
-│                                                              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -771,7 +764,6 @@ IF < 7 seconds: Hot-swap enabled 🔥
 | `playlistStore` | Components | 3 files |
 | `reactionStore` | Components | 3 files |
 | `trackPoolStore` | Services | 2 files |
-| `accountStore` | Components | 1 file |
 
 ### Most Coupled Modules
 
