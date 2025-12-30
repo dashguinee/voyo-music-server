@@ -429,13 +429,13 @@ export const Hub = ({ onOpenProfile }: HubProps) => {
         // Load followed users
         const following = await followsAPI.getFollowing(currentUsername);
 
-        // Get profiles for each followed user
+        // Get profiles for each followed user (f is username string)
         const friendProfiles = await Promise.all(
-          following.map(async (f) => {
-            const result = await universeAPI.getPublicProfile(f.username);
+          following.map(async (username) => {
+            const result = await universeAPI.getPublicProfile(username);
             return {
-              id: f.username,
-              name: result.profile?.displayName || f.username,
+              id: username,
+              name: result.profile?.displayName || username,
               avatar: result.profile?.avatarUrl || '',
               isOnline: result.portalOpen,
               nowPlaying: result.nowPlaying ? { title: result.nowPlaying.title, artist: result.nowPlaying.artist } : null,
