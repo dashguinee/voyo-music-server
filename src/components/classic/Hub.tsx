@@ -164,7 +164,7 @@ const friendStories: Record<string, {
 };
 
 // Chat messages with Snapchat-style status
-type MessageStatus = 'new_image' | 'new_video' | 'new_voice' | 'received' | 'opened' | 'delivered' | 'sent';
+type MessageStatus = 'new_image' | 'new_video' | 'new_voice' | 'received' | 'opened' | 'delivered' | 'sent' | 'new_dm';
 interface Message {
   id: string;
   friendId: string;
@@ -179,16 +179,17 @@ interface Message {
 }
 
 const messages: Message[] = [
-  { id: '1', friendId: 'aziz', friendName: 'Aziz', friendAvatar: AVATARS.aziz, isOnline: true, status: 'new_image', statusText: 'New Image', time: '2m', isNew: true, unreadCount: 2 },
-  { id: '2', friendId: 'omar', friendName: 'Omar', friendAvatar: AVATARS.omar, isOnline: false, status: 'new_voice', statusText: 'New Voice Note', time: '1h', isNew: true, unreadCount: 1 },
-  { id: '3', friendId: 'kenza', friendName: 'Kenza', friendAvatar: AVATARS.kenza, isOnline: true, status: 'received', statusText: 'Received', time: '3h', isNew: false },
-  { id: '4', friendId: 'sarah', friendName: 'Sarah', friendAvatar: AVATARS.sarah, isOnline: true, status: 'opened', statusText: 'Opened', time: '5h', isNew: false },
-  { id: '5', friendId: 'youssef', friendName: 'Youssef', friendAvatar: AVATARS.youssef, isOnline: true, status: 'delivered', statusText: 'Delivered', time: '1d', isNew: false },
-  { id: '6', friendId: 'dash', friendName: 'Someone', friendAvatar: AVATARS.dash, isOnline: false, status: 'new_video', statusText: 'New Video', time: '3h', isNew: true, unreadCount: 1 },
+  { id: '1', friendId: 'oyodj', friendName: 'Oyo DJ', friendAvatar: 'https://i.ytimg.com/vi/421w1j87fEM/hqdefault.jpg', isOnline: true, status: 'new_dm', statusText: 'New Message', time: 'now', isNew: true, unreadCount: 1 },
+  { id: '2', friendId: 'dash', friendName: 'Dash', friendAvatar: AVATARS.dash, isOnline: true, status: 'new_dm', statusText: 'New Message', time: '2m', isNew: true, unreadCount: 3 },
+  { id: '3', friendId: 'aziz', friendName: 'Aziz', friendAvatar: AVATARS.aziz, isOnline: true, status: 'new_image', statusText: 'New Image', time: '5m', isNew: true, unreadCount: 2 },
+  { id: '4', friendId: 'omar', friendName: 'Omar', friendAvatar: AVATARS.omar, isOnline: false, status: 'new_voice', statusText: 'New Voice Note', time: '1h', isNew: true, unreadCount: 1 },
+  { id: '5', friendId: 'kenza', friendName: 'Kenza', friendAvatar: AVATARS.kenza, isOnline: true, status: 'received', statusText: 'Received', time: '3h', isNew: false },
+  { id: '6', friendId: 'sarah', friendName: 'Sarah', friendAvatar: AVATARS.sarah, isOnline: true, status: 'opened', statusText: 'Opened', time: '5h', isNew: false },
 ];
 
 // Status colors like Snapchat
 const statusColors: Record<MessageStatus, string> = {
+  new_dm: '#a855f7', // Purple for DMs
   new_image: '#9333ea', // Purple for images
   new_video: '#9333ea', // Purple for video
   new_voice: '#3b82f6', // Blue for voice

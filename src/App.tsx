@@ -1070,10 +1070,36 @@ function App() {
       }
     });
 
+    // Subscribe to incoming DMs for DynamicIsland notifications
+    let dmSubscription: any = null;
+    const setupDMSubscription = async () => {
+      const { directMessagesAPI, isSupabaseConfigured } = await import('./lib/supabase');
+      if (!isSupabaseConfigured) return;
+
+      const currentUser = useUniverseStore.getState().currentUsername;
+      if (!currentUser) return;
+
+      dmSubscription = directMessagesAPI.subscribe(currentUser, (newMessage) => {
+        // Push to DynamicIsland
+        (window as any).pushNotification?.({
+          id: `dm-${newMessage.id}`,
+          type: 'message',
+          title: newMessage.from_user,
+          subtitle: newMessage.message.slice(0, 50) + (newMessage.message.length > 50 ? '...' : '')
+        });
+      });
+    };
+    setupDMSubscription();
+
     return () => {
       unsubscribeFromReactions();
       unsubReactions();
       unsubUniverse();
+      if (dmSubscription) {
+        import('./lib/supabase').then(({ directMessagesAPI }) => {
+          directMessagesAPI.unsubscribe(dmSubscription);
+        });
+      }
     };
   }, []);
 
