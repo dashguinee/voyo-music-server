@@ -355,6 +355,24 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       recordPoolEngagement(track.id, 'play');
     }
 
+    // VIDEO INTELLIGENCE: Sync play to collective brain (async, non-blocking)
+    if (!signal.aborted) {
+      import('../lib/supabase').then(({ videoIntelligenceAPI, isSupabaseConfigured }) => {
+        if (!isSupabaseConfigured || signal.aborted) return;
+        const trackId = track.trackId || track.id;
+        if (trackId) {
+          videoIntelligenceAPI.recordPlay(trackId);
+          videoIntelligenceAPI.sync({
+            youtube_id: trackId,
+            title: track.title,
+            artist: track.artist || null,
+            thumbnail_url: track.coverUrl || `https://i.ytimg.com/vi/${trackId}/hqdefault.jpg`,
+            discovery_method: 'manual_play',
+          });
+        }
+      }).catch(() => {});
+    }
+
     // AUTO-TRIGGER: Update smart discovery for this track (check abort)
     if (!signal.aborted) {
       get().updateDiscoveryForTrack(track);
@@ -685,6 +703,15 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
       // POOL ENGAGEMENT: Record queue action (strong intent signal)
       recordPoolEngagement(track.id, 'queue');
+
+      // VIDEO INTELLIGENCE: Record queue to collective brain
+      const trackId = track.trackId || track.id;
+      if (trackId) {
+        import('../lib/supabase').then(({ videoIntelligenceAPI, isSupabaseConfigured }) => {
+          if (!isSupabaseConfigured) return;
+          videoIntelligenceAPI.recordQueue(trackId);
+        }).catch(() => {});
+      }
 
       if (position !== undefined) {
         const newQueue = [...state.queue];

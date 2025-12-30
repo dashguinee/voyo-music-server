@@ -14,6 +14,16 @@ import { usePlayerStore } from '../../store/playerStore';
 import { useUniverseStore } from '../../store/universeStore';
 import { getYouTubeThumbnail } from '../../data/tracks';
 import { DirectMessageChat } from '../chat/DirectMessageChat';
+import { followsAPI, directMessagesAPI, universeAPI, Conversation, isSupabaseConfigured } from '../../lib/supabase';
+
+// Helper to format time ago
+function getTimeAgo(timestamp: number): string {
+  const seconds = Math.floor((Date.now() - timestamp) / 1000);
+  if (seconds < 60) return 'now';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
+  return `${Math.floor(seconds / 86400)}d`;
+}
 
 // Premium avatar images
 // TODO: Replace dash with actual profile photo when available
@@ -394,6 +404,57 @@ export const Hub = ({ onOpenProfile }: HubProps) => {
   // Get current logged in user
   const { currentUsername } = useUniverseStore();
   const myNowPlaying = currentTrack ? { title: currentTrack.title, artist: currentTrack.artist } : null;
+
+  // Real data state
+  const [realFriends, setRealFriends] = useState<Array<{
+    id: string;
+    name: string;
+    avatar: string;
+    isOnline: boolean;
+    nowPlaying: { title: string; artist: string } | null;
+    portalOpen: boolean;
+  }>>([]);
+  const [realConversations, setRealConversations] = useState<Conversation[]>([]);
+  const [isLoadingReal, setIsLoadingReal] = useState(true);
+
+  // Load real followed users and conversations
+  useEffect(() => {
+    if (!currentUsername || !isSupabaseConfigured) {
+      setIsLoadingReal(false);
+      return;
+    }
+
+    const loadRealData = async () => {
+      try {
+        // Load followed users
+        const following = await followsAPI.getFollowing(currentUsername);
+
+        // Get profiles for each followed user
+        const friendProfiles = await Promise.all(
+          following.map(async (f) => {
+            const result = await universeAPI.getPublicProfile(f.username);
+            return {
+              id: f.username,
+              name: result.profile?.displayName || f.username,
+              avatar: result.profile?.avatarUrl || '',
+              isOnline: result.portalOpen,
+              nowPlaying: result.nowPlaying ? { title: result.nowPlaying.title, artist: result.nowPlaying.artist } : null,
+              portalOpen: result.portalOpen,
+            };
+          })
+        );
+        setRealFriends(friendProfiles);
+
+        // Load DM conversations
+        const convos = await directMessagesAPI.getConversations(currentUsername);
+        setRealConversations(convos);
+      } catch (err) {
+        console.error('[VOYO] Failed to load real data:', err);
+      }
+      setIsLoadingReal(false);
+    };
+    loadRealData();
+  }, [currentUsername]);
   const nextTrack = queue[0] || null;
 
   // Auto-fill note with what I'm listening to if empty
@@ -403,11 +464,27 @@ export const Hub = ({ onOpenProfile }: HubProps) => {
   // Filter messages by tab
   const unreadCount = messages.filter(m => m.isNew).length;
   const storiesCount = friends.filter(f => f.hasStory).length;
+  // Merge real conversations with mock messages for display
+  const displayMessages = realConversations.length > 0
+    ? realConversations.map((c) => ({
+        id: c.username,
+        friendId: c.username,
+        friendName: c.displayName,
+        friendAvatar: c.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(c.displayName)}&background=8b5cf6&color=fff`,
+        isOnline: false, // Would need real-time presence
+        status: c.unreadCount > 0 ? 'new_dm' as MessageStatus : 'received' as MessageStatus,
+        statusText: c.unreadCount > 0 ? 'New Message' : 'Received',
+        time: getTimeAgo(new Date(c.lastMessageTime).getTime()),
+        isNew: c.unreadCount > 0,
+        unreadCount: c.unreadCount,
+      }))
+    : messages;
+
   const filteredMessages = messageTab === 'unread'
-    ? messages.filter(m => m.isNew)
+    ? displayMessages.filter(m => m.isNew)
     : messageTab === 'stories'
       ? []
-      : messages;
+      : displayMessages;
 
   return (
     <div className="h-full bg-[#0a0a0f] overflow-y-auto pb-24">

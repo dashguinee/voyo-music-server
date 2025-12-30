@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { useUniverseStore } from '../../store/universeStore';
 import { usePlayerStore } from '../../store/playerStore';
-import { universeAPI, PublicProfile, NowPlaying } from '../../lib/supabase';
+import { universeAPI, followsAPI, PublicProfile, NowPlaying } from '../../lib/supabase';
 import { PortalChat } from '../portal/PortalChat';
 
 export const ProfilePage = () => {
@@ -49,6 +49,12 @@ export const ProfilePage = () => {
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [showShareModal, setShowShareModal] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Follow state
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followerCount, setFollowerCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+  const [isFollowLoading, setIsFollowLoading] = useState(false);
 
   // Generate profile URL
   const profileUrl = `${window.location.origin}/${username}`;
@@ -119,6 +125,43 @@ export const ProfilePage = () => {
       leaveUniverse();
     };
   }, [username]);
+
+  // Load follow status
+  useEffect(() => {
+    if (!username || !currentUsername || isOwnProfile) return;
+
+    const loadFollowStatus = async () => {
+      const [following, counts] = await Promise.all([
+        followsAPI.isFollowing(currentUsername, username),
+        followsAPI.getCounts(username),
+      ]);
+      setIsFollowing(following);
+      setFollowerCount(counts.followers);
+      setFollowingCount(counts.following);
+    };
+    loadFollowStatus();
+  }, [username, currentUsername, isOwnProfile]);
+
+  // Handle follow/unfollow
+  const handleFollowToggle = async () => {
+    if (!username || !currentUsername || isFollowLoading) return;
+
+    setIsFollowLoading(true);
+    if (isFollowing) {
+      const success = await followsAPI.unfollow(currentUsername, username);
+      if (success) {
+        setIsFollowing(false);
+        setFollowerCount((c) => Math.max(0, c - 1));
+      }
+    } else {
+      const success = await followsAPI.follow(currentUsername, username);
+      if (success) {
+        setIsFollowing(true);
+        setFollowerCount((c) => c + 1);
+      }
+    }
+    setIsFollowLoading(false);
+  };
 
   // Update from viewingUniverse when it changes + AUTO-SYNC playback
   const [hasJoinedPortal, setHasJoinedPortal] = useState(false);
@@ -278,6 +321,20 @@ export const ProfilePage = () => {
             <p className="text-white/60 text-sm max-w-xs mb-4">{profile.bio}</p>
           )}
 
+          {/* Follower Stats */}
+          {!isOwnProfile && (
+            <div className="flex gap-6 mb-4">
+              <div className="text-center">
+                <p className="text-white font-bold">{followerCount}</p>
+                <p className="text-white/40 text-xs">followers</p>
+              </div>
+              <div className="text-center">
+                <p className="text-white font-bold">{followingCount}</p>
+                <p className="text-white/40 text-xs">following</p>
+              </div>
+            </div>
+          )}
+
           {/* Actions */}
           <div className="flex gap-3">
             {isOwnProfile ? (
@@ -290,16 +347,36 @@ export const ProfilePage = () => {
               </button>
             ) : (
               <>
-                <button
-                  onClick={() => setShowPinInput(true)}
-                  className="px-5 py-2 rounded-full bg-white/10 text-white font-semibold text-sm flex items-center gap-2 border border-white/20"
-                >
-                  <Lock className="w-4 h-4" />
-                  Enter PIN
-                </button>
+                {/* Follow Button */}
+                {currentUsername && (
+                  <motion.button
+                    onClick={handleFollowToggle}
+                    disabled={isFollowLoading}
+                    className={`px-5 py-2 rounded-full font-semibold text-sm flex items-center gap-2 ${
+                      isFollowing
+                        ? 'bg-white/10 text-white border border-white/20'
+                        : 'bg-gradient-to-r from-purple-500 to-pink-500 text-white'
+                    }`}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    {isFollowLoading ? (
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : isFollowing ? (
+                      <>
+                        <Check className="w-4 h-4" />
+                        Following
+                      </>
+                    ) : (
+                      <>
+                        <Users className="w-4 h-4" />
+                        Follow
+                      </>
+                    )}
+                  </motion.button>
+                )}
                 <button
                   onClick={handleShare}
-                  className="px-5 py-2 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold text-sm flex items-center gap-2"
+                  className="px-5 py-2 rounded-full bg-white/10 text-white font-semibold text-sm flex items-center gap-2 border border-white/20"
                 >
                   <Share2 className="w-4 h-4" />
                   Share
