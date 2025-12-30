@@ -13,7 +13,7 @@
  * - videoTarget === 'landscape' → Fullscreen fixed position
  */
 
-import { useEffect, useRef, useCallback, memo, useMemo } from 'react';
+import { useEffect, useRef, useCallback, memo } from 'react';
 import { usePlayerStore } from '../store/playerStore';
 
 const YT_STATES = {
@@ -59,277 +59,6 @@ function getYouTubeId(trackId: string): string {
   return trackId;
 }
 
-// Isolated component for portrait mode - handles dynamic zoom based on overlay state
-// Uses FIXED positioning to overlay correctly on NowPlaying modal
-const PortraitVideoContainer = memo(({ iframeContent }: { iframeContent: React.ReactNode }) => {
-  const currentTime = usePlayerStore((s) => s.currentTime);
-  const duration = usePlayerStore((s) => s.duration);
-  const queue = usePlayerStore((s) => s.queue);
-  const isPlaying = usePlayerStore((s) => s.isPlaying);
-  const currentTrack = usePlayerStore((s) => s.currentTrack);
-  const setVideoTarget = usePlayerStore((s) => s.setVideoTarget);
-
-  // Calculate overlay visibility (same logic as VideoOverlays in VoyoPortraitPlayer)
-  const timeRemaining = duration - currentTime;
-  const showingNowPlaying = currentTime < 5;
-  const showingNextUpMid = currentTime > 30 && duration > 60 &&
-                            currentTime >= duration * 0.45 && currentTime < duration * 0.55;
-  const showingNextUpEnd = timeRemaining > 0 && timeRemaining < 20;
-  const upcomingTrack = queue[0]?.track || null;
-  const showNextUp = (showingNextUpMid || showingNextUpEnd) && upcomingTrack;
-  const showingOverlay = showingNowPlaying || showNextUp;
-
-  // Dynamic zoom:
-  // - Full zoom (140%) during pure playback - cropped to hide YouTube UI
-  // - Pull back (120%) when overlay appears (give text breathing room)
-  // - Slight pull back when paused
-  const getZoomLevel = () => {
-    if (!isPlaying) return { scale: 1.2 }; // Paused
-    if (showingOverlay) return { scale: 1.3 }; // Overlay visible
-    return { scale: 1.4 }; // Full immersion - cropped for cinematic feel
-  };
-
-  const { scale } = getZoomLevel();
-
-  // Close video on tap
-  const handleTapToClose = () => {
-    setVideoTarget('hidden');
-  };
-
-  return (
-    <div
-      id="voyo-iframe-container"
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100vw',
-        height: '100vh',
-        zIndex: 45, // Below NowPlaying controls (z-50) but above background
-        overflow: 'hidden',
-        background: '#000',
-      }}
-    >
-      {/* Video iframe with dynamic zoom */}
-      <div
-        style={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          width: '100%',
-          height: '100%',
-          transform: `translate(-50%, -50%) scale(${scale})`,
-          transition: 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
-        }}
-      >
-        {iframeContent}
-      </div>
-
-      {/* TAP TO CLOSE OVERLAY - invisible but captures taps */}
-      <div
-        onClick={handleTapToClose}
-        style={{
-          position: 'absolute',
-          inset: 0,
-          cursor: 'pointer',
-          zIndex: 1,
-        }}
-        role="button"
-        aria-label="Tap to close video"
-      />
-
-      {/* VIDEO INFO OVERLAYS - TV-style Now Playing / Next Up */}
-      {currentTrack && (
-        <>
-          {/* TOP Purple fade gradient */}
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              pointerEvents: 'none',
-              zIndex: 2,
-              background: `linear-gradient(
-                to bottom,
-                rgba(88, 28, 135, 0.9) 0%,
-                rgba(139, 92, 246, 0.6) 12%,
-                rgba(139, 92, 246, 0.3) 25%,
-                transparent 45%
-              )`,
-            }}
-          />
-
-          {/* BOTTOM Purple fade gradient */}
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              pointerEvents: 'none',
-              zIndex: 2,
-              background: `linear-gradient(
-                to top,
-                rgba(88, 28, 135, 0.95) 0%,
-                rgba(139, 92, 246, 0.7) 15%,
-                rgba(139, 92, 246, 0.4) 30%,
-                rgba(139, 92, 246, 0.1) 50%,
-                transparent 70%
-              )`,
-            }}
-          />
-
-          {/* NOW PLAYING - First 5 seconds */}
-          {showingNowPlaying && (
-            <div
-              style={{
-                position: 'absolute',
-                top: 16,
-                left: 16,
-                right: 16,
-                zIndex: 3,
-                pointerEvents: 'none',
-              }}
-            >
-              <p style={{
-                color: 'rgba(216, 180, 254, 0.9)',
-                fontSize: 10,
-                textTransform: 'uppercase',
-                letterSpacing: '0.2em',
-                fontWeight: 500,
-                marginBottom: 4,
-                textShadow: '0 1px 4px rgba(0,0,0,0.9)',
-              }}>
-                Now Playing
-              </p>
-              <p style={{
-                color: 'white',
-                fontWeight: 'bold',
-                fontSize: 16,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                textShadow: '0 2px 8px rgba(0,0,0,0.9)',
-              }}>
-                {currentTrack.title}
-              </p>
-              <p style={{
-                color: 'rgba(255,255,255,0.7)',
-                fontSize: 12,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                textShadow: '0 1px 4px rgba(0,0,0,0.9)',
-              }}>
-                {currentTrack.artist}
-              </p>
-            </div>
-          )}
-
-          {/* NEXT UP - Mid & End of track */}
-          {showNextUp && !showingNowPlaying && upcomingTrack && (
-            <div
-              style={{
-                position: 'absolute',
-                top: 16,
-                left: 16,
-                right: 16,
-                zIndex: 3,
-                pointerEvents: 'none',
-              }}
-            >
-              <p style={{
-                color: 'rgba(251, 191, 36, 0.9)',
-                fontSize: 10,
-                textTransform: 'uppercase',
-                letterSpacing: '0.2em',
-                fontWeight: 500,
-                marginBottom: 4,
-                textShadow: '0 1px 4px rgba(0,0,0,0.9)',
-              }}>
-                Next Up
-              </p>
-              <p style={{
-                color: 'white',
-                fontWeight: 'bold',
-                fontSize: 16,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                textShadow: '0 2px 8px rgba(0,0,0,0.9)',
-              }}>
-                {upcomingTrack.title}
-              </p>
-              <p style={{
-                color: 'rgba(255,255,255,0.7)',
-                fontSize: 12,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                textShadow: '0 1px 4px rgba(0,0,0,0.9)',
-              }}>
-                {upcomingTrack.artist}
-              </p>
-            </div>
-          )}
-
-          {/* BOTTOM TRACK INFO - Always visible */}
-          <div
-            style={{
-              position: 'absolute',
-              bottom: 80,
-              left: 16,
-              right: 16,
-              zIndex: 3,
-              pointerEvents: 'none',
-            }}
-          >
-            <p style={{
-              color: 'white',
-              fontWeight: 'bold',
-              fontSize: 18,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              textShadow: '0 2px 8px rgba(0,0,0,0.9)',
-            }}>
-              {currentTrack.title}
-            </p>
-            <p style={{
-              color: 'rgba(255,255,255,0.7)',
-              fontSize: 14,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              textShadow: '0 1px 4px rgba(0,0,0,0.9)',
-            }}>
-              {currentTrack.artist}
-            </p>
-          </div>
-
-          {/* TAP HINT - subtle instruction */}
-          <div
-            style={{
-              position: 'absolute',
-              bottom: 40,
-              left: 0,
-              right: 0,
-              textAlign: 'center',
-              zIndex: 3,
-              pointerEvents: 'none',
-            }}
-          >
-            <p style={{
-              color: 'rgba(255,255,255,0.4)',
-              fontSize: 10,
-              textShadow: '0 1px 4px rgba(0,0,0,0.9)',
-            }}>
-              Tap anywhere to close
-            </p>
-          </div>
-        </>
-      )}
-    </div>
-  );
-});
-
 export const YouTubeIframe = memo(() => {
   const playerRef = useRef<YT.Player | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -347,6 +76,9 @@ export const YouTubeIframe = memo(() => {
   const playbackSource = usePlayerStore((s) => s.playbackSource);
   const videoTarget = usePlayerStore((s) => s.videoTarget);
   const seekPosition = usePlayerStore((s) => s.seekPosition);
+  const currentTime = usePlayerStore((s) => s.currentTime);
+  const duration = usePlayerStore((s) => s.duration);
+  const queue = usePlayerStore((s) => s.queue);
 
   const setCurrentTime = usePlayerStore((s) => s.setCurrentTime);
   const setDuration = usePlayerStore((s) => s.setDuration);
@@ -354,6 +86,7 @@ export const YouTubeIframe = memo(() => {
   const setBufferHealth = usePlayerStore((s) => s.setBufferHealth);
   const nextTrack = usePlayerStore((s) => s.nextTrack);
   const clearSeekPosition = usePlayerStore((s) => s.clearSeekPosition);
+  const setVideoTarget = usePlayerStore((s) => s.setVideoTarget);
 
   const youtubeId = currentTrack?.trackId ? getYouTubeId(currentTrack.trackId) : '';
   const showVideo = videoTarget !== 'hidden';
@@ -621,62 +354,305 @@ export const YouTubeIframe = memo(() => {
     };
   }, [playbackSource]); // Minimal deps - setCurrentTime/setProgress are stable store functions
 
-  // The iframe content
-  const iframeContent = (
-    <div
-      ref={containerRef}
-      style={{ width: '100%', height: '100%' }}
-    />
-  );
+  // Get container styles based on videoTarget
+  // CRITICAL: Always return same structure to prevent iframe remount
+  const getContainerStyles = (): React.CSSProperties => {
+    if (videoTarget === 'landscape') {
+      return {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
+        transform: 'scale(1.2)',
+        transformOrigin: 'center center',
+        zIndex: 100,
+        pointerEvents: 'none',
+        overflow: 'hidden',
+        background: '#000',
+      };
+    }
+    if (videoTarget === 'portrait') {
+      return {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
+        zIndex: 60, // Above player controls, below modals
+        overflow: 'hidden',
+        background: '#000',
+      };
+    }
+    // Hidden mode
+    return {
+      position: 'fixed',
+      bottom: 0,
+      right: 0,
+      width: 300,
+      height: 150,
+      opacity: 0.001, // Nearly invisible but not 0 (some browsers detect opacity:0)
+      pointerEvents: 'none',
+      zIndex: -1, // Behind everything
+    };
+  };
 
-  // Landscape mode: fullscreen fixed
-  if (videoTarget === 'landscape') {
-    return (
-      <div
-        id="voyo-iframe-container"
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          width: '100vw',
-          height: '100vh',
-          transform: 'scale(1.2)',
-          transformOrigin: 'center center',
-          zIndex: 100,
-          pointerEvents: 'none',
-          overflow: 'hidden',
-          background: '#000',
-        }}
-      >
-        {iframeContent}
-      </div>
-    );
-  }
+  // Get video iframe inner styles
+  const getVideoStyles = (): React.CSSProperties => {
+    if (videoTarget === 'landscape') {
+      return {
+        width: '100%',
+        height: '100%',
+      };
+    }
+    if (videoTarget === 'portrait') {
+      const scale = !isPlaying ? 1.2 : (showingOverlay ? 1.3 : 1.4);
+      return {
+        position: 'absolute',
+        top: '50%',
+        left: '50%',
+        width: '100%',
+        height: '100%',
+        transform: `translate(-50%, -50%) scale(${scale})`,
+        transition: 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+        zIndex: 0,
+      };
+    }
+    return {
+      width: '100%',
+      height: '100%',
+    };
+  };
 
-  // Portrait mode: DYNAMIC ZOOM based on playback state
-  // Full zoom during playback, pull back when showing overlays
-  if (videoTarget === 'portrait') {
-    return <PortraitVideoContainer iframeContent={iframeContent} />;
-  }
+  // Calculate overlay visibility for portrait mode
+  const timeRemaining = duration - currentTime;
+  const showingNowPlaying = currentTime < 5;
+  const showingNextUpMid = currentTime > 30 && duration > 60 &&
+                            currentTime >= duration * 0.45 && currentTime < duration * 0.55;
+  const showingNextUpEnd = timeRemaining > 0 && timeRemaining < 20;
+  const upcomingTrack = queue[0]?.track || null;
+  const showNextUp = (showingNextUpMid || showingNextUpEnd) && upcomingTrack;
+  const showingOverlay = showingNowPlaying || showNextUp;
 
-  // Hidden mode: visually hidden but still "visible" to YouTube
-  // YouTube blocks autoplay for truly invisible iframes (1x1px, offscreen)
-  // So we make it small but on-screen with opacity:0 and behind everything
   return (
     <div
       id="voyo-iframe-container"
-      style={{
-        position: 'fixed',
-        bottom: 0,
-        right: 0,
-        width: 300,
-        height: 150,
-        opacity: 0.001, // Nearly invisible but not 0 (some browsers detect opacity:0)
-        pointerEvents: 'none',
-        zIndex: -1, // Behind everything
-      }}
+      style={getContainerStyles()}
     >
-      {iframeContent}
+      {/* Video iframe - always same structure to prevent remount */}
+      <div style={getVideoStyles()}>
+        <div
+          ref={containerRef}
+          style={{ width: '100%', height: '100%' }}
+        />
+      </div>
+
+      {/* Portrait mode overlays - only render when visible */}
+      {videoTarget === 'portrait' && (
+        <>
+          {/* TAP TO CLOSE OVERLAY */}
+          <div
+            onClick={() => setVideoTarget('hidden')}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              cursor: 'pointer',
+              zIndex: 5,
+            }}
+            role="button"
+            aria-label="Tap to close video"
+          />
+
+          {/* VIDEO INFO OVERLAYS */}
+          {currentTrack && (
+            <>
+              {/* TOP Purple fade gradient */}
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  pointerEvents: 'none',
+                  zIndex: 10,
+                  background: `linear-gradient(
+                    to bottom,
+                    rgba(88, 28, 135, 0.9) 0%,
+                    rgba(139, 92, 246, 0.6) 12%,
+                    rgba(139, 92, 246, 0.3) 25%,
+                    transparent 45%
+                  )`,
+                }}
+              />
+
+              {/* BOTTOM Purple fade gradient */}
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  pointerEvents: 'none',
+                  zIndex: 10,
+                  background: `linear-gradient(
+                    to top,
+                    rgba(88, 28, 135, 0.95) 0%,
+                    rgba(139, 92, 246, 0.7) 15%,
+                    rgba(139, 92, 246, 0.4) 30%,
+                    rgba(139, 92, 246, 0.1) 50%,
+                    transparent 70%
+                  )`,
+                }}
+              />
+
+              {/* NOW PLAYING - First 5 seconds */}
+              {showingNowPlaying && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 16,
+                    left: 16,
+                    right: 16,
+                    zIndex: 15,
+                    pointerEvents: 'none',
+                  }}
+                >
+                  <p style={{
+                    color: 'rgba(216, 180, 254, 0.9)',
+                    fontSize: 10,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.2em',
+                    fontWeight: 500,
+                    marginBottom: 4,
+                    textShadow: '0 1px 4px rgba(0,0,0,0.9)',
+                  }}>
+                    Now Playing
+                  </p>
+                  <p style={{
+                    color: 'white',
+                    fontWeight: 'bold',
+                    fontSize: 16,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    textShadow: '0 2px 8px rgba(0,0,0,0.9)',
+                  }}>
+                    {currentTrack.title}
+                  </p>
+                  <p style={{
+                    color: 'rgba(255,255,255,0.7)',
+                    fontSize: 12,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    textShadow: '0 1px 4px rgba(0,0,0,0.9)',
+                  }}>
+                    {currentTrack.artist}
+                  </p>
+                </div>
+              )}
+
+              {/* NEXT UP - Mid & End of track */}
+              {showNextUp && !showingNowPlaying && upcomingTrack && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 16,
+                    left: 16,
+                    right: 16,
+                    zIndex: 15,
+                    pointerEvents: 'none',
+                  }}
+                >
+                  <p style={{
+                    color: 'rgba(251, 191, 36, 0.9)',
+                    fontSize: 10,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.2em',
+                    fontWeight: 500,
+                    marginBottom: 4,
+                    textShadow: '0 1px 4px rgba(0,0,0,0.9)',
+                  }}>
+                    Next Up
+                  </p>
+                  <p style={{
+                    color: 'white',
+                    fontWeight: 'bold',
+                    fontSize: 16,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    textShadow: '0 2px 8px rgba(0,0,0,0.9)',
+                  }}>
+                    {upcomingTrack.title}
+                  </p>
+                  <p style={{
+                    color: 'rgba(255,255,255,0.7)',
+                    fontSize: 12,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    textShadow: '0 1px 4px rgba(0,0,0,0.9)',
+                  }}>
+                    {upcomingTrack.artist}
+                  </p>
+                </div>
+              )}
+
+              {/* BOTTOM TRACK INFO - Always visible */}
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: 80,
+                  left: 16,
+                  right: 16,
+                  zIndex: 15,
+                  pointerEvents: 'none',
+                }}
+              >
+                <p style={{
+                  color: 'white',
+                  fontWeight: 'bold',
+                  fontSize: 18,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  textShadow: '0 2px 8px rgba(0,0,0,0.9)',
+                }}>
+                  {currentTrack.title}
+                </p>
+                <p style={{
+                  color: 'rgba(255,255,255,0.7)',
+                  fontSize: 14,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  textShadow: '0 1px 4px rgba(0,0,0,0.9)',
+                }}>
+                  {currentTrack.artist}
+                </p>
+              </div>
+
+              {/* TAP HINT */}
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: 40,
+                  left: 0,
+                  right: 0,
+                  textAlign: 'center',
+                  zIndex: 15,
+                  pointerEvents: 'none',
+                }}
+              >
+                <p style={{
+                  color: 'rgba(255,255,255,0.4)',
+                  fontSize: 10,
+                  textShadow: '0 1px 4px rgba(0,0,0,0.9)',
+                }}>
+                  Tap anywhere to close
+                </p>
+              </div>
+            </>
+          )}
+        </>
+      )}
     </div>
   );
 });
