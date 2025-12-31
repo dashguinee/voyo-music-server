@@ -6,6 +6,61 @@
  */
 
 // ============================================
+// ARTIST TIER SYSTEM (Cultural Canon)
+// ============================================
+
+export type ArtistTier =
+  | 'A'   // Continental/Global Icons - Burna, Wizkid, Davido, Tiwa, Fela
+  | 'B'   // Regional Stars - Major influence in their region
+  | 'C'   // National Artists - Known within their country
+  | 'D';  // Underground/Emerging - Hidden gems, rising stars
+
+// ============================================
+// CANON LEVELS (Track Significance)
+// ============================================
+
+export type CanonLevel =
+  | 'CORE'       // Essential listening - defines the genre/era (Ye by Burna Boy)
+  | 'ESSENTIAL'  // Important works - strong cultural impact
+  | 'DEEP_CUT'   // Fan favorites - album tracks, underrated gems
+  | 'ARCHIVE'    // Historical preservation - older works, documenting evolution
+  | 'ECHO';      // Hidden gems - ghosted, forgotten, suffocated by circumstance
+                 // Not noise - echoes are artists who never got their shine
+
+// ============================================
+// CULTURAL TAGS (Meaning & Significance)
+// ============================================
+
+export type CulturalTag =
+  // Movement markers
+  | 'anthem'       // Became cultural anthem (e.g., "African Giant")
+  | 'revolution'   // Political/social change music
+  | 'liberation'   // Freedom, independence themes
+  | 'protest'      // Direct protest music
+  // Heritage markers
+  | 'tradition'    // Traditional sounds preserved/fused
+  | 'roots'        // Deep cultural roots
+  | 'motherland'   // Africa-centric themes
+  | 'pan-african'  // Unity across Africa
+  // Diaspora markers
+  | 'diaspora'     // Diaspora experience
+  | 'migration'    // Immigration/movement stories
+  | 'homecoming'   // Return to roots
+  | 'bridge'       // Bridges cultures (Africa + West)
+  // Street markers
+  | 'street'       // Street life, hustle
+  | 'ghetto'       // Hood stories
+  | 'survival'     // Struggle narratives
+  // Celebration markers
+  | 'wedding'      // Wedding/ceremony music
+  | 'festival'     // Festival anthems
+  | 'celebration'  // Pure celebration
+  // Spiritual markers
+  | 'spiritual'    // Spiritual/religious
+  | 'prayer'       // Prayer/worship
+  | 'healing';     // Healing, restoration
+
+// ============================================
 // PRIMARY MOOD CATEGORIES
 // ============================================
 
@@ -246,4 +301,145 @@ export function getCompatibleMoods(mood: PrimaryMood): PrimaryMood[] {
   };
 
   return compatibility[mood] || [];
+}
+
+// ============================================
+// CULTURAL TAG KEYWORDS (Canon System)
+// ============================================
+
+export const CULTURAL_TAG_KEYWORDS: Record<CulturalTag, string[]> = {
+  // Movement markers
+  anthem: ['anthem', 'national', 'independence', 'unity', 'movement', 'stand up', 'rise'],
+  revolution: ['revolution', 'change', 'fight', 'power', 'system', 'struggle', 'movement'],
+  liberation: ['freedom', 'free', 'liberation', 'independent', 'break chains', 'emancipation'],
+  protest: ['protest', 'injustice', 'police', 'government', 'corruption', 'oppression'],
+  // Heritage markers
+  tradition: ['traditional', 'heritage', 'ancestors', 'elders', 'culture', 'roots'],
+  roots: ['roots', 'origin', 'motherland', 'home', 'village', 'homeland'],
+  motherland: ['africa', 'mama africa', 'motherland', 'continent', 'home'],
+  'pan-african': ['pan-african', 'united', 'one africa', 'unity', 'together'],
+  // Diaspora markers
+  diaspora: ['diaspora', 'abroad', 'immigrant', 'overseas', 'foreign', 'away'],
+  migration: ['migrate', 'journey', 'leaving', 'travel', 'crossing', 'border'],
+  homecoming: ['return', 'home', 'coming back', 'welcome', 'finally'],
+  bridge: ['bridge', 'connect', 'fusion', 'blend', 'together', 'unite'],
+  // Street markers
+  street: ['street', 'hood', 'block', 'corner', 'trap', 'ghetto'],
+  ghetto: ['ghetto', 'slum', 'struggle', 'poverty', 'survive', 'hustle'],
+  survival: ['survive', 'struggle', 'make it', 'overcome', 'fight', 'strong'],
+  // Celebration markers
+  wedding: ['wedding', 'marriage', 'bride', 'ceremony', 'celebration', 'forever'],
+  festival: ['festival', 'party', 'carnival', 'celebration', 'dance', 'crowd'],
+  celebration: ['celebrate', 'joy', 'happy', 'party', 'dance', 'blessed'],
+  // Spiritual markers
+  spiritual: ['spirit', 'soul', 'divine', 'god', 'faith', 'believe'],
+  prayer: ['prayer', 'pray', 'lord', 'god', 'worship', 'devotion'],
+  healing: ['heal', 'restoration', 'peace', 'calm', 'recover', 'strength']
+};
+
+// ============================================
+// TIER A ARTISTS (Global Icons)
+// ============================================
+
+export const TIER_A_ARTISTS: string[] = [
+  // Nigerian Icons
+  'burna boy', 'wizkid', 'davido', 'tiwa savage', 'fela kuti', 'rema',
+  'tems', 'ckay', 'ayra starr', 'asake', 'fireboy dml', 'olamide',
+  // South African Icons
+  'black coffee', 'master kg', 'dj maphorisa', 'kabza de small', 'miriam makeba',
+  // Ghanaian Icons
+  'sarkodie', 'stonebwoy', 'shatta wale', 'black sherif',
+  // East African Icons
+  'diamond platnumz', 'sauti sol', 'harmonize', 'rayvanny',
+  // Diaspora Icons (who push African sound)
+  'drake', 'beyonce', 'rihanna', 'chris brown', // when featuring African artists
+  // Legends
+  'femi kuti', 'angelique kidjo', 'youssou ndour', 'salif keita', 'king sunny ade'
+];
+
+// ============================================
+// CANON CLASSIFICATION HELPERS
+// ============================================
+
+export function detectCulturalTags(text: string): CulturalTag[] {
+  const lowerText = text.toLowerCase();
+  const detectedTags: CulturalTag[] = [];
+
+  for (const [tag, keywords] of Object.entries(CULTURAL_TAG_KEYWORDS)) {
+    const matches = keywords.filter(kw => lowerText.includes(kw));
+    if (matches.length >= 1) {
+      detectedTags.push(tag as CulturalTag);
+    }
+  }
+
+  return detectedTags;
+}
+
+export function estimateArtistTier(artistName: string, metrics?: {
+  monthlyListeners?: number;
+  spotifyFollowers?: number;
+  youtubeViews?: number;
+  grammyNominations?: number;
+}): ArtistTier {
+  const normalizedName = artistName.toLowerCase();
+
+  // Tier A: Global icons
+  if (TIER_A_ARTISTS.includes(normalizedName)) {
+    return 'A';
+  }
+
+  // If we have metrics, use them
+  if (metrics) {
+    if (metrics.grammyNominations && metrics.grammyNominations > 0) return 'A';
+    if (metrics.monthlyListeners && metrics.monthlyListeners > 10_000_000) return 'A';
+    if (metrics.monthlyListeners && metrics.monthlyListeners > 1_000_000) return 'B';
+    if (metrics.monthlyListeners && metrics.monthlyListeners > 100_000) return 'C';
+  }
+
+  // Default to D (underground/emerging) - most artists start here
+  return 'D';
+}
+
+export function estimateCanonLevel(track: {
+  artistTier?: ArtistTier;
+  viewCount?: number;
+  releaseYear?: number;
+  isClassic?: boolean;
+  isTrending?: boolean;
+}): CanonLevel {
+  // Classics from Tier A artists are CORE
+  if (track.isClassic && track.artistTier === 'A') {
+    return 'CORE';
+  }
+
+  // High view counts from major artists
+  if (track.viewCount && track.viewCount > 100_000_000 && track.artistTier === 'A') {
+    return 'CORE';
+  }
+
+  // Trending from known artists
+  if (track.isTrending && (track.artistTier === 'A' || track.artistTier === 'B')) {
+    return 'ESSENTIAL';
+  }
+
+  // Older tracks (before 2015) with decent plays
+  if (track.releaseYear && track.releaseYear < 2015) {
+    if (track.viewCount && track.viewCount > 1_000_000) {
+      return 'ARCHIVE';
+    }
+    return 'ECHO'; // Old tracks with few views are echoes - hidden gems
+  }
+
+  // Underground artists
+  if (track.artistTier === 'D') {
+    return 'ECHO'; // Underground = echo (deserving of recognition)
+  }
+
+  // Regional/National artists
+  if (track.artistTier === 'C') {
+    return 'DEEP_CUT';
+  }
+
+  // Default
+  return 'ESSENTIAL';
 }

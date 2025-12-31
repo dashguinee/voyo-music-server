@@ -13,7 +13,10 @@ import {
   EnergyLevel,
   AfricanRegion,
   AfricanGenre,
-  VibeProfile
+  VibeProfile,
+  ArtistTier,
+  CanonLevel,
+  CulturalTag
 } from './MoodTags';
 
 // ============================================
@@ -36,6 +39,13 @@ export interface ArtistKnowledge {
   lastUpdated: number;
   popularity: number; // 0-100
   verified: boolean; // manually verified quality
+
+  // === CANON SYSTEM (Cultural Weapon) ===
+  tier: ArtistTier;         // A=Global Icon, B=Regional Star, C=National, D=Underground/Echo
+  culturalTags: CulturalTag[];  // Cultural significance markers
+  peakYear?: number;        // Year of peak influence (for canon calculation)
+  debutYear?: number;       // When they started (for legacy calculation)
+  isEcho?: boolean;         // Hidden gem - deserves more shine
 }
 
 export interface TrackKnowledge {
@@ -56,6 +66,12 @@ export interface TrackKnowledge {
   discoveredAt: number;
   classifiedAt: number;
   confidence: number; // 0-1, how confident is the classification
+
+  // === CANON SYSTEM (Cultural Weapon) ===
+  canonLevel: CanonLevel;         // CORE, ESSENTIAL, DEEP_CUT, ARCHIVE, ECHO
+  culturalTags: CulturalTag[];    // Cultural significance (anthem, diaspora, etc.)
+  isEcho?: boolean;               // Hidden gem that deserves recognition
+  echoReason?: string;            // Why this track is an echo (optional context)
 }
 
 export interface VibeClustersEntry {
@@ -92,11 +108,15 @@ interface KnowledgeState {
 
   // Indexes for fast lookup
   artistsByName: Map<string, string>; // normalizedName -> artistId
+  artistsByTier: Map<ArtistTier, Set<string>>; // tier -> artistIds
   tracksByMood: Map<PrimaryMood, Set<string>>; // mood -> trackIds
   tracksByGenre: Map<AfricanGenre, Set<string>>; // genre -> trackIds
   tracksByRegion: Map<AfricanRegion, Set<string>>; // region -> trackIds
   tracksByEnergy: Map<EnergyLevel, Set<string>>; // energy -> trackIds
   tracksByArtist: Map<string, Set<string>>; // artistId -> trackIds
+  tracksByCanon: Map<CanonLevel, Set<string>>; // canonLevel -> trackIds
+  tracksByCulturalTag: Map<CulturalTag, Set<string>>; // culturalTag -> trackIds
+  echoTracks: Set<string>; // Track IDs of hidden gems
 
   // Scout history
   discoveries: ScoutDiscovery[];
@@ -120,6 +140,11 @@ interface KnowledgeState {
   findTracksByFeeling: (feeling: FeelingTag, limit?: number) => TrackKnowledge[];
   findSimilarTracks: (trackId: string, limit?: number) => TrackKnowledge[];
   findArtistTracks: (artistId: string) => TrackKnowledge[];
+  // Canon system methods
+  findTracksByCanon: (canon: CanonLevel, limit?: number) => TrackKnowledge[];
+  findTracksByCulturalTag: (tag: CulturalTag, limit?: number) => TrackKnowledge[];
+  findEchoTracks: (limit?: number) => TrackKnowledge[];
+  findArtistsByTier: (tier: ArtistTier, limit?: number) => ArtistKnowledge[];
   recordDiscovery: (discovery: ScoutDiscovery) => void;
   getStats: () => KnowledgeStats;
   clear: () => void;
@@ -182,11 +207,15 @@ export const useKnowledgeStore = create<KnowledgeState>()(
       tracks: new Map(),
       vibeClusters: new Map(),
       artistsByName: new Map(),
+      artistsByTier: new Map(),
       tracksByMood: new Map(),
       tracksByGenre: new Map(),
       tracksByRegion: new Map(),
       tracksByEnergy: new Map(),
       tracksByArtist: new Map(),
+      tracksByCanon: new Map(),
+      tracksByCulturalTag: new Map(),
+      echoTracks: new Set(),
       discoveries: [],
       lastScoutRun: 0,
       totalTracksDiscovered: 0,
@@ -197,13 +226,22 @@ export const useKnowledgeStore = create<KnowledgeState>()(
         set((state) => {
           const newArtists = new Map(state.artists);
           const newArtistsByName = new Map(state.artistsByName);
+          const newArtistsByTier = new Map(state.artistsByTier);
 
           newArtists.set(artist.id, artist);
           newArtistsByName.set(artist.normalizedName, artist.id);
 
+          // Index by tier
+          if (artist.tier) {
+            const tierSet = newArtistsByTier.get(artist.tier) || new Set();
+            tierSet.add(artist.id);
+            newArtistsByTier.set(artist.tier, tierSet);
+          }
+
           return {
             artists: newArtists,
             artistsByName: newArtistsByName,
+            artistsByTier: newArtistsByTier,
             totalArtistsDiscovered: state.totalArtistsDiscovered + 1
           };
         });
@@ -218,6 +256,9 @@ export const useKnowledgeStore = create<KnowledgeState>()(
           const newTracksByRegion = new Map(state.tracksByRegion);
           const newTracksByEnergy = new Map(state.tracksByEnergy);
           const newTracksByArtist = new Map(state.tracksByArtist);
+          const newTracksByCanon = new Map(state.tracksByCanon);
+          const newTracksByCulturalTag = new Map(state.tracksByCulturalTag);
+          const newEchoTracks = new Set(state.echoTracks);
 
           // Add track
           newTracks.set(track.id, track);
@@ -251,6 +292,29 @@ export const useKnowledgeStore = create<KnowledgeState>()(
           artistSet.add(track.id);
           newTracksByArtist.set(track.artistId, artistSet);
 
+          // === CANON SYSTEM INDEXES ===
+
+          // Index by canon level
+          if (track.canonLevel) {
+            const canonSet = newTracksByCanon.get(track.canonLevel) || new Set();
+            canonSet.add(track.id);
+            newTracksByCanon.set(track.canonLevel, canonSet);
+          }
+
+          // Index by cultural tags
+          if (track.culturalTags) {
+            for (const tag of track.culturalTags) {
+              const tagSet = newTracksByCulturalTag.get(tag) || new Set();
+              tagSet.add(track.id);
+              newTracksByCulturalTag.set(tag, tagSet);
+            }
+          }
+
+          // Index echo tracks (hidden gems)
+          if (track.isEcho || track.canonLevel === 'ECHO') {
+            newEchoTracks.add(track.id);
+          }
+
           return {
             tracks: newTracks,
             tracksByMood: newTracksByMood,
@@ -258,6 +322,9 @@ export const useKnowledgeStore = create<KnowledgeState>()(
             tracksByRegion: newTracksByRegion,
             tracksByEnergy: newTracksByEnergy,
             tracksByArtist: newTracksByArtist,
+            tracksByCanon: newTracksByCanon,
+            tracksByCulturalTag: newTracksByCulturalTag,
+            echoTracks: newEchoTracks,
             totalTracksDiscovered: state.totalTracksDiscovered + 1
           };
         });
@@ -434,6 +501,61 @@ export const useKnowledgeStore = create<KnowledgeState>()(
         return tracks;
       },
 
+      // === CANON SYSTEM LOOKUP METHODS ===
+
+      // Find tracks by canon level
+      findTracksByCanon: (canon, limit = 50) => {
+        const trackIds = get().tracksByCanon.get(canon);
+        if (!trackIds) return [];
+
+        const tracks: TrackKnowledge[] = [];
+        for (const id of trackIds) {
+          if (tracks.length >= limit) break;
+          const track = get().tracks.get(id);
+          if (track) tracks.push(track);
+        }
+        return tracks;
+      },
+
+      // Find tracks by cultural tag
+      findTracksByCulturalTag: (tag, limit = 50) => {
+        const trackIds = get().tracksByCulturalTag.get(tag);
+        if (!trackIds) return [];
+
+        const tracks: TrackKnowledge[] = [];
+        for (const id of trackIds) {
+          if (tracks.length >= limit) break;
+          const track = get().tracks.get(id);
+          if (track) tracks.push(track);
+        }
+        return tracks;
+      },
+
+      // Find echo tracks (hidden gems that deserve recognition)
+      findEchoTracks: (limit = 50) => {
+        const tracks: TrackKnowledge[] = [];
+        for (const id of get().echoTracks) {
+          if (tracks.length >= limit) break;
+          const track = get().tracks.get(id);
+          if (track) tracks.push(track);
+        }
+        return tracks;
+      },
+
+      // Find artists by tier
+      findArtistsByTier: (tier, limit = 50) => {
+        const artistIds = get().artistsByTier.get(tier);
+        if (!artistIds) return [];
+
+        const artists: ArtistKnowledge[] = [];
+        for (const id of artistIds) {
+          if (artists.length >= limit) break;
+          const artist = get().artists.get(id);
+          if (artist) artists.push(artist);
+        }
+        return artists;
+      },
+
       // Record a scout discovery
       recordDiscovery: (discovery) => {
         set((state) => ({
@@ -480,11 +602,15 @@ export const useKnowledgeStore = create<KnowledgeState>()(
           tracks: new Map(),
           vibeClusters: new Map(),
           artistsByName: new Map(),
+          artistsByTier: new Map(),
           tracksByMood: new Map(),
           tracksByGenre: new Map(),
           tracksByRegion: new Map(),
           tracksByEnergy: new Map(),
           tracksByArtist: new Map(),
+          tracksByCanon: new Map(),
+          tracksByCulturalTag: new Map(),
+          echoTracks: new Set(),
           discoveries: [],
           lastScoutRun: 0,
           totalTracksDiscovered: 0,
