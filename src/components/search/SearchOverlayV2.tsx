@@ -15,6 +15,7 @@ import { SmartImage } from '../ui/SmartImage';
 import { TRACKS } from '../../data/tracks';
 import { searchCache } from '../../utils/searchCache';
 import { addSearchResultsToPool } from '../../services/personalization';
+import { syncSearchResults } from '../../services/databaseSync';
 import { AlbumSection } from './AlbumSection';
 import { VibesSection } from './VibesSection';
 
@@ -408,6 +409,9 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
         const mergedResults = [...seedResults, ...uniqueYoutubeResults];
         setResults(mergedResults);
         saveToHistory(searchQuery);
+
+        // DATABASE SYNC: Every search result goes to collective brain
+        syncSearchResults(mergedResults);
       }
     } catch (err: any) {
       // Ignore abort errors

@@ -1235,11 +1235,14 @@ export const videoIntelligenceAPI = {
       return false;
     }
 
+    // Only include columns that exist in the table
     const { error } = await supabase
       .from('video_intelligence')
       .upsert({
-        ...video,
-        updated_at: new Date().toISOString(),
+        youtube_id: video.youtube_id,
+        title: video.title || 'Unknown',
+        artist: video.artist || null,
+        thumbnail_url: video.thumbnail_url || `https://i.ytimg.com/vi/${video.youtube_id}/hqdefault.jpg`,
       }, {
         onConflict: 'youtube_id'
       });
@@ -1352,14 +1355,17 @@ export const videoIntelligenceAPI = {
   async batchSync(videos: Array<Partial<VideoIntelligenceRow> & { youtube_id: string }>): Promise<number> {
     if (!supabase || videos.length === 0) return 0;
 
-    const videosWithTimestamp = videos.map(v => ({
-      ...v,
-      updated_at: new Date().toISOString(),
+    // Only include columns that exist in the table
+    const cleanVideos = videos.map(v => ({
+      youtube_id: v.youtube_id,
+      title: v.title || 'Unknown',
+      artist: v.artist || null,
+      thumbnail_url: v.thumbnail_url || `https://i.ytimg.com/vi/${v.youtube_id}/hqdefault.jpg`,
     }));
 
     const { error, count } = await supabase
       .from('video_intelligence')
-      .upsert(videosWithTimestamp, {
+      .upsert(cleanVideos, {
         onConflict: 'youtube_id',
         count: 'exact'
       });

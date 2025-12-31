@@ -36,6 +36,9 @@ import { matchTrackToMode, VibeMode } from './intentStore';
 // FLYWHEEL: Import Central DJ for cloud signals
 import { signals as centralSignals } from '../services/centralDJ';
 
+// DATABASE SYNC: Everything that enters the pool goes to collective brain
+import { syncToDatabase } from '../services/databaseSync';
+
 // ============================================
 // TYPES
 // ============================================
@@ -191,6 +194,9 @@ export const useTrackPoolStore = create<TrackPoolStore>()(
       // =====================================
 
       addToPool: (track, source) => {
+        // DATABASE SYNC: Track entered the pool - sync to collective brain
+        syncToDatabase(track).catch(() => {});
+
         set((state) => {
           // Check if already in pool
           const existsInHot = state.hotPool.some((t) => t.id === track.id || t.trackId === track.trackId);

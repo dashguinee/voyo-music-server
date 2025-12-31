@@ -147,6 +147,54 @@ const Shelf = ({ title, onSeeAll, children }: ShelfProps) => (
 );
 
 // ============================================
+// SHELF WITH REFRESH COMPONENT
+// ============================================
+
+interface ShelfWithRefreshProps {
+  title: string;
+  onRefresh: () => void;
+  isRefreshing?: boolean;
+  onSeeAll?: () => void;
+  children: React.ReactNode;
+}
+
+const ShelfWithRefresh = ({ title, onRefresh, isRefreshing = false, onSeeAll, children }: ShelfWithRefreshProps) => (
+  <div className="mb-10">
+    <div className="flex justify-between items-center px-4 mb-5">
+      <h2 className="text-white font-semibold text-base">{title}</h2>
+      <div className="flex items-center gap-2">
+        <motion.button
+          className="p-2 rounded-full bg-white/10 hover:bg-white/20"
+          onClick={onRefresh}
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
+          animate={isRefreshing ? { rotate: 360 } : {}}
+          transition={{ duration: 0.5 }}
+        >
+          <RefreshCw className={`w-4 h-4 text-purple-400 ${isRefreshing ? 'animate-spin' : ''}`} />
+        </motion.button>
+        {onSeeAll && (
+          <motion.button
+            className="text-purple-400 text-sm font-medium"
+            onClick={onSeeAll}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            See all
+          </motion.button>
+        )}
+      </div>
+    </div>
+    <div
+      className="flex gap-4 px-4 overflow-x-auto scrollbar-hide"
+      style={{ scrollSnapType: 'x proximity', WebkitOverflowScrolling: 'touch' }}
+    >
+      {children}
+    </div>
+  </div>
+);
+
+// ============================================
 // CENTER-FOCUSED CAROUSEL - For New Releases
 // Center card big, sides smaller (like Landscape player selector)
 // ============================================
@@ -1018,21 +1066,31 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
 
       {/* Continue Listening */}
       {hasHistory && (
-        <Shelf title="Continue Listening">
-          {recentlyPlayed.map((track) => (
+        <ShelfWithRefresh title="Continue Listening" onRefresh={handleRefresh} isRefreshing={isRefreshing}>
+          {recentlyPlayed.slice(0, 12).map((track) => (
             <WideTrackCard key={track.id} track={track} onPlay={() => onTrackPlay(track)} />
           ))}
-        </Shelf>
+        </ShelfWithRefresh>
       )}
 
       {/* Heavy Rotation - circles, only first one rotates gently */}
       {hasPreferences && (
         <div className="mb-10">
-          <div className="px-4 mb-4">
+          <div className="px-4 mb-4 flex justify-between items-center">
             <h2 className="text-white font-semibold text-base">Heavy Rotation</h2>
+            <motion.button
+              className="p-2 rounded-full bg-white/10 hover:bg-white/20"
+              onClick={handleRefresh}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              animate={isRefreshing ? { rotate: 360 } : {}}
+              transition={{ duration: 0.5 }}
+            >
+              <RefreshCw className={`w-4 h-4 text-purple-400 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </motion.button>
           </div>
           <div className="flex gap-5 px-4 overflow-x-auto scrollbar-hide">
-            {heavyRotation.map((track, index) => {
+            {heavyRotation.slice(0, 12).map((track, index) => {
               const isFirst = index === 0;
               return (
                 <motion.button
@@ -1136,7 +1194,7 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
           </motion.button>
         </div>
         <div className="flex gap-3 px-4 overflow-x-auto scrollbar-hide">
-          {madeForYou.map((track) => (
+          {madeForYou.slice(0, 12).map((track) => (
             <TrackCard key={track.id} track={track} onPlay={() => onTrackPlay(track)} />
           ))}
         </div>
@@ -1158,11 +1216,11 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
 
       {/* Discover More - LLM curated expansion beyond comfort zone → COMMUNAL */}
       {hasDiscoverMore && (
-        <Shelf title="Discover More">
-          {discoverMoreTracks.map((track) => (
+        <ShelfWithRefresh title="Discover More" onRefresh={handleRefresh} isRefreshing={isRefreshing}>
+          {discoverMoreTracks.slice(0, 12).map((track) => (
             <TrackCard key={track.id} track={track} onPlay={() => onTrackPlay(track, { openFull: true })} />
           ))}
-        </Shelf>
+        </ShelfWithRefresh>
       )}
 
       {/* Classics - Timeless African music (from poolCurator) → COMMUNAL */}
@@ -1171,10 +1229,20 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
           <div className="px-4 mb-4 flex items-center gap-2">
             <span className="text-xl">🎺</span>
             <h2 className="text-white font-semibold text-base">Classics</h2>
-            <span className="text-xs text-white/40 ml-auto">Timeless African sounds</span>
+            <span className="text-xs text-white/40 flex-1 text-right mr-2">Timeless African sounds</span>
+            <motion.button
+              className="p-2 rounded-full bg-white/10 hover:bg-white/20"
+              onClick={handleRefresh}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              animate={isRefreshing ? { rotate: 360 } : {}}
+              transition={{ duration: 0.5 }}
+            >
+              <RefreshCw className={`w-4 h-4 text-amber-400 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </motion.button>
           </div>
           <div className="flex gap-4 px-4 overflow-x-auto scrollbar-hide">
-            {classicsTracks.map((track) => (
+            {classicsTracks.slice(0, 12).map((track) => (
               <TrackCard key={track.id} track={track} onPlay={() => onTrackPlay(track, { openFull: true })} />
             ))}
           </div>
@@ -1186,7 +1254,17 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
         <div className="mb-8 py-8" style={{ background: 'linear-gradient(180deg, rgba(157,78,221,0.12) 0%, rgba(157,78,221,0.03) 50%, transparent 100%)' }}>
           <div className="px-4 mb-6 flex items-center gap-2">
             <span className="text-yellow-400 text-xl">⭐</span>
-            <h2 className="text-white font-semibold text-base">Top 10 on VOYO</h2>
+            <h2 className="text-white font-semibold text-base flex-1">Top 10 on VOYO</h2>
+            <motion.button
+              className="p-2 rounded-full bg-white/10 hover:bg-white/20"
+              onClick={handleRefresh}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              animate={isRefreshing ? { rotate: 360 } : {}}
+              transition={{ duration: 0.5 }}
+            >
+              <RefreshCw className={`w-4 h-4 text-yellow-400 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </motion.button>
           </div>
           <style>{`
             @keyframes top10-marquee {

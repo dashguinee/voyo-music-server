@@ -33,12 +33,22 @@ import { useUniverseStore } from './store/universeStore';
 // DEBUG: Load intent engine verification tools (available in browser console)
 import './utils/debugIntent';
 
+// BRAIN: Initialize the intelligent DJ system
+import { initializeBrainIntegration, cleanupBrainIntegration, getBrainStats } from './brain';
+
+// SCOUTS: Hungry agents that feed knowledge to the Brain
+import { startScoutPatrol, stopScoutPatrol, getScoutStats, getKnowledgeStats } from './scouts';
+
+// DATABASE FEEDER: Populate collective brain with African music (exposes window.feedDatabase)
+import './scouts/DatabaseFeeder';
+
 // TRACK POOL: Start pool maintenance for dynamic track management
 import { startPoolMaintenance } from './store/trackPoolStore';
 import { bootstrapPool, curateAllSections } from './services/poolCurator';
 import { runStartupHeal } from './services/trackVerifier';
 import { syncSeedTracks } from './services/centralDJ';
 import { TRACKS } from './data/tracks';
+import { syncManyToDatabase } from './services/databaseSync';
 
 // App modes
 type AppMode = 'classic' | 'voyo' | 'video';
@@ -954,6 +964,37 @@ function App() {
     detectNetworkQuality();
   }, []);
 
+  // BRAIN: Initialize intelligent DJ signal capture
+  useEffect(() => {
+    console.log('[Brain] Initializing VOYO Brain integration...');
+    initializeBrainIntegration();
+
+    // Expose brain stats for debugging
+    (window as any).brainStats = getBrainStats;
+
+    return () => {
+      console.log('[Brain] Cleaning up VOYO Brain integration');
+      cleanupBrainIntegration();
+    };
+  }, []);
+
+  // SCOUTS: Start hungry knowledge discovery agents
+  useEffect(() => {
+    console.log('[Scouts] Starting Hungry Scouts for African music discovery...');
+
+    // Start periodic scouting (every 30 minutes)
+    startScoutPatrol(30);
+
+    // Expose scout/knowledge stats for debugging
+    (window as any).scoutStats = getScoutStats;
+    (window as any).knowledgeStats = getKnowledgeStats;
+
+    return () => {
+      console.log('[Scouts] Stopping scout patrol');
+      stopScoutPatrol();
+    };
+  }, []);
+
   // TRACK POOL MAINTENANCE: Start automatic pool management (rescoring every 5 mins)
   useEffect(() => {
     startPoolMaintenance();
@@ -964,6 +1005,13 @@ function App() {
     syncSeedTracks(TRACKS).then(count => {
       if (count > 0) {
         console.log(`[VOYO] 🌱 Synced ${count} seed tracks to Supabase`);
+      }
+    });
+
+    // VIDEO INTELLIGENCE: Also sync seed tracks to collective brain
+    syncManyToDatabase(TRACKS).then(count => {
+      if (count > 0) {
+        console.log(`[VOYO] 🧠 Synced ${count} seed tracks to video_intelligence`);
       }
     });
 
