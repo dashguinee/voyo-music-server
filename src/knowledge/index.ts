@@ -73,7 +73,7 @@ export {
   getCanonLevel,
   getAllVerifiedArtists,
 } from './artistTiers';
-export type { ArtistTier } from './artistTiers';
+// ArtistTier type already exported from MoodTags above
 
 // ============================================
 // QUICK ACCESS HELPERS
