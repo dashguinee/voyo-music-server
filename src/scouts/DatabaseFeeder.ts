@@ -278,6 +278,9 @@ export async function searchAndFeed(query: string, limit: number = 15): Promise<
         discoveredAt: Date.now(),
         classifiedAt: Date.now(),
         confidence: classification.confidence,
+        // Canon system defaults (will be enriched by canonizer)
+        canonLevel: 'ECHO' as const,  // Default to ECHO - will be upgraded by canonizer
+        culturalTags: [],             // Will be enriched by canonizer
       });
     }
 

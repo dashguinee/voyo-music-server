@@ -61,6 +61,107 @@ export type CulturalTag =
   | 'healing';     // Healing, restoration
 
 // ============================================
+// MULTI-DIMENSIONAL CANON SCORING
+// (Based on Pandora Music Genome + Bourdieu research)
+// ============================================
+
+// Aesthetic Merit Tags (separate from cultural significance)
+export type AestheticTag =
+  | 'innovative'      // Genre-defining, pioneering sound
+  | 'virtuosic'       // Technical mastery, instrumental skill
+  | 'influential'     // Copied by others, started trends
+  | 'production'      // Outstanding production quality
+  | 'lyricism'        // Exceptional lyrical content
+  | 'arrangement'     // Complex/beautiful arrangements
+  | 'timeless';       // Sounds fresh regardless of era
+
+// Content Type (what the track IS)
+export type ContentType =
+  | 'original'           // Original artist release
+  | 'remix'              // Official/unofficial remix
+  | 'live'               // Live performance (Colors, Tiny Desk, Glitch)
+  | 'dj_mix'             // DJ mix/set
+  | 'dj_compilation'     // DJ-curated compilation
+  | 'playlist_channel'   // Playlist/compilation channel upload
+  | 'cover'              // Cover version
+  | 'instrumental'       // Beat/instrumental/karaoke
+  | 'mashup'             // Multiple tracks combined
+  | 'acoustic'           // Acoustic/unplugged version
+  | 'slowed'             // Slowed + reverb version
+  | 'extended';          // Extended mix
+
+// Historical Era (for temporal context)
+export type MusicalEra =
+  | 'pre-independence'   // Before 1960s (colonial era music)
+  | 'independence'       // 1960s-70s (African independence era)
+  | 'golden-age'         // 1970s-80s (Fela, Highlife peak)
+  | 'transition'         // 1990s (P-Square, early Afrobeats)
+  | 'digital-dawn'       // 2000s-2010 (digital revolution begins)
+  | 'streaming-era'      // 2010-2018 (Wizkid, Davido rise)
+  | 'global-explosion'   // 2018-present (Grammy wins, global charts)
+  | 'unknown';           // Can't determine
+
+// The complete multi-dimensional score (inspired by Pandora's 450 genes)
+export interface CanonScore {
+  // DIMENSION 1: Popularity (objective - from YouTube/Spotify)
+  popularity: {
+    viewCount: number;
+    percentile: number;        // 0-100 relative to corpus
+    velocity?: number;         // growth rate (views per month)
+    peakPosition?: number;     // chart position if known
+  };
+
+  // DIMENSION 2: Cultural Significance (LLM + human knowledge)
+  culturalSignificance: {
+    historical: number;        // 0-5: pioneer status, movement-defining
+    social: number;            // 0-5: protest, liberation, unity impact
+    diasporic: number;         // 0-5: bridges Africa and diaspora
+    preservational: number;    // 0-5: documents endangered traditions
+    overall: number;           // 0-5: combined cultural score
+  };
+
+  // DIMENSION 3: Aesthetic Merit (LLM analysis)
+  aestheticMerit: {
+    innovation: number;        // 0-5: genre-defining, pioneering
+    craft: number;             // 0-5: virtuosity, production quality
+    influence: number;         // 0-5: copied by others
+    overall: number;           // 0-5: combined aesthetic score
+  };
+
+  // DIMENSION 4: Accessibility (Bourdieu-inspired)
+  accessibility: {
+    mainstream: number;        // 0-5: requires no cultural knowledge
+    specialist: number;        // 0-5: rewards cultural competence
+    educational: number;       // 0-5: teaches about culture
+  };
+
+  // DIMENSION 5: Temporal Context
+  temporal: {
+    releaseYear?: number;
+    era: MusicalEra;
+    timelessness: number;      // 0-5: still relevant today
+  };
+
+  // Computed from dimensions
+  finalTier: ArtistTier;
+  finalCanonLevel: CanonLevel;
+  confidence: number;          // 0-1: how confident is this classification
+  classifiedBy: 'pattern' | 'llm' | 'hybrid' | 'human';
+  classifiedAt: number;        // timestamp
+}
+
+// Simplified score for tracks without full analysis
+export interface QuickScore {
+  tier: ArtistTier;
+  canonLevel: CanonLevel;
+  contentType: ContentType;
+  confidence: number;
+  viewCount?: number;
+  culturalTags: CulturalTag[];
+  aestheticTags: AestheticTag[];
+}
+
+// ============================================
 // PRIMARY MOOD CATEGORIES
 // ============================================
 

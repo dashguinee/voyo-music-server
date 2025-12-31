@@ -460,7 +460,10 @@ export class HungryScout {
       isTrending: true, // Assume discovered tracks are trending
       discoveredAt: Date.now(),
       classifiedAt: Date.now(),
-      confidence: classification.confidence
+      confidence: classification.confidence,
+      // Canon system defaults (will be enriched by canonizer)
+      canonLevel: this.config.id === 'classics-scout' ? 'ARCHIVE' : 'ECHO',
+      culturalTags: [],  // Will be enriched by canonizer
     };
 
     return track;

@@ -16,7 +16,12 @@ import {
   VibeProfile,
   ArtistTier,
   CanonLevel,
-  CulturalTag
+  CulturalTag,
+  AestheticTag,
+  ContentType,
+  MusicalEra,
+  CanonScore,
+  QuickScore
 } from './MoodTags';
 
 // ============================================
@@ -46,6 +51,37 @@ export interface ArtistKnowledge {
   peakYear?: number;        // Year of peak influence (for canon calculation)
   debutYear?: number;       // When they started (for legacy calculation)
   isEcho?: boolean;         // Hidden gem - deserves more shine
+
+  // === MULTI-DIMENSIONAL SCORING (V4 - Research-based) ===
+  aestheticTags?: AestheticTag[];  // innovative, influential, virtuosic, etc.
+  totalViews?: number;             // Combined YouTube views across all tracks
+  avgViewCount?: number;           // Average views per track
+
+  // Cultural Significance scores (0-5 scale)
+  culturalScore?: {
+    historical: number;      // Pioneer status, movement-defining
+    social: number;          // Protest, liberation, unity impact
+    diasporic: number;       // Bridges Africa and diaspora
+    preservational: number;  // Documents endangered traditions
+  };
+
+  // Aesthetic Merit scores (0-5 scale)
+  aestheticScore?: {
+    innovation: number;      // Genre-defining, pioneering
+    craft: number;           // Virtuosity, production quality
+    influence: number;       // Copied by others
+  };
+
+  // Classification metadata
+  classifiedBy?: 'pattern' | 'llm' | 'hybrid' | 'human';
+  enrichedFrom?: string[];        // ['youtube', 'musicbrainz', 'discogs', 'spotify']
+
+  // Relationships (knowledge graph)
+  influencedBy?: string[];        // Artist IDs this artist was influenced by
+  influences?: string[];          // Artist IDs this artist influences
+  collaborators?: string[];       // Artist IDs frequently collaborated with
+  labelId?: string;               // Record label
+  countryCode?: string;           // ISO country code (NG, GH, ZA, etc.)
 }
 
 export interface TrackKnowledge {
@@ -72,6 +108,24 @@ export interface TrackKnowledge {
   culturalTags: CulturalTag[];    // Cultural significance (anthem, diaspora, etc.)
   isEcho?: boolean;               // Hidden gem that deserves recognition
   echoReason?: string;            // Why this track is an echo (optional context)
+
+  // === MULTI-DIMENSIONAL SCORING (V4 - Research-based) ===
+  contentType?: ContentType;      // original, remix, live, dj_mix, etc.
+  era?: MusicalEra;               // independence, golden-age, streaming-era, etc.
+  aestheticTags?: AestheticTag[]; // innovative, virtuosic, influential, etc.
+  viewCount?: number;             // YouTube view count (objective metric)
+  viewPercentile?: number;        // 0-100 relative to corpus
+
+  // Full multi-dimensional score (for deeply classified tracks)
+  canonScore?: CanonScore;
+
+  // Quick score (for batch-classified tracks)
+  quickScore?: QuickScore;
+
+  // Classification metadata
+  classifiedBy?: 'pattern' | 'llm' | 'hybrid' | 'human';
+  llmModel?: string;              // which LLM classified this (claude-3, gemini-2, etc.)
+  enrichedFrom?: string[];        // ['youtube', 'musicbrainz', 'discogs']
 }
 
 export interface VibeClustersEntry {

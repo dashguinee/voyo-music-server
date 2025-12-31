@@ -28,3 +28,6 @@ dist-ssr
 .env
 .env.*
 .venv/
+# Large data files - host on CDN/storage instead
+data/canonized_*.json
+data/artists_*_v5_*.json
