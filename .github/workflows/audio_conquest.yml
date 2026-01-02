@@ -115,16 +115,18 @@ jobs:
                   log(f"Warning getting existing: {e}")
               return existing
 
-          def download_and_upload(yt_id):
+          def download_and_upload(yt_id, debug=False):
               output = TEMP_DIR / f"{yt_id}.opus"
               cmd = ["yt-dlp", "-x", "--audio-format", "opus", "--audio-quality", "5",
                   "-o", str(TEMP_DIR / f"{yt_id}.%(ext)s"),
-                  "--no-playlist", "--quiet", "--no-warnings",
+                  "--no-playlist",
                   "--cookies", "/tmp/cookies.txt",
                   "--retries", "2", "--socket-timeout", "30",
                   f"https://www.youtube.com/watch?v={yt_id}"]
               try:
-                  subprocess.run(cmd, capture_output=True, timeout=120)
+                  result = subprocess.run(cmd, capture_output=True, timeout=120, text=True)
+                  if debug or result.returncode != 0:
+                      log(f"yt-dlp exit={result.returncode} stderr={result.stderr[:200] if result.stderr else 'none'}")
                   if not output.exists():
                       webm = TEMP_DIR / f"{yt_id}.webm"
                       if webm.exists():
@@ -135,7 +137,7 @@ jobs:
                       output.unlink()
                       return True
               except Exception as e:
-                  pass
+                  log(f"Exception for {yt_id}: {e}")
               return False
 
           def main():
@@ -159,7 +161,8 @@ jobs:
               # Process with slight delays to avoid rate limits
               for i, yt_id in enumerate(to_process):
                   time.sleep(random.uniform(0.1, 0.3))  # Minimal delay
-                  if download_and_upload(yt_id):
+                  # Debug first 3 tracks to see what's happening
+                  if download_and_upload(yt_id, debug=(i < 3)):
                       uploaded += 1
                   else:
                       failed += 1
