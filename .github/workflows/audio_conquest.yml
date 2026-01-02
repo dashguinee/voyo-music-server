@@ -11,43 +11,35 @@ on:
         description: 'Number of parallel jobs'
         default: '20'
         type: string
+      start_offset:
+        description: 'Starting offset (for parallel runs)'
+        default: '0'
+        type: string
 
 jobs:
-  # First job: Get track list and create chunks
   prepare:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
-      total_tracks: ${{ steps.set-matrix.outputs.total_tracks }}
     steps:
       - name: Get tracks to process
         id: set-matrix
         run: |
-          # Fetch track count from Supabase
-          TOTAL=$(curl -s "https://anmgyxhnyhbyxzpjhxgx.supabase.co/rest/v1/video_intelligence?select=youtube_id&limit=1" \
-            -H "apikey: ${{ secrets.SUPABASE_KEY }}" \
-            -H "Prefer: count=exact" \
-            -I | grep -i x-total-count | awk '{print $2}' | tr -d '\r')
-
-          echo "Total tracks: $TOTAL"
-          echo "total_tracks=$TOTAL" >> $GITHUB_OUTPUT
-
-          # Create matrix of job indices
           NUM_JOBS=${{ inputs.total_jobs }}
           CHUNK_SIZE=${{ inputs.chunk_size }}
+          START=${{ inputs.start_offset }}
 
-          # Generate matrix JSON
           MATRIX="["
           for i in $(seq 0 $((NUM_JOBS - 1))); do
-            OFFSET=$((i * CHUNK_SIZE))
+            OFFSET=$((START + i * CHUNK_SIZE))
             if [ $i -gt 0 ]; then MATRIX="$MATRIX,"; fi
             MATRIX="$MATRIX{\"job_id\":$i,\"offset\":$OFFSET,\"limit\":$CHUNK_SIZE}"
           done
           MATRIX="$MATRIX]"
 
+          echo "Starting at offset $START with $NUM_JOBS jobs of $CHUNK_SIZE each"
           echo "matrix={\"include\":$MATRIX}" >> $GITHUB_OUTPUT
 
-  # Parallel download jobs
   download:
     needs: prepare
     runs-on: ubuntu-latest
@@ -60,16 +52,10 @@ jobs:
     steps:
       - name: Setup
         run: |
-          echo "Job ${{ matrix.job_id }}: Processing offset ${{ matrix.offset }}, limit ${{ matrix.limit }}"
-
-          # Install yt-dlp
+          echo "Job ${{ matrix.job_id }}: offset=${{ matrix.offset }}, limit=${{ matrix.limit }}"
           sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
           sudo chmod a+rx /usr/local/bin/yt-dlp
-
-          # Install Python deps
           pip install boto3 requests
-
-          # Write YouTube cookies (base64 to avoid YAML issues)
           echo "IyBOZXRzY2FwZSBIVFRQIENvb2tpZSBGaWxlCi55b3V0dWJlLmNvbQlUUlVFCS8JVFJVRQkwCV9fU2VjdXJlLTNQQVBJU0lECWNab1R3NU9ETzFLazB5elMvQU1paERZMmtDYnpPa3VoV08KLnlvdXR1YmUuY29tCVRSVUUJLwlGQUxTRQkwCVBSRUYJaGw9ZW4mdHo9VVRDCi55b3V0dWJlLmNvbQlUUlVFCS8JVFJVRQkwCVNPQ1MJQ0FJCi55b3V0dWJlLmNvbQlUUlVFCS8JVFJVRQkwCVlTQwk5RjVYMmJoLTRkawoud291dHViZS5jb20JVFJVRQkvCVRSVUUJMTc4Mjg2ODQxOAlfX1NlY3VyZS1ST0xMT1VUX1RPS0VOCUNOYm5zLVg0NmZyZ3BRRVEwNTYxMHRicmtRTVlrdTdqMnRicmtRTSUzRAoueW91dHViZS5jb20JVFJVRQkvCVRSVUUJMTc4Mjg5Mjc3MglWSVNJVE9SX0lORk8xX0xJVkUJSTU2Y05LTVk4Sm8KLnlvdXR1YmUuY29tCVRSVUUJLwlUUlVFCTE3ODI4OTI3NzIJVklTSVRPUl9QUklWQUNZX01FVEFEQVRBCUNnSk5XUklFR2dBZ1hnJTNEJTNECi55b3V0dWJlLmNvbQlUUlVFCS8JVFJVRQkxNzY3MzQxMDI3CUdQUwkxCg==" | base64 -d > /tmp/cookies.txt
 
       - name: Create worker script
@@ -83,16 +69,14 @@ jobs:
           import boto3
           from botocore.config import Config
           import requests
+          from concurrent.futures import ThreadPoolExecutor, as_completed
 
-          # Config from env
           SUPABASE_URL = "https://anmgyxhnyhbyxzpjhxgx.supabase.co"
           SUPABASE_KEY = os.environ['SUPABASE_KEY']
-
           R2_ACCOUNT_ID = os.environ['R2_ACCOUNT_ID']
           R2_ACCESS_KEY = os.environ['R2_ACCESS_KEY']
           R2_SECRET_KEY = os.environ['R2_SECRET_KEY']
           R2_BUCKET = 'voyo-audio'
-
           OFFSET = int(os.environ['OFFSET'])
           LIMIT = int(os.environ['LIMIT'])
           JOB_ID = os.environ['JOB_ID']
@@ -100,14 +84,11 @@ jobs:
           TEMP_DIR = Path("/tmp/voyo-audio")
           TEMP_DIR.mkdir(exist_ok=True)
 
-          # R2 client
-          r2 = boto3.client(
-              's3',
+          r2 = boto3.client('s3',
               endpoint_url=f'https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com',
               aws_access_key_id=R2_ACCESS_KEY,
               aws_secret_access_key=R2_SECRET_KEY,
-              config=Config(retries={'max_attempts': 3})
-          )
+              config=Config(retries={'max_attempts': 3}))
 
           def log(msg):
               print(f"[Job {JOB_ID}] {msg}", flush=True)
@@ -121,8 +102,8 @@ jobs:
 
           def get_existing():
               existing = set()
-              paginator = r2.get_paginator('list_objects_v2')
               try:
+                  paginator = r2.get_paginator('list_objects_v2')
                   for page in paginator.paginate(Bucket=R2_BUCKET, Prefix="128/"):
                       for obj in page.get('Contents', []):
                           key = obj['Key']
@@ -130,44 +111,35 @@ jobs:
                               filename = key.split('/')[-1]
                               if '.' in filename:
                                   existing.add(filename.rsplit('.', 1)[0])
-              except:
-                  pass
+              except Exception as e:
+                  log(f"Warning getting existing: {e}")
               return existing
 
-          def download(yt_id):
+          def download_and_upload(yt_id):
               output = TEMP_DIR / f"{yt_id}.opus"
-              cmd = [
-                  "yt-dlp", "-x", "--audio-format", "opus", "--audio-quality", "5",
+              cmd = ["yt-dlp", "-x", "--audio-format", "opus", "--audio-quality", "5",
                   "-o", str(TEMP_DIR / f"{yt_id}.%(ext)s"),
                   "--no-playlist", "--quiet", "--no-warnings",
                   "--cookies", "/tmp/cookies.txt",
                   "--retries", "2", "--socket-timeout", "30",
-                  "--sleep-interval", "1", "--max-sleep-interval", "3",
-                  f"https://www.youtube.com/watch?v={yt_id}"
-              ]
+                  f"https://www.youtube.com/watch?v={yt_id}"]
               try:
-                  subprocess.run(cmd, capture_output=True, timeout=90)
+                  subprocess.run(cmd, capture_output=True, timeout=120)
+                  if not output.exists():
+                      webm = TEMP_DIR / f"{yt_id}.webm"
+                      if webm.exists():
+                          webm.rename(output)
                   if output.exists():
-                      return output
-                  webm = TEMP_DIR / f"{yt_id}.webm"
-                  if webm.exists():
-                      webm.rename(output)
-                      return output
-              except:
+                      r2.upload_file(str(output), R2_BUCKET, f"128/{yt_id}.opus")
+                      r2.upload_file(str(output), R2_BUCKET, f"64/{yt_id}.opus")
+                      output.unlink()
+                      return True
+              except Exception as e:
                   pass
-              return None
-
-          def upload(path, yt_id):
-              try:
-                  r2.upload_file(str(path), R2_BUCKET, f"128/{yt_id}.opus")
-                  r2.upload_file(str(path), R2_BUCKET, f"64/{yt_id}.opus")
-                  return True
-              except:
-                  return False
+              return False
 
           def main():
               log(f"Starting: offset={OFFSET}, limit={LIMIT}")
-
               tracks = get_tracks()
               log(f"Got {len(tracks)} tracks from DB")
 
@@ -177,23 +149,21 @@ jobs:
               to_process = [t for t in tracks if t not in existing]
               log(f"Need to process: {len(to_process)}")
 
+              if not to_process:
+                  log("Nothing to process!")
+                  return
+
               uploaded = 0
               failed = 0
 
+              # Process with slight delays to avoid rate limits
               for i, yt_id in enumerate(to_process):
-                  time.sleep(random.uniform(0.5, 1.5))
-
-                  path = download(yt_id)
-                  if path and upload(path, yt_id):
+                  time.sleep(random.uniform(0.1, 0.3))  # Minimal delay
+                  if download_and_upload(yt_id):
                       uploaded += 1
-                      try:
-                          path.unlink()
-                      except:
-                          pass
                   else:
                       failed += 1
-
-                  if (i + 1) % 50 == 0:
+                  if (i + 1) % 25 == 0:
                       log(f"Progress: {i+1}/{len(to_process)} | ✅ {uploaded} | ❌ {failed}")
 
               log(f"DONE: ✅ {uploaded} | ❌ {failed}")
