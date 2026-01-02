@@ -69,6 +69,19 @@ jobs:
           # Install Python deps
           pip install boto3 requests
 
+          # Write YouTube cookies
+          cat << 'COOKIES' > /tmp/cookies.txt
+          # Netscape HTTP Cookie File
+          .youtube.com	TRUE	/	TRUE	0	__Secure-3PAPISID	cZoTw5ODO1Kk0yzS/AMihDY2kCbzOkuhWO
+          .youtube.com	TRUE	/	FALSE	0	PREF	hl=en&tz=UTC
+          .youtube.com	TRUE	/	TRUE	0	SOCS	CAI
+          .youtube.com	TRUE	/	TRUE	0	YSC	9F5X2bh-4dk
+          .youtube.com	TRUE	/	TRUE	1782868418	__Secure-ROLLOUT_TOKEN	CNbns-X46frgpQEQ05610tbrkQMYku7j2tbrkQM%3D
+          .youtube.com	TRUE	/	TRUE	1782892772	VISITOR_INFO1_LIVE	I56cNKMY8Jo
+          .youtube.com	TRUE	/	TRUE	1782892772	VISITOR_PRIVACY_METADATA	CgJNWRIEGgAgXg%3D%3D
+          .youtube.com	TRUE	/	TRUE	1767341027	GPS	1
+          COOKIES
+
       - name: Create worker script
         run: |
           cat << 'SCRIPT' > worker.py
@@ -137,7 +150,9 @@ jobs:
                   "yt-dlp", "-x", "--audio-format", "opus", "--audio-quality", "5",
                   "-o", str(TEMP_DIR / f"{yt_id}.%(ext)s"),
                   "--no-playlist", "--quiet", "--no-warnings",
+                  "--cookies", "/tmp/cookies.txt",
                   "--retries", "2", "--socket-timeout", "30",
+                  "--sleep-interval", "1", "--max-sleep-interval", "3",
                   f"https://www.youtube.com/watch?v={yt_id}"
               ]
               try:
