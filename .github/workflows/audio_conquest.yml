@@ -53,6 +53,12 @@ jobs:
       - name: Setup
         run: |
           echo "Job ${{ matrix.job_id }}: offset=${{ matrix.offset }}, limit=${{ matrix.limit }}"
+          # Install deno for yt-dlp signature solving
+          curl -fsSL https://deno.land/install.sh | sh
+          export DENO_INSTALL="$HOME/.deno"
+          export PATH="$DENO_INSTALL/bin:$PATH"
+          echo "$DENO_INSTALL/bin" >> $GITHUB_PATH
+          # Install yt-dlp
           sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
           sudo chmod a+rx /usr/local/bin/yt-dlp
           pip install boto3 requests
