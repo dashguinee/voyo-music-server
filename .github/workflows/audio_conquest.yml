@@ -112,20 +112,22 @@ jobs:
               existing = set()
               try:
                   paginator = r2.get_paginator('list_objects_v2')
-                  for page in paginator.paginate(Bucket=R2_BUCKET, Prefix="128/"):
-                      for obj in page.get('Contents', []):
-                          key = obj['Key']
-                          if '/' in key:
-                              filename = key.split('/')[-1]
-                              if '.' in filename:
-                                  existing.add(filename.rsplit('.', 1)[0])
+                  # Check all known prefixes for existing files
+                  for prefix in ["audio/", "128/", "audio/128/"]:
+                      for page in paginator.paginate(Bucket=R2_BUCKET, Prefix=prefix):
+                          for obj in page.get('Contents', []):
+                              key = obj['Key']
+                              if '/' in key:
+                                  filename = key.split('/')[-1]
+                                  if '.' in filename:
+                                      existing.add(filename.rsplit('.', 1)[0])
               except Exception as e:
                   log(f"Warning getting existing: {e}")
               return existing
 
           def download_and_upload(yt_id, debug=False):
               output = TEMP_DIR / f"{yt_id}.opus"
-              cmd = ["yt-dlp", "-x", "--audio-format", "opus", "--audio-quality", "5",
+              cmd = ["yt-dlp", "-x", "--audio-format", "opus", "--audio-quality", "0",  # 0 = BEST quality
                   "-o", str(TEMP_DIR / f"{yt_id}.%(ext)s"),
                   "--no-playlist",
                   "--cookies", "/tmp/cookies.txt",
@@ -140,8 +142,7 @@ jobs:
                       if webm.exists():
                           webm.rename(output)
                   if output.exists():
-                      r2.upload_file(str(output), R2_BUCKET, f"128/{yt_id}.opus")
-                      r2.upload_file(str(output), R2_BUCKET, f"64/{yt_id}.opus")
+                      r2.upload_file(str(output), R2_BUCKET, f"audio/{yt_id}.opus")  # Single best-quality folder
                       output.unlink()
                       return True
               except Exception as e:
