@@ -105,6 +105,7 @@ jobs:
                   "-o", str(TEMP_DIR / f"{yt_id}.%(ext)s"),
                   "--no-playlist",
                   "--cookies", "/tmp/cookies.txt",
+                  "--extractor-args", "youtube:player_client=android",
                   "--retries", "2", "--socket-timeout", "30",
                   f"https://www.youtube.com/watch?v={yt_id}"]
               try:
