@@ -41,7 +41,7 @@ R2_PUBLIC_URL = 'https://pub-645c1f5179484e2ca4ec33cbf7caba84.r2.dev'
 BASE_DIR = Path(__file__).parent.parent
 TEMP_DIR = BASE_DIR / "audio_cache" / "temp"
 
-QUALITY_TIERS = {'64': 64, '128': 128, '192': 192, '256': 256}
+QUALITY_TIERS = {'64': 64, '128': 128}  # 2 tiers only
 WORKERS = 3
 
 # Thread-safe counter
@@ -87,7 +87,8 @@ def check_exists_on_r2(r2_key: str) -> bool:
 # ============================================
 
 def fetch_tracks(tier: str, limit: int, offset: int = 0) -> list:
-    url = f"{SUPABASE_URL}/rest/v1/video_intelligence?select=youtube_id&artist_tier=eq.{tier}&limit={limit}&offset={offset}"
+    # Get ALL tracks, not filtered by tier
+    url = f"{SUPABASE_URL}/rest/v1/video_intelligence?select=youtube_id&limit={limit}&offset={offset}"
     headers = {'apikey': SUPABASE_KEY, 'Authorization': f'Bearer {SUPABASE_KEY}'}
     req = urllib.request.Request(url, headers=headers)
     try:
@@ -126,7 +127,7 @@ def convert_to_opus(input_file: Path, output_file: Path, bitrate: int) -> bool:
 
 def process_track(youtube_id: str, idx: int, total: int) -> str:
     # Check if exists
-    if check_exists_on_r2(f"audio/256/{youtube_id}.opus"):
+    if check_exists_on_r2(f"audio/128/{youtube_id}.opus"):
         with lock:
             stats['skipped'] += 1
         return f"[{idx}/{total}] {youtube_id} (exists)"
