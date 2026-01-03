@@ -8,8 +8,8 @@ on:
         default: '5000'
         type: string
       total_jobs:
-        description: 'Number of parallel jobs'
-        default: '20'
+        description: 'Number of parallel jobs (keep low to avoid cookie rotation)'
+        default: '3'
         type: string
       start_offset:
         description: 'Starting offset (for parallel runs)'
@@ -62,8 +62,8 @@ jobs:
           sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
           sudo chmod a+rx /usr/local/bin/yt-dlp
           pip install boto3 requests
-          # NO COOKIES - parallel workers from different IPs cause cookie rotation
-          # Failures will be retried later with cookies in smaller batches
+          # Cookies required - GitHub IPs are flagged by YouTube
+          echo "IyBOZXRzY2FwZSBIVFRQIENvb2tpZSBGaWxlCiMgVGhpcyBmaWxlIGlzIGdlbmVyYXRlZCBieSB5dC1kbHAuICBEbyBub3QgZWRpdC4KCi55b3V0dWJlLmNvbQlUUlVFCS8JVFJVRQkxNzgyOTY1NzA5CVZJU0lUT1JfSU5GTzFfTElWRQkwenRkTUN0b1UyNAoueW91dHViZS5jb20JVFJVRQkvCVRSVUUJMTc4Mjk2NTcwOQlWSVNJVE9SX1BSSVZBQ1lfTUVUQURBVEEJQ2dKTldSSUVHZ0FnRWclM0QlM0QKLnlvdXR1YmUuY29tCVRSVUUJLwlGQUxTRQkxODAxODc1NDc0CVNJRAlnLmEwMDA1UWpfU0JOYXFHLVJVMEN4VnBLWW00S1JhVnZ6ZDRDMmhEOWFjSGstTS1zWTZ0VDlfSzlqYTdQTHJudmhTY296WExlcVV3QUNnWUtBUWdTQVJVU0ZRSEdYMk1pb0RZYjBTU0RzamFKaVdiVkJISmY4eG9WQVVGOHlLb3lEa2tubnBjSXdiYWJmNnQ5MDFpdjAwNzYKLnlvdXR1YmUuY29tCVRSVUUJLwlUUlVFCTE4MDE4NzU0NzQJX19TZWN1cmUtMVBTSUQJZy5hMDAwNVFqX1NCTmFxRy1SVTBDeFZwS1ltNEtSYVZ2emQ0QzJoRDlhY0hrLU0tc1k2dFQ5R3VUS0RVTTFvdENGb1Q4T1BiQXlqQUFDZ1lLQVZzU0FSVVNGUUhHWDJNaTNpcHZtWWd4NkJWd05ZXzlwTmxhNFJvVkFVRjh5S3FzNDFhQkEwcXRCLWRBSjJNY3FFWHUwMDc2Ci55b3V0dWJlLmNvbQlUUlVFCS8JVFJVRQkxODAxODc1NDc0CV9fU2VjdXJlLTNQU0lECWcuYTAwMDVRal9TQk5hcUctUlUwQ3hWcEtZbTRLUmFWdnpkNEMyaEQ5YWNIay1NLXNZNnRUOVFfNEo1bFNwVHdqRkxydExCU0R2cXdBQ2dZS0FhY1NBUlVTRlFIR1gyTWlCZGo2ejZSVW5rX2RvMl92Q1l6eDJCb1ZBVUY4eUtxOHl6d0ZLVFRndm10NWtNZGx6ZTZFMDA3NgoueW91dHViZS5jb20JVFJVRQkvCUZBTFNFCTE4MDE4NzU0NzQJSFNJRAlBVmEwa2ZOYW1XSjA5NHFVVAoueW91dHViZS5jb20JVFJVRQkvCVRSVUUJMTgwMTg3NTQ3NAlTU0lECUFBbkJCRExPTWk0VjFBM3FCCi55b3V0dWJlLmNvbQlUUlVFCS8JRkFMU0UJMTgwMTg3NTQ3NAlBUElTSUQJdGJFaWFYVEZYMjIwYThKVi9BQ2tRMXRZV3d6clhRalRfbgoueW91dHViZS5jb20JVFJVRQkvCVRSVUUJMTgwMTg3NTQ3NAlTQVBJU0lECWNab1R3NU9ETzFLazB5elMvQU1paERZMmtDYnpPa3VoV08KLnlvdXR1YmUuY29tCVRSVUUJLwlUUlVFCTE4MDE4NzU0NzQJX19TZWN1cmUtMVBBUElTSUQJY1pvVHc1T0RPMUtrMHl6Uy9BTWloRFkya0Niek9rdWhXTwoueW91dHViZS5jb20JVFJVRQkvCVRSVUUJMTgwMTg3NTQ3NAlfX1NlY3VyZS0zUEFQSVNJRAljWm9UdzVPRE8xS2sweXpTL0FNaWhEWTJrQ2J6T2t1aFdPCi55b3V0dWJlLmNvbQlUUlVFCS8JVFJVRQkxODAxODc1NDc0CUxPR0lOX0lORk8JQUZtbUYyc3dSUUloQVB2NzR5cDVBZXRoSTVaUUM0Q0JLa1Vwd2U5Y1ZUWmtZcEtHeTFsUVdUeWpBaUI0RFZMZGZoQVJKOWNDVlRGMEdYOWg0OVozUUpEUUJrSFhKeHFrV2RoVU9BOlFVUTNNak5tZUV4YVNYZzRNMkpQTVcxSFpYTjBORFJvVmpaQlFUQnVPRmcyUjFwa01tdHZNSFpwTWxOc1VrazVWRGxqUnpsVlRtbHFNWGxQVjNoUlNURXRZVlp6TW01M2EzQnZTRkpoVG1KemJFMHRORFJHVVVNNGJHNHlVSFZDWTBWT1NFUXdhMU15U0UxaU1rcFdVVlpwV0hwdlVXNHRVSGt3ZVdaeVlVNUxOazU1T1RWUFRWOUZWbWRzTUcxRFNWWlFkMEZFVUhORE4yWk5kMmRtWWpabgoueW91dHViZS5jb20JVFJVRQkvCUZBTFNFCTAJUFJFRglmNj00MDAwMDA4MCZmNz0xMDAmdHo9VVRDJmY0PTQwMDAwMDAmaGw9ZW4KLnlvdXR1YmUuY29tCVRSVUUJLwlUUlVFCTE3ODI4OTM0MTkJX19TZWN1cmUtWU5JRAkxNC5ZVD1taXR2TjFoYVo5T1p4X0Y5Q0RJNHc1cUkyNHU3aDhqUkVlT2RqM2tOZ1poX1plZktUd05leTExcFBkejROVTEtZDhuWjlTbXNfZE9LMUt0ZGplLU1nWGFOTEFqYzZROExWd3M0RjVlNUJNbzlUNmtKVEppSnVYTXpPLUx1YUkzWmhrNkduM2xMcnRfWFNCQU02Rk9tM25kTWdIQVJkX3hMejBZVWJXSmc4cnhRRmNFRElDd0d2Qm1JbnUwX2JqdUdtV0pZSXotLWtTQkVHVm5wR3JCRG1yOFpaNjBEWUcyZVBUOFdTQWtyX3U5M2RSeUxNVEg0dDNzeWp2WDl3bWNZbTZTcS0xOEN5RlR2RUNycUJCeUxwSTFWQ244M1RQY2NCVVFnbnQxbENVd2hDUVJHZ3ZEQ2FmbTQ0UGV2LUxHY1FBOHNIeHhUbGZhV1VROGRmbkZyX0EKLnlvdXR1YmUuY29tCVRSVUUJLwlUUlVFCTAJWVNDCWJkMmEzZXpjMHpJCi55b3V0dWJlLmNvbQlUUlVFCS8JVFJVRQkxNzk4OTQ5MTI3CV9fU2VjdXJlLTFQU0lEVFMJc2lkdHMtQ2pNQmZsYUNkWnpnV0ozZE9HRU1JTWNWNW01czJkZUlZVXZGNWZBcFlXMXppMTIwVGZGbmhoYUZyeFNHS1VJb2czQUY3OWNRQUEKLnlvdXR1YmUuY29tCVRSVUUJLwlUUlVFCTE3OTg5NDkxMjcJX19TZWN1cmUtM1BTSURUUwlzaWR0cy1Dak1CZmxhQ2RaemdXSjNkT0dFTUlNY1Y1bTVzMmRlSVlVdkY1ZkFwWVcxemkxMjBUZkZuaGhhRnJ4U0dLVUlvZzNBRjc5Y1FBQQoueW91dHViZS5jb20JVFJVRQkvCUZBTFNFCTE3OTg5NDk3MDkJU0lEQ0MJQUtFeVh6VWI3THFBR3ZCekhXUzhtYkxHM29WOTF4Z2ptMU80Zk9KdXZ5ek8tT2dlVlg0WEdxbFdsTEhST0hEM0hIaU9WUThQCi55b3V0dWJlLmNvbQlUUlVFCS8JVFJVRQkxNzk4OTQ5NzA5CV9fU2VjdXJlLTFQU0lEQ0MJQUtFeVh6VS1vYXJWNFN0UFVySkJ0WkpUQ0JyRWZTSm9zbWVZVE5HRkd5dGl6ZkNxUXZlT1ljOGliTkFOWVBuOWxfY2dzem02TWcKLnlvdXR1YmUuY29tCVRSVUUJLwlUUlVFCTE3OTg5NDk3MDkJX19TZWN1cmUtM1BTSURDQwlBS0V5WHpYNG9QeVFuQWJaT0tvYlNCWXZYa2VkRTZMLUotZkdWU1I4cTBGSVdXd0J2SC1EVkpMREhhSHRIRUZpUEItZmxsNmIKLnlvdXR1YmUuY29tCVRSVUUJLwlUUlVFCTE3ODI5NjU3MDkJX19TZWN1cmUtUk9MTE9VVF9UT0tFTglDTktXanB1S3VkSHhDQkRUek4yU3dlNlJBeGpUek4yU3dlNlJBdyUzRCUzRAo=" | base64 -d > /tmp/cookies.txt
 
       - name: Create worker script
         run: |
@@ -137,10 +137,11 @@ jobs:
               return existing
 
           def download_and_upload(yt_id, debug=False):
-              # BEST QUALITY: bestaudio with fallback, sorted by bitrate, no conversion, NO COOKIES
+              # BEST QUALITY: bestaudio with fallback, sorted by bitrate, no conversion
               cmd = ["yt-dlp", "-f", "bestaudio/best", "-S", "+size,+br", "-x",
                   "-o", str(TEMP_DIR / f"{yt_id}.%(ext)s"),
                   "--no-playlist",
+                  "--cookies", "/tmp/cookies.txt",
                   "--retries", "2", "--socket-timeout", "30",
                   f"https://www.youtube.com/watch?v={yt_id}"]
               try:
@@ -178,9 +179,9 @@ jobs:
               uploaded = 0
               failed = 0
 
-              # Process with slight delays to avoid rate limits
+              # Process with delays to avoid rate limits and cookie rotation
               for i, yt_id in enumerate(to_process):
-                  time.sleep(random.uniform(0.1, 0.3))  # Minimal delay
+                  time.sleep(random.uniform(1.0, 3.0))  # Longer delay - safer for cookies
                   # Debug first 3 tracks to see what's happening
                   if download_and_upload(yt_id, debug=(i < 3)):
                       uploaded += 1
