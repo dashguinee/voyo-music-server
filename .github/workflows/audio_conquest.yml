@@ -53,9 +53,7 @@ jobs:
       - name: Setup
         run: |
           echo "Job ${{ matrix.job_id }}: offset=${{ matrix.offset }}, limit=${{ matrix.limit }}"
-          # Install ffmpeg
-          sudo apt-get update && sudo apt-get install -y ffmpeg
-          # Install deno for yt-dlp signature solving
+          # Install deno for yt-dlp signature solving (no ffmpeg needed - no conversion)
           curl -fsSL https://deno.land/install.sh | sh
           export DENO_INSTALL="$HOME/.deno"
           export PATH="$DENO_INSTALL/bin:$PATH"
@@ -112,8 +110,8 @@ jobs:
               existing = set()
               try:
                   paginator = r2.get_paginator('list_objects_v2')
-                  # Check all known prefixes for existing files
-                  for prefix in ["audio/", "128/", "audio/128/"]:
+                  # Check raw/ and legacy folders
+                  for prefix in ["raw/", "audio/", "128/", "audio/128/"]:
                       for page in paginator.paginate(Bucket=R2_BUCKET, Prefix=prefix):
                           for obj in page.get('Contents', []):
                               key = obj['Key']
@@ -126,8 +124,8 @@ jobs:
               return existing
 
           def download_and_upload(yt_id, debug=False):
-              output = TEMP_DIR / f"{yt_id}.opus"
-              cmd = ["yt-dlp", "-f", "bestaudio", "-x", "--audio-format", "opus", "--audio-quality", "0",  # bestaudio = demand best available
+              # bestaudio + extract only - NO conversion, keep original format
+              cmd = ["yt-dlp", "-f", "bestaudio", "-x",
                   "-o", str(TEMP_DIR / f"{yt_id}.%(ext)s"),
                   "--no-playlist",
                   "--cookies", "/tmp/cookies.txt",
@@ -137,14 +135,15 @@ jobs:
                   result = subprocess.run(cmd, capture_output=True, timeout=120, text=True)
                   if debug or result.returncode != 0:
                       log(f"yt-dlp exit={result.returncode} stderr={result.stderr[:200] if result.stderr else 'none'}")
-                  if not output.exists():
-                      webm = TEMP_DIR / f"{yt_id}.webm"
-                      if webm.exists():
-                          webm.rename(output)
-                  if output.exists():
-                      r2.upload_file(str(output), R2_BUCKET, f"audio/{yt_id}.opus")  # Single best-quality folder
-                      output.unlink()
-                      return True
+
+                  # Find whatever file was created (could be .opus, .m4a, .webm, etc.)
+                  for ext in ['opus', 'webm', 'm4a', 'mp3', 'ogg']:
+                      output = TEMP_DIR / f"{yt_id}.{ext}"
+                      if output.exists():
+                          # Upload to raw/ with original extension
+                          r2.upload_file(str(output), R2_BUCKET, f"raw/{yt_id}.{ext}")
+                          output.unlink()
+                          return True
               except Exception as e:
                   log(f"Exception for {yt_id}: {e}")
               return False
