@@ -137,8 +137,8 @@ jobs:
               return existing
 
           def download_and_upload(yt_id, debug=False):
-              # BEST QUALITY: bestaudio with fallback, sorted by bitrate, no conversion
-              cmd = ["yt-dlp", "-f", "bestaudio/best", "-S", "+size,+br", "-x",
+              # BEST QUALITY: bestaudio direct (no -x, no ffmpeg needed)
+              cmd = ["yt-dlp", "-f", "bestaudio/best", "-S", "+size,+br",
                   "-o", str(TEMP_DIR / f"{yt_id}.%(ext)s"),
                   "--no-playlist",
                   "--cookies", "/tmp/cookies.txt",
