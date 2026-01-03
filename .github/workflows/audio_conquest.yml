@@ -8,8 +8,8 @@ on:
         default: '5000'
         type: string
       total_jobs:
-        description: 'Number of parallel jobs'
-        default: '20'
+        description: 'Number of parallel jobs (max = number of YouTube accounts)'
+        default: '1'
         type: string
       start_offset:
         description: 'Starting offset'
@@ -51,6 +51,13 @@ jobs:
 
     steps:
       - name: Setup
+        env:
+          COOKIES_0: ${{ secrets.YOUTUBE_COOKIES_0 }}
+          COOKIES_1: ${{ secrets.YOUTUBE_COOKIES_1 }}
+          COOKIES_2: ${{ secrets.YOUTUBE_COOKIES_2 }}
+          COOKIES_3: ${{ secrets.YOUTUBE_COOKIES_3 }}
+          COOKIES_4: ${{ secrets.YOUTUBE_COOKIES_4 }}
+          JOB_ID: ${{ matrix.job_id }}
         run: |
           echo "Job ${{ matrix.job_id }}: offset=${{ matrix.offset }}, limit=${{ matrix.limit }}"
           # Install ffmpeg (needed for audio conversion)
@@ -60,8 +67,23 @@ jobs:
           sudo chmod a+rx /usr/local/bin/yt-dlp
           pip install boto3 requests
 
-          # EXACT cookies from working version (visitor only, no login session)
-          echo "IyBOZXRzY2FwZSBIVFRQIENvb2tpZSBGaWxlCi55b3V0dWJlLmNvbQlUUlVFCS8JVFJVRQkwCV9fU2VjdXJlLTNQQVBJU0lECWNab1R3NU9ETzFLazB5elMvQU1paERZMmtDYnpPa3VoV08KLnlvdXR1YmUuY29tCVRSVUUJLwlGQUxTRQkwCVBSRUYJaGw9ZW4mdHo9VVRDCi55b3V0dWJlLmNvbQlUUlVFCS8JVFJVRQkwCVNPQ1MJQ0FJCi55b3V0dWJlLmNvbQlUUlVFCS8JVFJVRQkwCVlTQwk5RjVYMmJoLTRkawoud291dHViZS5jb20JVFJVRQkvCVRSVUUJMTc4Mjg2ODQxOAlfX1NlY3VyZS1ST0xMT1VUX1RPS0VOCUNOYm5zLVg0NmZyZ3BRRVEwNTYxMHRicmtRTVlrdTdqMnRicmtRTSUzRAoueW91dHViZS5jb20JVFJVRQkvCVRSVUUJMTc4Mjg5Mjc3MglWSVNJVE9SX0lORk8xX0xJVkUJSTU2Y05LTVk4Sm8KLnlvdXR1YmUuY29tCVRSVUUJLwlUUlVFCTE3ODI4OTI3NzIJVklTSVRPUl9QUklWQUNZX01FVEFEQVRBCUNnSk5XUklFR2dBZ1hnJTNEJTNECi55b3V0dWJlLmNvbQlUUlVFCS8JVFJVRQkxNzY3MzQxMDI3CUdQUwkxCg==" | base64 -d > /tmp/cookies.txt
+          # Each job gets its own YouTube account cookies (LOGIN required now)
+          case $JOB_ID in
+            0) COOKIE_DATA="$COOKIES_0" ;;
+            1) COOKIE_DATA="$COOKIES_1" ;;
+            2) COOKIE_DATA="$COOKIES_2" ;;
+            3) COOKIE_DATA="$COOKIES_3" ;;
+            4) COOKIE_DATA="$COOKIES_4" ;;
+            *) COOKIE_DATA="$COOKIES_0" ;;
+          esac
+
+          if [ -n "$COOKIE_DATA" ]; then
+            echo "$COOKIE_DATA" | base64 -d > /tmp/cookies.txt
+            echo "✓ Cookies loaded for Job $JOB_ID"
+          else
+            echo "❌ ERROR: No cookies for Job $JOB_ID - add YOUTUBE_COOKIES_$JOB_ID secret"
+            exit 1
+          fi
 
       - name: Create worker script
         run: |
