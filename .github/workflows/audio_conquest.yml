@@ -60,12 +60,8 @@ jobs:
           sudo chmod a+rx /usr/local/bin/yt-dlp
           pip install boto3 requests
 
-          # MINIMAL visitor cookies only - NO login session (won't get rotated!)
-          cat << 'COOKIES' > /tmp/cookies.txt
-          # Netscape HTTP Cookie File
-          .youtube.com	TRUE	/	FALSE	0	PREF	hl=en&tz=UTC
-          .youtube.com	TRUE	/	TRUE	0	SOCS	CAI
-          COOKIES
+          # EXACT cookies from working version (visitor only, no login session)
+          echo "IyBOZXRzY2FwZSBIVFRQIENvb2tpZSBGaWxlCi55b3V0dWJlLmNvbQlUUlVFCS8JVFJVRQkwCV9fU2VjdXJlLTNQQVBJU0lECWNab1R3NU9ETzFLazB5elMvQU1paERZMmtDYnpPa3VoV08KLnlvdXR1YmUuY29tCVRSVUUJLwlGQUxTRQkwCVBSRUYJaGw9ZW4mdHo9VVRDCi55b3V0dWJlLmNvbQlUUlVFCS8JVFJVRQkwCVNPQ1MJQ0FJCi55b3V0dWJlLmNvbQlUUlVFCS8JVFJVRQkwCVlTQwk5RjVYMmJoLTRkawoud291dHViZS5jb20JVFJVRQkvCVRSVUUJMTc4Mjg2ODQxOAlfX1NlY3VyZS1ST0xMT1VUX1RPS0VOCUNOYm5zLVg0NmZyZ3BRRVEwNTYxMHRicmtRTVlrdTdqMnRicmtRTSUzRAoueW91dHViZS5jb20JVFJVRQkvCVRSVUUJMTc4Mjg5Mjc3MglWSVNJVE9SX0lORk8xX0xJVkUJSTU2Y05LTVk4Sm8KLnlvdXR1YmUuY29tCVRSVUUJLwlUUlVFCTE3ODI4OTI3NzIJVklTSVRPUl9QUklWQUNZX01FVEFEQVRBCUNnSk5XUklFR2dBZ1hnJTNEJTNECi55b3V0dWJlLmNvbQlUUlVFCS8JVFJVRQkxNzY3MzQxMDI3CUdQUwkxCg==" | base64 -d > /tmp/cookies.txt
 
       - name: Create worker script
         run: |
@@ -148,14 +144,18 @@ jobs:
                   if debug or result.returncode != 0:
                       log(f"yt-dlp exit={result.returncode} stderr={result.stderr[:200] if result.stderr else 'none'}")
 
-                  # Find output file
-                  for ext in ['opus', 'webm', 'm4a', 'mp3', 'ogg']:
-                      output = TEMP_DIR / f"{yt_id}.{ext}"
-                      if output.exists():
-                          # Upload to 128/ (same as before)
-                          r2.upload_file(str(output), R2_BUCKET, f"128/{yt_id}.opus")
-                          output.unlink()
-                          return True
+                  # Check for output file (might be opus or webm)
+                  output = TEMP_DIR / f"{yt_id}.opus"
+                  if not output.exists():
+                      webm = TEMP_DIR / f"{yt_id}.webm"
+                      if webm.exists():
+                          webm.rename(output)
+                  if output.exists():
+                      # Upload to BOTH tiers (same as working version)
+                      r2.upload_file(str(output), R2_BUCKET, f"128/{yt_id}.opus")
+                      r2.upload_file(str(output), R2_BUCKET, f"64/{yt_id}.opus")
+                      output.unlink()
+                      return True
               except Exception as e:
                   log(f"Exception for {yt_id}: {e}")
               return False
