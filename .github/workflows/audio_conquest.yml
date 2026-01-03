@@ -8,11 +8,11 @@ on:
         default: '5000'
         type: string
       total_jobs:
-        description: 'Number of parallel jobs (keep low to avoid cookie rotation)'
-        default: '3'
+        description: 'Number of parallel jobs'
+        default: '20'
         type: string
       start_offset:
-        description: 'Starting offset (for parallel runs)'
+        description: 'Starting offset'
         default: '0'
         type: string
 
@@ -51,37 +51,21 @@ jobs:
 
     steps:
       - name: Setup
-        env:
-          # Each job gets its own cookie set - prevents rotation
-          COOKIES_0: ${{ secrets.YOUTUBE_COOKIES_0 }}
-          COOKIES_1: ${{ secrets.YOUTUBE_COOKIES_1 }}
-          COOKIES_2: ${{ secrets.YOUTUBE_COOKIES_2 }}
-          COOKIES_3: ${{ secrets.YOUTUBE_COOKIES_3 }}
-          COOKIES_4: ${{ secrets.YOUTUBE_COOKIES_4 }}
-          JOB_ID: ${{ matrix.job_id }}
         run: |
           echo "Job ${{ matrix.job_id }}: offset=${{ matrix.offset }}, limit=${{ matrix.limit }}"
+          # Install ffmpeg (needed for audio conversion)
+          sudo apt-get update && sudo apt-get install -y ffmpeg
           # Install yt-dlp
           sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
           sudo chmod a+rx /usr/local/bin/yt-dlp
           pip install boto3 requests
 
-          # Select cookie based on job_id (each worker gets unique YouTube account)
-          case $JOB_ID in
-            0) COOKIE_DATA="$COOKIES_0" ;;
-            1) COOKIE_DATA="$COOKIES_1" ;;
-            2) COOKIE_DATA="$COOKIES_2" ;;
-            3) COOKIE_DATA="$COOKIES_3" ;;
-            4) COOKIE_DATA="$COOKIES_4" ;;
-            *) COOKIE_DATA="$COOKIES_0" ;;  # Fallback to first cookie
-          esac
-
-          if [ -n "$COOKIE_DATA" ]; then
-            echo "$COOKIE_DATA" | base64 -d > /tmp/cookies.txt
-            echo "✓ Using dedicated cookies for Job $JOB_ID"
-          else
-            echo "⚠ No cookies for Job $JOB_ID - will likely fail!"
-          fi
+          # MINIMAL visitor cookies only - NO login session (won't get rotated!)
+          cat << 'COOKIES' > /tmp/cookies.txt
+          # Netscape HTTP Cookie File
+          .youtube.com	TRUE	/	FALSE	0	PREF	hl=en&tz=UTC
+          .youtube.com	TRUE	/	TRUE	0	SOCS	CAI
+          COOKIES
 
       - name: Create worker script
         run: |
@@ -94,7 +78,6 @@ jobs:
           import boto3
           from botocore.config import Config
           import requests
-          from concurrent.futures import ThreadPoolExecutor, as_completed
 
           SUPABASE_URL = "https://anmgyxhnyhbyxzpjhxgx.supabase.co"
           SUPABASE_KEY = os.environ['SUPABASE_KEY']
@@ -123,7 +106,6 @@ jobs:
               all_tracks = []
               current_offset = OFFSET
               remaining = LIMIT
-              # Supabase max 1000 per request - paginate
               while remaining > 0:
                   batch_size = min(1000, remaining)
                   url = f"{SUPABASE_URL}/rest/v1/video_intelligence?select=youtube_id&limit={batch_size}&offset={current_offset}"
@@ -141,8 +123,7 @@ jobs:
               existing = set()
               try:
                   paginator = r2.get_paginator('list_objects_v2')
-                  # Check raw/ and legacy folders
-                  for prefix in ["raw/", "audio/", "128/", "audio/128/"]:
+                  for prefix in ["128/", "raw/", "audio/128/"]:
                       for page in paginator.paginate(Bucket=R2_BUCKET, Prefix=prefix):
                           for obj in page.get('Contents', []):
                               key = obj['Key']
@@ -155,10 +136,10 @@ jobs:
               return existing
 
           def download_and_upload(yt_id, debug=False):
-              # BEST QUALITY: bestaudio direct (no -x, no ffmpeg needed)
-              cmd = ["yt-dlp", "-f", "bestaudio/best", "-S", "+size,+br",
+              # Same approach that worked before - opus conversion
+              cmd = ["yt-dlp", "-x", "--audio-format", "opus", "--audio-quality", "5",
                   "-o", str(TEMP_DIR / f"{yt_id}.%(ext)s"),
-                  "--no-playlist",
+                  "--no-playlist", "--quiet", "--no-warnings",
                   "--cookies", "/tmp/cookies.txt",
                   "--retries", "2", "--socket-timeout", "30",
                   f"https://www.youtube.com/watch?v={yt_id}"]
@@ -167,12 +148,12 @@ jobs:
                   if debug or result.returncode != 0:
                       log(f"yt-dlp exit={result.returncode} stderr={result.stderr[:200] if result.stderr else 'none'}")
 
-                  # Find whatever file was created (could be .opus, .m4a, .webm, etc.)
+                  # Find output file
                   for ext in ['opus', 'webm', 'm4a', 'mp3', 'ogg']:
                       output = TEMP_DIR / f"{yt_id}.{ext}"
                       if output.exists():
-                          # Upload to raw/ with original extension
-                          r2.upload_file(str(output), R2_BUCKET, f"raw/{yt_id}.{ext}")
+                          # Upload to 128/ (same as before)
+                          r2.upload_file(str(output), R2_BUCKET, f"128/{yt_id}.opus")
                           output.unlink()
                           return True
               except Exception as e:
@@ -197,15 +178,13 @@ jobs:
               uploaded = 0
               failed = 0
 
-              # Process with delays to avoid rate limits and cookie rotation
               for i, yt_id in enumerate(to_process):
-                  time.sleep(random.uniform(1.0, 3.0))  # Longer delay - safer for cookies
-                  # Debug first 3 tracks to see what's happening
+                  time.sleep(random.uniform(0.1, 0.3))  # Small delay
                   if download_and_upload(yt_id, debug=(i < 3)):
                       uploaded += 1
                   else:
                       failed += 1
-                  if (i + 1) % 25 == 0:
+                  if (i + 1) % 50 == 0:
                       log(f"Progress: {i+1}/{len(to_process)} | ✅ {uploaded} | ❌ {failed}")
 
               log(f"DONE: ✅ {uploaded} | ❌ {failed}")
