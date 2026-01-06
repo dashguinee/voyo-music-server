@@ -1,4 +1,4 @@
-name: Moments Discovery dashgn009
+name: Moments Discovery
 
 on:
   workflow_dispatch:
@@ -15,11 +15,11 @@ jobs:
       - name: Setup
         run: pip install requests
 
-      - name: Create and run discovery
+      - name: Run discovery
         env:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          GEMINI_KEYS: ${{ secrets.GEMINI_KEYS }}
           WORKER: ${{ matrix.worker }}
-          WORKFLOW_OFFSET: '6'
         run: |
           cat << 'SCRIPT' > discover.py
           import os, json, time, random, requests
@@ -27,13 +27,32 @@ jobs:
           SUPABASE_URL = "https://anmgyxhnyhbyxzpjhxgx.supabase.co"
           SUPABASE_KEY = os.environ['SUPABASE_KEY']
           WORKER = int(os.environ.get('WORKER', '0'))
-          WORKFLOW_OFFSET = int(os.environ.get('WORKFLOW_OFFSET', '0'))
 
-          GEMINI_KEYS = ["AIzaSyAxXuWxcD1CN08lsoJlcUL6uBcLJEyXBFk","AIzaSyA06zIDz7H5waHAI4Y7pm6goewWgf5fjSA","AIzaSyCYrl0-t2xS0NZ4aSEQ-ZUZvCu-KoKftc8","AIzaSyD10bR8ttgOxQok8rcOq7jc_yF00UBQn14","AIzaSyBKZmoLt4bxNDZlq8LB9h0YMDWshgMxQ7M","AIzaSyCwiS0cu23sVwxj2kVOU72zFkdXfpDQdes","AIzaSyB86yrjm-J6IRhCAHxSBibyHiFtrHO3x8s","AIzaSyDokhvEBX5O8UNO2oELV6b8yX3wjBmGJVc","AIzaSyACh0veq7t8rzn6GQffS_5VSQlNN7g8rYc","AIzaSyBiukubVZHnxQOHSmgs5KBePbXaOC0CVrA","AIzaSyBlQtC75xy3mtvFh1jlD2V9hCL3ZWgdAL0","AIzaSyCsz2Q9c1XcUpDHm-mpzdPScNCoqDCf6bg","AIzaSyDYQp4_cczG_9ckibyp7Zf8L0TIbIxCnec","AIzaSyAZvM9erouQMYMAUl6At83391uuQMj8Ckk","AIzaSyCydxSRPNbN08nO6QXN95RR7UUdtDSQNX4","AIzaSyCdWnesc8Svykwb0yF2UQl18_fsNJYOiVg","AIzaSyBmIjEMvUnM80Pk3FcenKP_yoippgHkT1M","AIzaSyBQsI8Z3mBF1dWuHBo3Sbv0Rpvt4zNwV_4","AIzaSyAWqEvMZ5po-rX8ADwuc4ja6typ6YuGbeE"]
-          KEY_INDEX = (WORKFLOW_OFFSET + WORKER) % len(GEMINI_KEYS)
-          GEMINI_KEY = GEMINI_KEYS[KEY_INDEX]
+          GEMINI_KEYS = os.environ.get('GEMINI_KEYS', '').split(',')
+          GEMINI_KEY = GEMINI_KEYS[WORKER % len(GEMINI_KEYS)]
 
-          TARGETS = [{'id': 'instagram-afrobeats', 'focus': 'Afrobeats dance reels'},{'id': 'tiktok-amapiano', 'focus': 'Amapiano dance challenges'},{'id': 'instagram-afro-fashion', 'focus': 'African fashion with music'},{'id': 'tiktok-african-comedy', 'focus': 'African comedy skits'},{'id': 'instagram-lagos-vibes', 'focus': 'Lagos lifestyle'},{'id': 'ghana-highlife', 'focus': 'Ghanaian highlife'},{'id': 'kenya-gengetone', 'focus': 'Kenyan gengetone'},{'id': 'francophone-coupe', 'focus': 'Coupe-decale'},{'id': 'uk-afroswing', 'focus': 'UK Afroswing'},{'id': 'diaspora-vibes', 'focus': 'African diaspora'},{'id': 'dance-challenges', 'focus': 'Viral dance challenges'},{'id': 'music-reactions', 'focus': 'Music reactions'},{'id': 'street-performers', 'focus': 'Raw talent'},{'id': 'producer-beats', 'focus': 'African producers'},{'id': 'throwback-classics', 'focus': 'Classic clips'},{'id': 'emerging-artists', 'focus': 'New artists'},{'id': 'live-performances', 'focus': 'Concert clips'},{'id': 'cover-artists', 'focus': 'Music covers'},{'id': 'remix-culture', 'focus': 'Remixes'},{'id': 'viral-sounds', 'focus': 'Trending sounds'}]
+          TARGETS = [
+              {'id': 'instagram-afrobeats', 'focus': 'Afrobeats dance reels'},
+              {'id': 'tiktok-amapiano', 'focus': 'Amapiano dance challenges'},
+              {'id': 'instagram-afro-fashion', 'focus': 'African fashion with music'},
+              {'id': 'tiktok-african-comedy', 'focus': 'African comedy skits'},
+              {'id': 'instagram-lagos-vibes', 'focus': 'Lagos lifestyle'},
+              {'id': 'ghana-highlife', 'focus': 'Ghanaian highlife'},
+              {'id': 'kenya-gengetone', 'focus': 'Kenyan gengetone'},
+              {'id': 'francophone-coupe', 'focus': 'Coupe-decale'},
+              {'id': 'uk-afroswing', 'focus': 'UK Afroswing'},
+              {'id': 'diaspora-vibes', 'focus': 'African diaspora'},
+              {'id': 'dance-challenges', 'focus': 'Viral dance challenges'},
+              {'id': 'music-reactions', 'focus': 'Music reactions'},
+              {'id': 'street-performers', 'focus': 'Raw talent'},
+              {'id': 'producer-beats', 'focus': 'African producers'},
+              {'id': 'throwback-classics', 'focus': 'Classic clips'},
+              {'id': 'emerging-artists', 'focus': 'New artists'},
+              {'id': 'live-performances', 'focus': 'Concert clips'},
+              {'id': 'cover-artists', 'focus': 'Music covers'},
+              {'id': 'remix-culture', 'focus': 'Remixes'},
+              {'id': 'viral-sounds', 'focus': 'Trending sounds'}
+          ]
 
           def log(msg): print(f"[W{WORKER}] {msg}", flush=True)
 
@@ -44,10 +63,12 @@ jobs:
                       resp = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.8, "maxOutputTokens": 8192}}, timeout=60)
                       data = resp.json()
                       if "error" in data:
-                          if "429" in str(data): time.sleep((2**attempt)*10); continue
+                          err = str(data)
+                          if "429" in err: time.sleep((2**attempt)*10); continue
+                          log(f"Error: {data.get('error',{}).get('message','Unknown')}")
                           return None
                       return data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                  except: time.sleep(5)
+                  except Exception as e: log(f"Request error: {e}"); time.sleep(5)
               return None
 
           def discover(target):
@@ -64,7 +85,7 @@ jobs:
               except: return False
 
           my_targets = [t for i,t in enumerate(TARGETS) if i%3==WORKER]
-          log(f"LOOP mode - {len(my_targets)} targets, Key #{KEY_INDEX}")
+          log(f"Starting LOOP mode - {len(my_targets)} targets")
           total, loop = 0, 0
           while loop < 100:
               loop += 1
@@ -76,5 +97,6 @@ jobs:
                   time.sleep(random.uniform(2,5))
               log(f"Total: {total}")
               time.sleep(random.uniform(5,10))
+          log(f"FINAL: {total} creators")
           SCRIPT
           python discover.py
