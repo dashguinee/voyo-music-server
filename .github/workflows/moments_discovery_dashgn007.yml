@@ -70,7 +70,7 @@ jobs:
           GEMINI_KEY = GEMINI_KEYS[KEY_INDEX]
 
           genai.configure(api_key=GEMINI_KEY)
-          model = genai.GenerativeModel('gemini-2.0-flash-exp')
+          model = genai.GenerativeModel('gemini-1.5-flash')
 
           DISCOVERY_WAVES = {
               1: [
@@ -106,8 +106,8 @@ jobs:
           def log(msg):
               print(f"[MomentsDiscovery-W{WORKER}] {msg}", flush=True)
 
-          def discover_creators(target):
-              """Use Gemini to discover creators for a target"""
+          def discover_creators(target, max_retries=5):
+              """Use Gemini to discover creators for a target with retry logic"""
               prompt = f"""You are discovering Instagram and TikTok creators for an African music platform.
 
           Target: {target['id']}
@@ -123,17 +123,24 @@ jobs:
 
           Focus on REAL, ACTIVE creators with African music content. Mix of popular and emerging."""
 
-              try:
-                  response = model.generate_content(prompt)
-                  text = response.text
-                  # Extract JSON
-                  start = text.find('{')
-                  end = text.rfind('}') + 1
-                  if start >= 0 and end > start:
-                      data = json.loads(text[start:end])
-                      return data.get('creators', [])
-              except Exception as e:
-                  log(f"Gemini error: {e}")
+              for attempt in range(max_retries):
+                  try:
+                      response = model.generate_content(prompt)
+                      text = response.text
+                      # Extract JSON
+                      start = text.find('{')
+                      end = text.rfind('}') + 1
+                      if start >= 0 and end > start:
+                          data = json.loads(text[start:end])
+                          return data.get('creators', [])
+                  except Exception as e:
+                      if '429' in str(e):
+                          wait_time = (2 ** attempt) * 10 + random.uniform(5, 15)
+                          log(f"Rate limited, waiting {wait_time:.0f}s (attempt {attempt+1}/{max_retries})")
+                          time.sleep(wait_time)
+                      else:
+                          log(f"Gemini error: {e}")
+                          break
               return []
 
           def insert_pending_creator(creator):
