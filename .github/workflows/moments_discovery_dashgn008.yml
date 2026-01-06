@@ -38,10 +38,36 @@ jobs:
 
           SUPABASE_URL = "https://anmgyxhnyhbyxzpjhxgx.supabase.co"
           SUPABASE_KEY = os.environ['SUPABASE_KEY']
-          GEMINI_KEY = os.environ['GEMINI_KEY']
           WAVE = int(os.environ.get('WAVE', '1'))
           WORKER = int(os.environ.get('WORKER', '0'))
-          TARGETS_PER_WORKER = 2  # 5 targets / 3 workers
+          WORKFLOW_OFFSET = int(os.environ.get('WORKFLOW_OFFSET', '0'))
+          TARGETS_PER_WORKER = 2
+
+          # 20 Gemini keys for rotation
+          GEMINI_KEYS = [
+              "AIzaSyAxXuWxcD1CN08lsoJlcUL6uBcLJEyXBFk",
+              "AIzaSyDT1gvA13Bl_COnC0JpGEGY2iqNCwEgBi0",
+              "AIzaSyA06zIDz7H5waHAI4Y7pm6goewWgf5fjSA",
+              "AIzaSyCYrl0-t2xS0NZ4aSEQ-ZUZvCu-KoKftc8",
+              "AIzaSyD10bR8ttgOxQok8rcOq7jc_yF00UBQn14",
+              "AIzaSyBKZmoLt4bxNDZlq8LB9h0YMDWshgMxQ7M",
+              "AIzaSyCwiS0cu23sVwxj2kVOU72zFkdXfpDQdes",
+              "AIzaSyB86yrjm-J6IRhCAHxSBibyHiFtrHO3x8s",
+              "AIzaSyDokhvEBX5O8UNO2oELV6b8yX3wjBmGJVc",
+              "AIzaSyACh0veq7t8rzn6GQffS_5VSQlNN7g8rYc",
+              "AIzaSyBiukubVZHnxQOHSmgs5KBePbXaOC0CVrA",
+              "AIzaSyBlQtC75xy3mtvFh1jlD2V9hCL3ZWgdAL0",
+              "AIzaSyCsz2Q9c1XcUpDHm-mpzdPScNCoqDCf6bg",
+              "AIzaSyDYQp4_cczG_9ckibyp7Zf8L0TIbIxCnec",
+              "AIzaSyAZvM9erouQMYMAUl6At83391uuQMj8Ckk",
+              "AIzaSyCydxSRPNbN08nO6QXN95RR7UUdtDSQNX4",
+              "AIzaSyCdWnesc8Svykwb0yF2UQl18_fsNJYOiVg",
+              "AIzaSyBmIjEMvUnM80Pk3FcenKP_yoippgHkT1M",
+              "AIzaSyBQsI8Z3mBF1dWuHBo3Sbv0Rpvt4zNwV_4",
+              "AIzaSyAWqEvMZ5po-rX8ADwuc4ja6typ6YuGbeE",
+          ]
+          KEY_INDEX = (WORKFLOW_OFFSET + WORKER) % len(GEMINI_KEYS)
+          GEMINI_KEY = GEMINI_KEYS[KEY_INDEX]
 
           genai.configure(api_key=GEMINI_KEY)
           model = genai.GenerativeModel('gemini-2.0-flash-exp')
@@ -163,8 +189,8 @@ jobs:
       - name: Run discovery
         env:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          GEMINI_KEY: ${{ secrets.GEMINI_KEY_1 }}
           WAVE: ${{ inputs.wave }}
           WORKER: ${{ matrix.worker }}
+          WORKFLOW_OFFSET: '0'
           TARGETS_PER_WORKER: ${{ inputs.targets_per_worker }}
         run: python discover.py
