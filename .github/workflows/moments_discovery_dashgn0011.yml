@@ -2,221 +2,79 @@ name: Moments Discovery dashgn0011
 
 on:
   workflow_dispatch:
-    inputs:
-      wave:
-        description: 'Discovery wave (1-4)'
-        default: '1'
-        type: string
-      targets_per_worker:
-        description: 'Targets per worker'
-        default: '2'
-        type: string
 
 jobs:
   discovery:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
         worker: [0, 1, 2]
     steps:
       - name: Setup
-        run: |
-          echo "Moments Discovery dashgn0011 Worker ${{ matrix.worker }}"
-          pip install requests
+        run: pip install requests
 
-      - name: Create discovery script
+      - name: Create and run discovery
+        env:
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          WORKER: ${{ matrix.worker }}
+          WORKFLOW_OFFSET: '12'
         run: |
           cat << 'SCRIPT' > discover.py
-          import os
-          import json
-          import time
-          import random
-          import requests
+          import os, json, time, random, requests
 
           SUPABASE_URL = "https://anmgyxhnyhbyxzpjhxgx.supabase.co"
           SUPABASE_KEY = os.environ['SUPABASE_KEY']
-          WAVE = int(os.environ.get('WAVE', '1'))
           WORKER = int(os.environ.get('WORKER', '0'))
           WORKFLOW_OFFSET = int(os.environ.get('WORKFLOW_OFFSET', '0'))
-          TARGETS_PER_WORKER = 2
 
-          # 20 Gemini keys for rotation
-          GEMINI_KEYS = [
-              "AIzaSyAxXuWxcD1CN08lsoJlcUL6uBcLJEyXBFk",
-              "AIzaSyDT1gvA13Bl_COnC0JpGEGY2iqNCwEgBi0",
-              "AIzaSyA06zIDz7H5waHAI4Y7pm6goewWgf5fjSA",
-              "AIzaSyCYrl0-t2xS0NZ4aSEQ-ZUZvCu-KoKftc8",
-              "AIzaSyD10bR8ttgOxQok8rcOq7jc_yF00UBQn14",
-              "AIzaSyBKZmoLt4bxNDZlq8LB9h0YMDWshgMxQ7M",
-              "AIzaSyCwiS0cu23sVwxj2kVOU72zFkdXfpDQdes",
-              "AIzaSyB86yrjm-J6IRhCAHxSBibyHiFtrHO3x8s",
-              "AIzaSyDokhvEBX5O8UNO2oELV6b8yX3wjBmGJVc",
-              "AIzaSyACh0veq7t8rzn6GQffS_5VSQlNN7g8rYc",
-              "AIzaSyBiukubVZHnxQOHSmgs5KBePbXaOC0CVrA",
-              "AIzaSyBlQtC75xy3mtvFh1jlD2V9hCL3ZWgdAL0",
-              "AIzaSyCsz2Q9c1XcUpDHm-mpzdPScNCoqDCf6bg",
-              "AIzaSyDYQp4_cczG_9ckibyp7Zf8L0TIbIxCnec",
-              "AIzaSyAZvM9erouQMYMAUl6At83391uuQMj8Ckk",
-              "AIzaSyCydxSRPNbN08nO6QXN95RR7UUdtDSQNX4",
-              "AIzaSyCdWnesc8Svykwb0yF2UQl18_fsNJYOiVg",
-              "AIzaSyBmIjEMvUnM80Pk3FcenKP_yoippgHkT1M",
-              "AIzaSyBQsI8Z3mBF1dWuHBo3Sbv0Rpvt4zNwV_4",
-              "AIzaSyAWqEvMZ5po-rX8ADwuc4ja6typ6YuGbeE",
-          ]
+          GEMINI_KEYS = ["AIzaSyAxXuWxcD1CN08lsoJlcUL6uBcLJEyXBFk","AIzaSyA06zIDz7H5waHAI4Y7pm6goewWgf5fjSA","AIzaSyCYrl0-t2xS0NZ4aSEQ-ZUZvCu-KoKftc8","AIzaSyD10bR8ttgOxQok8rcOq7jc_yF00UBQn14","AIzaSyBKZmoLt4bxNDZlq8LB9h0YMDWshgMxQ7M","AIzaSyCwiS0cu23sVwxj2kVOU72zFkdXfpDQdes","AIzaSyB86yrjm-J6IRhCAHxSBibyHiFtrHO3x8s","AIzaSyDokhvEBX5O8UNO2oELV6b8yX3wjBmGJVc","AIzaSyACh0veq7t8rzn6GQffS_5VSQlNN7g8rYc","AIzaSyBiukubVZHnxQOHSmgs5KBePbXaOC0CVrA","AIzaSyBlQtC75xy3mtvFh1jlD2V9hCL3ZWgdAL0","AIzaSyCsz2Q9c1XcUpDHm-mpzdPScNCoqDCf6bg","AIzaSyDYQp4_cczG_9ckibyp7Zf8L0TIbIxCnec","AIzaSyAZvM9erouQMYMAUl6At83391uuQMj8Ckk","AIzaSyCydxSRPNbN08nO6QXN95RR7UUdtDSQNX4","AIzaSyCdWnesc8Svykwb0yF2UQl18_fsNJYOiVg","AIzaSyBmIjEMvUnM80Pk3FcenKP_yoippgHkT1M","AIzaSyBQsI8Z3mBF1dWuHBo3Sbv0Rpvt4zNwV_4","AIzaSyAWqEvMZ5po-rX8ADwuc4ja6typ6YuGbeE"]
           KEY_INDEX = (WORKFLOW_OFFSET + WORKER) % len(GEMINI_KEYS)
           GEMINI_KEY = GEMINI_KEYS[KEY_INDEX]
 
-          DISCOVERY_WAVES = {
-              1: [
-                  {'id': 'instagram-afrobeats', 'focus': 'Afrobeats dance reels, Nigerian creators'},
-                  {'id': 'tiktok-amapiano', 'focus': 'Amapiano dance challenges, SA creators'},
-                  {'id': 'instagram-afro-fashion', 'focus': 'African fashion with music'},
-                  {'id': 'tiktok-african-comedy', 'focus': 'African comedy skits with music'},
-                  {'id': 'instagram-lagos-vibes', 'focus': 'Lagos lifestyle content'},
-              ],
-              2: [
-                  {'id': 'ghana-highlife', 'focus': 'Ghanaian highlife and azonto'},
-                  {'id': 'kenya-gengetone', 'focus': 'Kenyan gengetone and dance'},
-                  {'id': 'francophone-coupe', 'focus': 'Coupe-decale, Ivorian music'},
-                  {'id': 'uk-afroswing', 'focus': 'UK Afroswing creators'},
-                  {'id': 'diaspora-vibes', 'focus': 'African diaspora content'},
-              ],
-              3: [
-                  {'id': 'dance-challenges', 'focus': 'Viral African dance challenges'},
-                  {'id': 'music-reactions', 'focus': 'Reactions to African music'},
-                  {'id': 'street-performers', 'focus': 'Raw talent, undiscovered artists'},
-                  {'id': 'producer-beats', 'focus': 'African producers, type beats'},
-                  {'id': 'throwback-classics', 'focus': 'Classic African music clips'},
-              ],
-              4: [
-                  {'id': 'emerging-artists', 'focus': 'New African artists, fresh sounds'},
-                  {'id': 'live-performances', 'focus': 'Concert clips, live sessions'},
-                  {'id': 'cover-artists', 'focus': 'African music covers'},
-                  {'id': 'remix-culture', 'focus': 'Remixes and mashups'},
-                  {'id': 'viral-sounds', 'focus': 'Trending African sounds'},
-              ]
-          }
+          TARGETS = [{'id': 'instagram-afrobeats', 'focus': 'Afrobeats dance reels'},{'id': 'tiktok-amapiano', 'focus': 'Amapiano dance challenges'},{'id': 'instagram-afro-fashion', 'focus': 'African fashion with music'},{'id': 'tiktok-african-comedy', 'focus': 'African comedy skits'},{'id': 'instagram-lagos-vibes', 'focus': 'Lagos lifestyle'},{'id': 'ghana-highlife', 'focus': 'Ghanaian highlife'},{'id': 'kenya-gengetone', 'focus': 'Kenyan gengetone'},{'id': 'francophone-coupe', 'focus': 'Coupe-decale'},{'id': 'uk-afroswing', 'focus': 'UK Afroswing'},{'id': 'diaspora-vibes', 'focus': 'African diaspora'},{'id': 'dance-challenges', 'focus': 'Viral dance challenges'},{'id': 'music-reactions', 'focus': 'Music reactions'},{'id': 'street-performers', 'focus': 'Raw talent'},{'id': 'producer-beats', 'focus': 'African producers'},{'id': 'throwback-classics', 'focus': 'Classic clips'},{'id': 'emerging-artists', 'focus': 'New artists'},{'id': 'live-performances', 'focus': 'Concert clips'},{'id': 'cover-artists', 'focus': 'Music covers'},{'id': 'remix-culture', 'focus': 'Remixes'},{'id': 'viral-sounds', 'focus': 'Trending sounds'}]
 
-          def log(msg):
-              print(f"[MomentsDiscovery-W{WORKER}] {msg}", flush=True)
+          def log(msg): print(f"[W{WORKER}] {msg}", flush=True)
 
-          def call_gemini(prompt, api_key, max_retries=5):
-              """Direct API call to Gemini (same as local discovery.js)"""
-              url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
-
-              for attempt in range(max_retries):
+          def call_gemini(prompt):
+              url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_KEY}"
+              for attempt in range(5):
                   try:
-                      resp = requests.post(url, json={
-                          "contents": [{"parts": [{"text": prompt}]}],
-                          "generationConfig": {"temperature": 0.8, "maxOutputTokens": 8192}
-                      }, timeout=60)
-
+                      resp = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.8, "maxOutputTokens": 8192}}, timeout=60)
                       data = resp.json()
                       if "error" in data:
-                          error_msg = data["error"].get("message", "Unknown error")
-                          if "429" in error_msg or "quota" in error_msg.lower():
-                              wait_time = (2 ** attempt) * 10 + random.uniform(5, 15)
-                              log(f"Rate limited, waiting {wait_time:.0f}s (attempt {attempt+1}/{max_retries})")
-                              time.sleep(wait_time)
-                              continue
-                          return None, error_msg
+                          if "429" in str(data): time.sleep((2**attempt)*10); continue
+                          return None
+                      return data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                  except: time.sleep(5)
+              return None
 
-                      text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                      return text, None
-                  except Exception as e:
-                      log(f"Request error: {e}")
-                      time.sleep(5)
-              return None, "Max retries exceeded"
-
-          def discover_creators(target):
-              """Use Gemini to discover creators for a target"""
-              prompt = f"""You are discovering Instagram and TikTok creators for an African music platform.
-
-          Target: {target['id']}
-          Focus: {target['focus']}
-
-          Return AS MANY creator usernames as possible (100+ minimum) in this JSON format:
-          {{
-              "creators": [
-                  {{"platform": "instagram", "username": "example_user", "content_type": "dance"}},
-                  {{"platform": "tiktok", "username": "example_user2", "content_type": "music"}}
-              ]
-          }}
-
-          Focus on REAL, ACTIVE creators with African music content. Mix of popular and emerging."""
-
-              text, error = call_gemini(prompt, GEMINI_KEY)
-              if error:
-                  log(f"Gemini error: {error}")
-                  return []
-
+          def discover(target):
+              text = call_gemini(f"Discover Instagram/TikTok creators for African music. Target: {target['id']}, Focus: {target['focus']}. Return 100+ in JSON: {{\"creators\": [{{\"platform\": \"instagram\", \"username\": \"user\", \"content_type\": \"dance\"}}]}}")
+              if not text: return []
               try:
-                  start = text.find('{')
-                  end = text.rfind('}') + 1
-                  if start >= 0 and end > start:
-                      data = json.loads(text[start:end])
-                      return data.get('creators', [])
-              except Exception as e:
-                  log(f"JSON parse error: {e}")
-              return []
+                  s, e = text.find('{'), text.rfind('}')+1
+                  return json.loads(text[s:e]).get('creators', []) if s >= 0 else []
+              except: return []
 
-          def insert_pending_creator(creator):
-              """Insert creator to Supabase for later video fetching"""
-              headers = {
-                  "apikey": SUPABASE_KEY,
-                  "Authorization": f"Bearer {SUPABASE_KEY}",
-                  "Content-Type": "application/json",
-                  "Prefer": "resolution=merge-duplicates"
-              }
-              data = {
-                  "platform": creator.get('platform', 'instagram'),
-                  "username": creator.get('username'),
-                  "content_type": creator.get('content_type', 'music'),
-                  "status": "pending",
-                  "discovered_by": f"moments-discovery-w{WORKER}"
-              }
-              url = f"{SUPABASE_URL}/rest/v1/voyo_pending_creators"
+          def insert(c):
               try:
-                  resp = requests.post(url, headers=headers, json=data, timeout=30)
-                  return resp.status_code in [200, 201, 409]
-              except:
-                  return False
+                  return requests.post(f"{SUPABASE_URL}/rest/v1/voyo_pending_creators", headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates"}, json={"platform": c.get('platform','instagram'), "username": c.get('username'), "content_type": c.get('content_type','music'), "status": "pending", "discovered_by": f"w{WORKER}"}, timeout=30).status_code in [200,201,409]
+              except: return False
 
-          def main():
-              log(f"Starting Moments Discovery - Wave {WAVE}, Worker {WORKER}")
-
-              targets = DISCOVERY_WAVES.get(WAVE, DISCOVERY_WAVES[1])
-              # Each worker handles different targets
-              start_idx = WORKER * TARGETS_PER_WORKER
-              my_targets = targets[start_idx:start_idx + TARGETS_PER_WORKER]
-
-              log(f"Processing {len(my_targets)} targets")
-
-              total_discovered = 0
-              for target in my_targets:
-                  log(f"Discovering: {target['id']}")
-                  creators = discover_creators(target)
-                  log(f"  Found {len(creators)} creators")
-
-                  for creator in creators:
-                      if insert_pending_creator(creator):
-                          total_discovered += 1
-
-                  time.sleep(random.uniform(1, 3))
-
-              log(f"Complete: {total_discovered} creators discovered")
-
-          if __name__ == "__main__":
-              main()
+          my_targets = [t for i,t in enumerate(TARGETS) if i%3==WORKER]
+          log(f"LOOP mode - {len(my_targets)} targets, Key #{KEY_INDEX}")
+          total, loop = 0, 0
+          while loop < 100:
+              loop += 1
+              log(f"=== LOOP {loop} ===")
+              for t in my_targets:
+                  creators = discover(t)
+                  log(f"{t['id']}: {len(creators)}")
+                  for c in creators: total += 1 if insert(c) else 0
+                  time.sleep(random.uniform(2,5))
+              log(f"Total: {total}")
+              time.sleep(random.uniform(5,10))
           SCRIPT
-
-      - name: Run discovery
-        env:
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          WAVE: ${{ inputs.wave }}
-          WORKER: ${{ matrix.worker }}
-          WORKFLOW_OFFSET: '12'
-          TARGETS_PER_WORKER: ${{ inputs.targets_per_worker }}
-        run: python discover.py
+          python discover.py

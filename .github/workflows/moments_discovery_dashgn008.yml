@@ -42,10 +42,9 @@ jobs:
           WORKFLOW_OFFSET = int(os.environ.get('WORKFLOW_OFFSET', '0'))
           TARGETS_PER_WORKER = 2
 
-          # 20 Gemini keys for rotation
+          # 19 Gemini keys for rotation (removed leaked key)
           GEMINI_KEYS = [
               "AIzaSyAxXuWxcD1CN08lsoJlcUL6uBcLJEyXBFk",
-              "AIzaSyDT1gvA13Bl_COnC0JpGEGY2iqNCwEgBi0",
               "AIzaSyA06zIDz7H5waHAI4Y7pm6goewWgf5fjSA",
               "AIzaSyCYrl0-t2xS0NZ4aSEQ-ZUZvCu-KoKftc8",
               "AIzaSyD10bR8ttgOxQok8rcOq7jc_yF00UBQn14",
@@ -185,28 +184,41 @@ jobs:
                   return False
 
           def main():
-              log(f"Starting Moments Discovery - Wave {WAVE}, Worker {WORKER}")
+              log(f"Starting Moments Discovery - Wave {WAVE}, Worker {WORKER}, Key #{KEY_INDEX}")
 
-              targets = DISCOVERY_WAVES.get(WAVE, DISCOVERY_WAVES[1])
-              # Each worker handles different targets
-              start_idx = WORKER * TARGETS_PER_WORKER
-              my_targets = targets[start_idx:start_idx + TARGETS_PER_WORKER]
+              # Get ALL targets from ALL waves for this worker
+              all_targets = []
+              for wave_targets in DISCOVERY_WAVES.values():
+                  all_targets.extend(wave_targets)
 
-              log(f"Processing {len(my_targets)} targets")
+              # Each worker gets different targets via round-robin
+              my_targets = [t for i, t in enumerate(all_targets) if i % 3 == WORKER]
+
+              log(f"Processing {len(my_targets)} targets in LOOP mode (until timeout)")
 
               total_discovered = 0
-              for target in my_targets:
-                  log(f"Discovering: {target['id']}")
-                  creators = discover_creators(target)
-                  log(f"  Found {len(creators)} creators")
+              loop_count = 0
+              MAX_LOOPS = 50  # Run up to 50 loops (will hit timeout first)
 
-                  for creator in creators:
-                      if insert_pending_creator(creator):
-                          total_discovered += 1
+              while loop_count < MAX_LOOPS:
+                  loop_count += 1
+                  log(f"=== LOOP {loop_count} ===")
 
-                  time.sleep(random.uniform(1, 3))
+                  for target in my_targets:
+                      log(f"Discovering: {target['id']}")
+                      creators = discover_creators(target)
+                      log(f"  Found {len(creators)} creators")
 
-              log(f"Complete: {total_discovered} creators discovered")
+                      for creator in creators:
+                          if insert_pending_creator(creator):
+                              total_discovered += 1
+
+                      time.sleep(random.uniform(2, 5))
+
+                  log(f"Loop {loop_count} complete. Total so far: {total_discovered}")
+                  time.sleep(random.uniform(5, 10))
+
+              log(f"FINAL: {total_discovered} creators discovered in {loop_count} loops")
 
           if __name__ == "__main__":
               main()
