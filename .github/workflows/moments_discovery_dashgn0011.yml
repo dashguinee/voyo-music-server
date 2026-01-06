@@ -9,7 +9,7 @@ on:
         type: string
       targets_per_worker:
         description: 'Targets per worker'
-        default: '5'
+        default: '2'
         type: string
 
 jobs:
@@ -41,7 +41,7 @@ jobs:
           GEMINI_KEY = os.environ['GEMINI_KEY']
           WAVE = int(os.environ.get('WAVE', '1'))
           WORKER = int(os.environ.get('WORKER', '0'))
-          TARGETS_PER_WORKER = int(os.environ.get('TARGETS_PER_WORKER', '5'))
+          TARGETS_PER_WORKER = 2  # 5 targets / 3 workers
 
           genai.configure(api_key=GEMINI_KEY)
           model = genai.GenerativeModel('gemini-2.0-flash-exp')
