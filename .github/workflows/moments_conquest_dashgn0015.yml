@@ -1,4 +1,4 @@
-name: Feed Conquest dashgn0011
+name: Moments Conquest dashgn0015
 
 on:
   workflow_dispatch:
@@ -24,7 +24,7 @@ jobs:
       - name: Setup
         run: |
           OFFSET=$(( ${{ inputs.start_offset }} + ${{ matrix.worker }} * ${{ inputs.chunk_size }} ))
-          echo "Feed Conquest dashgn0011 Worker ${{ matrix.worker }}: offset=$OFFSET, limit=${{ inputs.chunk_size }}"
+          echo "Moments Conquest dashgn0015 Worker ${{ matrix.worker }}: offset=$OFFSET, limit=${{ inputs.chunk_size }}"
           sudo apt-get update && sudo apt-get install -y ffmpeg
           sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
           sudo chmod a+rx /usr/local/bin/yt-dlp
@@ -63,7 +63,7 @@ jobs:
               config=Config(retries={'max_attempts': 3}))
 
           def log(msg):
-              print(f"[FeedConquest-dashgn0011-W{WORKER}] {msg}", flush=True)
+              print(f"[FeedConquest-dashgn0015-W{WORKER}] {msg}", flush=True)
 
           def get_pending_videos():
               """Get videos that need music matching"""
@@ -192,7 +192,7 @@ jobs:
               return resp.status_code in [200, 201, 409]
 
           def main():
-              log(f"Starting Feed Conquest - offset={OFFSET}, limit={LIMIT}")
+              log(f"Starting Moments Conquest - offset={OFFSET}, limit={LIMIT}")
 
               videos = get_pending_videos()
               log(f"Found {len(videos)} videos needing music match")

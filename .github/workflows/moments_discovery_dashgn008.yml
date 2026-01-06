@@ -1,4 +1,4 @@
-name: Feed Discovery dashgn008
+name: Moments Discovery dashgn008
 
 on:
   workflow_dispatch:
@@ -23,7 +23,7 @@ jobs:
     steps:
       - name: Setup
         run: |
-          echo "Feed Discovery dashgn008 Worker ${{ matrix.worker }}"
+          echo "Moments Discovery dashgn008 Worker ${{ matrix.worker }}"
           pip install google-generativeai requests
 
       - name: Create discovery script
@@ -78,7 +78,7 @@ jobs:
           }
 
           def log(msg):
-              print(f"[FeedDiscovery-W{WORKER}] {msg}", flush=True)
+              print(f"[MomentsDiscovery-W{WORKER}] {msg}", flush=True)
 
           def discover_creators(target):
               """Use Gemini to discover creators for a target"""
@@ -123,7 +123,7 @@ jobs:
                   "username": creator.get('username'),
                   "content_type": creator.get('content_type', 'music'),
                   "status": "pending",
-                  "discovered_by": f"feed-discovery-w{WORKER}"
+                  "discovered_by": f"moments-discovery-w{WORKER}"
               }
               url = f"{SUPABASE_URL}/rest/v1/voyo_pending_creators"
               try:
@@ -133,7 +133,7 @@ jobs:
                   return False
 
           def main():
-              log(f"Starting Feed Discovery - Wave {WAVE}, Worker {WORKER}")
+              log(f"Starting Moments Discovery - Wave {WAVE}, Worker {WORKER}")
 
               targets = DISCOVERY_WAVES.get(WAVE, DISCOVERY_WAVES[1])
               # Each worker handles different targets
