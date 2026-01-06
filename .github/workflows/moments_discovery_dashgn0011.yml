@@ -70,7 +70,7 @@ jobs:
           GEMINI_KEY = GEMINI_KEYS[KEY_INDEX]
 
           genai.configure(api_key=GEMINI_KEY)
-          model = genai.GenerativeModel('gemini-1.5-flash')
+          model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
           DISCOVERY_WAVES = {
               1: [
