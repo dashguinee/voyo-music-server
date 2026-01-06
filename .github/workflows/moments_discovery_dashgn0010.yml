@@ -113,7 +113,7 @@ jobs:
           Target: {target['id']}
           Focus: {target['focus']}
 
-          Return EXACTLY 20 creator usernames in this JSON format:
+          Return AS MANY creator usernames as possible (100+ minimum) in this JSON format:
           {{
               "creators": [
                   {{"platform": "instagram", "username": "example_user", "content_type": "dance"}},
