@@ -32,6 +32,15 @@ import {
 } from '../services/personalization';
 import { BitrateLevel, BufferStatus } from '../services/audioEngine';
 import { prefetchTrack } from '../services/api';
+
+// VIBES FIRST: Database discovery from 324K tracks (lazy import to avoid circular deps)
+let databaseDiscoveryModule: typeof import('../services/databaseDiscovery') | null = null;
+async function getDatabaseDiscovery() {
+  if (!databaseDiscoveryModule) {
+    databaseDiscoveryModule = await import('../services/databaseDiscovery');
+  }
+  return databaseDiscoveryModule;
+}
 import { isKnownUnplayable } from '../services/trackVerifier';
 
 // Network quality types
@@ -958,7 +967,53 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       ...state.history.slice(-20).map((h) => h.track.id), // Increased from 5 to 20
     ].filter(Boolean) as string[];
 
-    // POOL-AWARE v3.0: Pull from dynamic track pool (falls back to v2.0 if empty)
+    // VIBES FIRST v4.0: Try 324K database first, fallback to pool
+    // Async fetch in background - updates state when ready
+    getDatabaseDiscovery().then(async (discovery) => {
+      try {
+        // Fetch HOT + DISCOVERY from Supabase (user essence → 324K tracks)
+        const [dbHot, dbDiscover] = await Promise.all([
+          discovery.getHotTracks(15),
+          discovery.getDiscoveryTracks(15),
+        ]);
+
+        // If database returned tracks, use them (blended with pool for variety)
+        if (dbHot.length > 0 || dbDiscover.length > 0) {
+          const poolHot = getPoolAwareHotTracks(5);
+          const poolDiscover = state.currentTrack
+            ? getPoolAwareDiscoveryTracks(state.currentTrack, 5, excludeIds)
+            : getPoolAwareDiscoveryTracks(TRACKS[0], 5, excludeIds);
+
+          // Blend: Database first, pool for variety
+          const blendedHot = [...dbHot.slice(0, 10), ...poolHot.slice(0, 5)];
+          const blendedDiscover = [...dbDiscover.slice(0, 10), ...poolDiscover.slice(0, 5)];
+
+          set({
+            hotTracks: blendedHot,
+            aiPicks: getRandomTracks(5),
+            discoverTracks: blendedDiscover,
+          });
+          console.log(`[VOYO] 🔥 VIBES FIRST: ${dbHot.length} hot + ${dbDiscover.length} discover from 324K database`);
+          return;
+        }
+      } catch (err) {
+        console.warn('[VOYO] Database discovery failed, using pool fallback:', err);
+      }
+
+      // Fallback to POOL-AWARE v3.0
+      const hotTracks = getPoolAwareHotTracks(5);
+      const discoverTracks = state.currentTrack
+        ? getPoolAwareDiscoveryTracks(state.currentTrack, 5, excludeIds)
+        : getPoolAwareDiscoveryTracks(TRACKS[0], 5, excludeIds);
+
+      set({
+        hotTracks,
+        aiPicks: getRandomTracks(5),
+        discoverTracks,
+      });
+    });
+
+    // Immediate fallback while async loads (prevents empty state)
     const hotTracks = getPoolAwareHotTracks(5);
     const discoverTracks = state.currentTrack
       ? getPoolAwareDiscoveryTracks(state.currentTrack, 5, excludeIds)

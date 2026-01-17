@@ -1,7 +1,12 @@
 /**
- * VOYO Music - Cloudflare Worker v2
- * Multi-client YouTube extraction from the edge
- * Tries different client types for maximum compatibility
+ * VOYO Music - Cloudflare Worker v3
+ *
+ * BULLETPROOF STREAMING:
+ * 1. R2 First (342K pre-cached tracks) - /audio/:id, /exists/:id
+ * 2. YouTube Fallback - /stream?v=id (multi-client extraction)
+ * 3. Thumbnails - /thumb/:id
+ *
+ * Edge = 300+ locations worldwide = FAST
  */
 
 // Client configurations ranked by success rate
@@ -148,10 +153,158 @@ export default {
 
     // Health check
     if (url.pathname === '/health') {
-      return new Response(JSON.stringify({ status: 'ok', edge: true, clients: CLIENTS.length }), {
+      return new Response(JSON.stringify({
+        status: 'ok',
+        edge: true,
+        clients: CLIENTS.length,
+        r2: !!env.VOYO_AUDIO,
+        version: 'v3'
+      }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
+
+    // ========================================
+    // R2 AUDIO STREAMING - Primary path (95%)
+    // ========================================
+
+    // Check if audio exists in R2
+    // Files stored as: 128/{videoId}.opus or 64/{videoId}.opus
+    if (url.pathname.startsWith('/exists/')) {
+      const videoId = url.pathname.split('/')[2];
+      if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+        return new Response(JSON.stringify({ exists: false, error: 'Invalid ID' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      try {
+        // Check both quality variants (stored in quality-prefixed folders)
+        const [high, low] = await Promise.all([
+          env.VOYO_AUDIO.head(`128/${videoId}.opus`),
+          env.VOYO_AUDIO.head(`64/${videoId}.opus`)
+        ]);
+
+        return new Response(JSON.stringify({
+          exists: !!(high || low),
+          high: !!high,
+          low: !!low,
+          size: high?.size || low?.size || 0
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ exists: false, error: err.message }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
+    // Stream audio from R2
+    // Files stored as: 128/{videoId}.opus or 64/{videoId}.opus
+    if (url.pathname.startsWith('/audio/')) {
+      const videoId = url.pathname.split('/')[2];
+      const quality = url.searchParams.get('q') || 'high'; // high = 128kbps, low = 64kbps
+
+      if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+        return new Response(JSON.stringify({ error: 'Invalid video ID' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      try {
+        // Determine path based on quality (files stored in quality-prefixed folders)
+        const primaryPath = quality === 'low' ? `64/${videoId}.opus` : `128/${videoId}.opus`;
+        const object = await env.VOYO_AUDIO.get(primaryPath);
+
+        if (!object) {
+          // Try fallback to other quality
+          const fallbackPath = quality === 'low' ? `128/${videoId}.opus` : `64/${videoId}.opus`;
+          const fallback = await env.VOYO_AUDIO.get(fallbackPath);
+
+          if (!fallback) {
+            return new Response(JSON.stringify({ error: 'Not in R2', videoId }), {
+              status: 404,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+          }
+
+          // Serve fallback
+          return new Response(fallback.body, {
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'audio/opus',
+              'Content-Length': fallback.size,
+              'Cache-Control': 'public, max-age=31536000', // 1 year
+              'X-VOYO-Source': 'r2-fallback',
+              'X-VOYO-Quality': quality === 'low' ? '128' : '64'
+            }
+          });
+        }
+
+        // Serve the requested quality
+        return new Response(object.body, {
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'audio/opus',
+            'Content-Length': object.size,
+            'Cache-Control': 'public, max-age=31536000', // 1 year
+            'X-VOYO-Source': 'r2',
+            'X-VOYO-Quality': quality === 'low' ? '64' : '128'
+          }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
+    // Thumbnail proxy (avoid CORS issues)
+    if (url.pathname.startsWith('/thumb/')) {
+      const videoId = url.pathname.split('/')[2];
+      const quality = url.searchParams.get('q') || 'hqdefault'; // maxresdefault, hqdefault, mqdefault, default
+
+      if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+        return new Response('Invalid ID', { status: 400, headers: corsHeaders });
+      }
+
+      try {
+        const thumbUrl = `https://i.ytimg.com/vi/${videoId}/${quality}.jpg`;
+        const thumbResponse = await fetch(thumbUrl);
+
+        if (!thumbResponse.ok) {
+          // Fallback to lower quality
+          const fallbackUrl = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+          const fallback = await fetch(fallbackUrl);
+
+          return new Response(fallback.body, {
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'image/jpeg',
+              'Cache-Control': 'public, max-age=86400' // 1 day
+            }
+          });
+        }
+
+        return new Response(thumbResponse.body, {
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'image/jpeg',
+            'Cache-Control': 'public, max-age=86400' // 1 day
+          }
+        });
+      } catch (err) {
+        return new Response('Thumbnail error', { status: 500, headers: corsHeaders });
+      }
+    }
+
+    // ========================================
+    // YOUTUBE EXTRACTION - Fallback path (5%)
+    // ========================================
 
     // Extract audio stream with multi-client fallback
     if (url.pathname === '/stream') {

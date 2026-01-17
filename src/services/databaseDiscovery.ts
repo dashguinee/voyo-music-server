@@ -1,0 +1,415 @@
+/**
+ * VOYO Database Discovery Service
+ *
+ * VIBES FIRST discovery from 324K tracks
+ *
+ * - HOT: Trending NOW + matches your vibes
+ * - DISCOVERY: Expand horizons + unique flavors
+ * - SEARCH: Supabase first, YouTube fallback
+ *
+ * Uses essence engine to extract user's vibe fingerprint,
+ * then queries Supabase for matching tracks.
+ */
+
+import { supabase, isSupabaseConfigured as supabaseConfigured } from '../lib/supabase';
+import { getVibeEssence, getEssenceForQuery, type VibeEssence } from './essenceEngine';
+import { searchMusic } from './api';
+import type { Track } from '../types';
+
+// Helper to get supabase client with null check (TypeScript guard)
+function getSupabase() {
+  if (!supabase) throw new Error('Supabase not configured');
+  return supabase;
+}
+
+// ============================================
+// TYPES
+// ============================================
+
+export interface DiscoveryTrack {
+  youtube_id: string;
+  title: string;
+  artist: string;
+  vibe_match_score: number;
+  artist_tier: string | null;
+  primary_genre: string | null;
+  cultural_tags: string[] | null;
+  thumbnail_url: string | null;
+  discovery_reason?: string;
+  heat_score?: number;
+}
+
+export interface DiscoveryResult {
+  hot: DiscoveryTrack[];
+  discovery: DiscoveryTrack[];
+  familiar: DiscoveryTrack[];
+  essence: VibeEssence;
+  source: 'database' | 'fallback';
+}
+
+// ============================================
+// HELPERS
+// ============================================
+
+/**
+ * Convert database track to app Track format
+ */
+function toTrack(dbTrack: DiscoveryTrack): Track {
+  const thumbnail = dbTrack.thumbnail_url || `https://i.ytimg.com/vi/${dbTrack.youtube_id}/hqdefault.jpg`;
+  return {
+    id: dbTrack.youtube_id,
+    trackId: dbTrack.youtube_id,
+    title: dbTrack.title,
+    artist: dbTrack.artist || 'Unknown Artist',
+    coverUrl: thumbnail,
+    duration: 0,
+    tags: dbTrack.cultural_tags || [],
+    oyeScore: Math.round((dbTrack.vibe_match_score || 0) * 100),
+    createdAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Convert search result to Track format
+ */
+function searchResultToTrack(r: { voyoId: string; title: string; artist: string; thumbnail: string; duration: number; views: number }): Track {
+  return {
+    id: r.voyoId,
+    trackId: r.voyoId,
+    title: r.title,
+    artist: r.artist,
+    coverUrl: r.thumbnail,
+    duration: r.duration,
+    tags: [],
+    oyeScore: 0,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Get user's played track IDs from localStorage
+ */
+function getPlayedTrackIds(): string[] {
+  try {
+    const stored = localStorage.getItem('voyo-player-state');
+    if (!stored) return [];
+
+    const state = JSON.parse(stored);
+    const history = state?.state?.history || [];
+
+    return history.map((t: any) => t.id).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+// ============================================
+// HOT TRACKS
+// ============================================
+
+/**
+ * Get HOT tracks: Trending NOW + matches your vibes
+ */
+export async function getHotTracks(limit: number = 30): Promise<Track[]> {
+  if (!supabaseConfigured) {
+    console.log('[Discovery] Supabase not configured, using fallback');
+    return getFallbackTracks('hot', limit);
+  }
+
+  const essence = getVibeEssence();
+  const playedIds = getPlayedTrackIds();
+
+  try {
+    const { data, error } = await getSupabase().rpc('get_hot_tracks', {
+      p_afro_heat: essence.afro_heat,
+      p_chill: essence.chill,
+      p_party: essence.party,
+      p_workout: essence.workout,
+      p_late_night: essence.late_night,
+      p_limit: limit,
+      p_exclude_ids: [], // Don't exclude for hot - they want to see trending
+    });
+
+    if (error) {
+      console.error('[Discovery] Hot tracks error:', error);
+      return getFallbackTracks('hot', limit);
+    }
+
+    console.log(`[Discovery] HOT: ${data?.length || 0} tracks from 324K database`);
+    return (data || []).map(toTrack);
+  } catch (err) {
+    console.error('[Discovery] Hot tracks exception:', err);
+    return getFallbackTracks('hot', limit);
+  }
+}
+
+// ============================================
+// DISCOVERY TRACKS
+// ============================================
+
+/**
+ * Get DISCOVERY tracks: Expand horizons + unique flavors
+ *
+ * "You like afro, but you really like CHILL... try Congolese rumba?"
+ */
+export async function getDiscoveryTracks(limit: number = 30): Promise<Track[]> {
+  if (!supabaseConfigured) {
+    console.log('[Discovery] Supabase not configured, using fallback');
+    return getFallbackTracks('discovery', limit);
+  }
+
+  const essence = getVibeEssence();
+  const playedIds = getPlayedTrackIds();
+
+  try {
+    const { data, error } = await getSupabase().rpc('get_discovery_tracks', {
+      p_afro_heat: essence.afro_heat,
+      p_chill: essence.chill,
+      p_party: essence.party,
+      p_workout: essence.workout,
+      p_late_night: essence.late_night,
+      p_dominant_vibe: essence.dominantVibes[0] || 'afro_heat',
+      p_limit: limit,
+      p_exclude_ids: [],
+      p_played_ids: playedIds,
+    });
+
+    if (error) {
+      console.error('[Discovery] Discovery tracks error:', error);
+      return getFallbackTracks('discovery', limit);
+    }
+
+    console.log(`[Discovery] DISCOVERY: ${data?.length || 0} tracks (expanding horizons)`);
+    return (data || []).map(toTrack);
+  } catch (err) {
+    console.error('[Discovery] Discovery tracks exception:', err);
+    return getFallbackTracks('discovery', limit);
+  }
+}
+
+// ============================================
+// FAMILIAR TRACKS (30% ratio)
+// ============================================
+
+/**
+ * Get familiar tracks (previously played) for the 70/30 ratio
+ */
+export async function getFamiliarTracks(limit: number = 10): Promise<Track[]> {
+  const playedIds = getPlayedTrackIds();
+
+  if (playedIds.length === 0) {
+    return [];
+  }
+
+  if (!supabaseConfigured) {
+    // Return from localStorage history directly
+    try {
+      const stored = localStorage.getItem('voyo-player-state');
+      if (!stored) return [];
+
+      const state = JSON.parse(stored);
+      const history = state?.state?.history || [];
+
+      return history.slice(0, limit);
+    } catch {
+      return [];
+    }
+  }
+
+  try {
+    const { data, error } = await getSupabase().rpc('get_familiar_tracks', {
+      p_played_ids: playedIds.slice(0, 50), // Limit to recent 50
+      p_limit: limit,
+    });
+
+    if (error) {
+      console.error('[Discovery] Familiar tracks error:', error);
+      return [];
+    }
+
+    return (data || []).map(toTrack);
+  } catch (err) {
+    console.error('[Discovery] Familiar tracks exception:', err);
+    return [];
+  }
+}
+
+// ============================================
+// SEARCH
+// ============================================
+
+/**
+ * Search tracks: Supabase first (324K), YouTube fallback
+ */
+export async function searchTracks(query: string, limit: number = 20): Promise<Track[]> {
+  if (!query.trim()) return [];
+
+  const essence = getVibeEssence();
+
+  // Try Supabase first
+  if (supabaseConfigured) {
+    try {
+      const { data, error } = await getSupabase().rpc('search_tracks_by_vibe', {
+        p_query: query,
+        p_afro_heat: essence.afro_heat,
+        p_chill: essence.chill,
+        p_party: essence.party,
+        p_workout: essence.workout,
+        p_late_night: essence.late_night,
+        p_limit: limit,
+      });
+
+      if (!error && data && data.length > 0) {
+        console.log(`[Discovery] Search: ${data.length} results from 324K database`);
+        return data.map(toTrack);
+      }
+    } catch (err) {
+      console.warn('[Discovery] Search DB error, falling back to YouTube:', err);
+    }
+  }
+
+  // Fallback to YouTube search
+  console.log('[Discovery] Search: Falling back to YouTube');
+  try {
+    const results = await searchMusic(query, limit);
+    return results.map(searchResultToTrack);
+  } catch (err) {
+    console.error('[Discovery] YouTube search failed:', err);
+    return [];
+  }
+}
+
+// ============================================
+// COMBINED FEED (with 70/30 ratio)
+// ============================================
+
+/**
+ * Get complete discovery feed with proper fresh/familiar ratio
+ */
+export async function getDiscoveryFeed(
+  hotLimit: number = 20,
+  discoveryLimit: number = 20
+): Promise<DiscoveryResult> {
+  const essence = getVibeEssence();
+
+  // Calculate familiar count based on ratio
+  const totalFresh = hotLimit + discoveryLimit;
+  const familiarCount = Math.round(totalFresh * (1 - essence.freshToFamiliarRatio));
+
+  // Fetch all in parallel
+  const [hot, discovery, familiar] = await Promise.all([
+    getHotTracksRaw(hotLimit),
+    getDiscoveryTracksRaw(discoveryLimit),
+    getFamiliarTracksRaw(familiarCount),
+  ]);
+
+  return {
+    hot,
+    discovery,
+    familiar,
+    essence,
+    source: supabaseConfigured ? 'database' : 'fallback',
+  };
+}
+
+// Raw versions that return DiscoveryTrack (for internal use)
+async function getHotTracksRaw(limit: number): Promise<DiscoveryTrack[]> {
+  if (!supabaseConfigured) return [];
+
+  const essence = getVibeEssence();
+
+  try {
+    const { data } = await getSupabase().rpc('get_hot_tracks', {
+      p_afro_heat: essence.afro_heat,
+      p_chill: essence.chill,
+      p_party: essence.party,
+      p_workout: essence.workout,
+      p_late_night: essence.late_night,
+      p_limit: limit,
+      p_exclude_ids: [],
+    });
+    return data || [];
+  } catch {
+    return [];
+  }
+}
+
+async function getDiscoveryTracksRaw(limit: number): Promise<DiscoveryTrack[]> {
+  if (!supabaseConfigured) return [];
+
+  const essence = getVibeEssence();
+  const playedIds = getPlayedTrackIds();
+
+  try {
+    const { data } = await getSupabase().rpc('get_discovery_tracks', {
+      p_afro_heat: essence.afro_heat,
+      p_chill: essence.chill,
+      p_party: essence.party,
+      p_workout: essence.workout,
+      p_late_night: essence.late_night,
+      p_dominant_vibe: essence.dominantVibes[0] || 'afro_heat',
+      p_limit: limit,
+      p_exclude_ids: [],
+      p_played_ids: playedIds,
+    });
+    return data || [];
+  } catch {
+    return [];
+  }
+}
+
+async function getFamiliarTracksRaw(limit: number): Promise<DiscoveryTrack[]> {
+  if (!supabaseConfigured || limit === 0) return [];
+
+  const playedIds = getPlayedTrackIds();
+  if (playedIds.length === 0) return [];
+
+  try {
+    const { data } = await getSupabase().rpc('get_familiar_tracks', {
+      p_played_ids: playedIds.slice(0, 50),
+      p_limit: limit,
+    });
+    return data || [];
+  } catch {
+    return [];
+  }
+}
+
+// ============================================
+// FALLBACK (when Supabase unavailable)
+// ============================================
+
+async function getFallbackTracks(type: 'hot' | 'discovery', limit: number): Promise<Track[]> {
+  // Use search with trending queries as fallback
+  const queries = type === 'hot'
+    ? ['afrobeats 2024 hits', 'amapiano trending', 'burna boy latest']
+    : ['african music', 'afro soul', 'highlife music'];
+
+  const query = queries[Math.floor(Math.random() * queries.length)];
+
+  try {
+    const results = await searchMusic(query, limit);
+    return results.map(searchResultToTrack);
+  } catch {
+    return [];
+  }
+}
+
+// ============================================
+// DEBUG
+// ============================================
+
+export function debugDiscovery(): void {
+  const essence = getVibeEssence();
+  const playedIds = getPlayedTrackIds();
+
+  console.log('[VOYO Discovery Debug]', {
+    essence: {
+      dominantVibes: essence.dominantVibes,
+      confidence: `${(essence.confidence * 100).toFixed(0)}%`,
+      freshRatio: `${(essence.freshToFamiliarRatio * 100).toFixed(0)}%`,
+    },
+    playedTracks: playedIds.length,
+    supabaseConfigured: supabaseConfigured,
+  });
+}

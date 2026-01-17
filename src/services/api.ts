@@ -137,17 +137,18 @@ export interface StreamResult {
 }
 
 /**
- * Check if track exists in R2 cache (41K+ pre-downloaded tracks)
+ * Check if track exists in R2 cache (342K+ pre-downloaded tracks)
+ * Uses Cloudflare Edge Worker for speed (300+ locations)
  */
-export async function checkR2Cache(videoId: string, quality: '128' | '64' = '128'): Promise<{
+export async function checkR2Cache(videoId: string, quality: 'high' | 'low' = 'high'): Promise<{
   exists: boolean;
   url: string | null;
 }> {
   const youtubeId = decodeVoyoId(videoId);
 
   try {
-    const response = await fetch(`${API_URL}/r2/exists?v=${youtubeId}&q=${quality}`, {
-      signal: AbortSignal.timeout(3000) // Fast check
+    const response = await fetch(`${EDGE_WORKER_URL}/exists/${youtubeId}`, {
+      signal: AbortSignal.timeout(2000) // Very fast - edge is close
     });
 
     if (!response.ok) {
@@ -155,25 +156,31 @@ export async function checkR2Cache(videoId: string, quality: '128' | '64' = '128
     }
 
     const data = await response.json();
-    return {
-      exists: data.exists || false,
-      url: data.url || null
-    };
+
+    if (data.exists) {
+      // Return direct audio URL from edge worker
+      const q = quality === 'low' ? 'low' : 'high';
+      return {
+        exists: true,
+        url: `${EDGE_WORKER_URL}/audio/${youtubeId}?q=${q}`
+      };
+    }
+
+    return { exists: false, url: null };
   } catch {
     return { exists: false, url: null };
   }
 }
 
 /**
- * Get audio stream URL - R2 + VOYO BOOST SYSTEM
+ * Get audio stream URL - BULLETPROOF SYSTEM
  *
  * Flow:
- * 1. Check R2 first (41K+ pre-cached tracks) - FASTEST
- * 2. If not in R2, check local server cache
- * 3. If not cached: Returns YouTube URL + starts background download
- * 4. Next play of same track: Served from cache
+ * 1. Check R2 via Edge Worker (342K cached tracks) - FASTEST (edge)
+ * 2. R2 HIT → Stream directly from Edge Worker
+ * 3. R2 MISS → YouTube IFrame fallback (always works)
  *
- * Browser plays DIRECTLY from URL (R2 for cached, YouTube for live)
+ * No Fly.io in hot path = faster, cheaper, more reliable
  */
 export async function getAudioStream(videoId: string, quality?: string): Promise<string> {
   const youtubeId = decodeVoyoId(videoId);
@@ -184,44 +191,25 @@ export async function getAudioStream(videoId: string, quality?: string): Promise
     quality = usePlayerStore.getState().streamQuality;
   }
 
-  // Map quality to R2 format (128 or 64)
-  const r2Quality = quality === 'low' ? '64' : '128';
+  // Map quality to Edge Worker format
+  const edgeQuality = quality === 'low' ? 'low' : 'high';
 
   try {
-    // STEP 1: Check R2 first (fast parallel check)
-    const r2Check = checkR2Cache(youtubeId, r2Quality);
-
-    // STEP 2: Also prepare YouTube fallback (parallel)
-    const ytFallback = fetch(`${API_URL}/stream?v=${youtubeId}&quality=${quality}`, {
-      signal: AbortSignal.timeout(15000)
-    });
-
-    // Wait for R2 check first (it's faster)
-    const r2Result = await r2Check;
+    // STEP 1: Check R2 via Edge Worker (very fast - edge location)
+    const r2Result = await checkR2Cache(youtubeId, edgeQuality);
 
     if (r2Result.exists && r2Result.url) {
-      console.log(`[API] 🚀 R2 HIT: ${youtubeId} (${r2Quality}kbps)`);
+      console.log(`[VOYO] 🚀 R2 HIT via Edge: ${youtubeId}`);
       return r2Result.url;
     }
 
-    // R2 miss - wait for YouTube fallback
-    console.log(`[API] R2 miss, falling back to YouTube: ${youtubeId}`);
-    const response = await ytFallback;
-
-    if (!response.ok) {
-      throw new Error(`Server returned ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    if (data.url) {
-      return data.url;
-    }
-
-    throw new Error(data.error || 'No URL returned');
+    // STEP 2: R2 miss → YouTube IFrame fallback
+    // IFrame always works, no extraction needed
+    console.log(`[VOYO] R2 miss, using IFrame: ${youtubeId}`);
+    return `iframe:${youtubeId}`;
 
   } catch (err) {
-    console.error('[API] Stream error:', err);
+    console.error('[VOYO] Stream error:', err);
     return `iframe:${youtubeId}`;
   }
 }
@@ -306,10 +294,18 @@ export async function getVideoDetails(videoId: string): Promise<any> {
 }
 
 /**
- * Get thumbnail URL - Proxied through our backend
+ * Get thumbnail URL - Via Edge Worker (faster, no CORS)
  */
 export function getThumbnailUrl(videoId: string, quality: 'default' | 'medium' | 'high' | 'max' = 'high'): string {
-  return `${API_URL}/cdn/art/${videoId}?quality=${quality}`;
+  const youtubeId = decodeVoyoId(videoId);
+  // Map to YouTube quality names
+  const qualityMap: Record<string, string> = {
+    'default': 'default',
+    'medium': 'mqdefault',
+    'high': 'hqdefault',
+    'max': 'maxresdefault'
+  };
+  return `${EDGE_WORKER_URL}/thumb/${youtubeId}?q=${qualityMap[quality] || 'hqdefault'}`;
 }
 
 /**
