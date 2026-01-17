@@ -49,6 +49,7 @@ import { runStartupHeal } from './services/trackVerifier';
 import { syncSeedTracks } from './services/centralDJ';
 import { TRACKS } from './data/tracks';
 import { syncManyToDatabase } from './services/databaseSync';
+import { DashAuthBadge, useDashCitizen } from './lib/dash-auth';
 
 // App modes
 type AppMode = 'classic' | 'voyo' | 'video';
@@ -1284,6 +1285,9 @@ function App() {
                 >
                   <Search className="w-5 h-5 text-white/70" />
                 </motion.button>
+
+                {/* DASH Citizen ID */}
+                <DashAuthBadge productCode="V" />
 
                 {/* Profile → Voyo Universe (login/profile portal) */}
                 <motion.button

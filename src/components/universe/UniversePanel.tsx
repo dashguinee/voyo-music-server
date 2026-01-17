@@ -46,6 +46,7 @@ import { useUniverseStore } from '../../store/universeStore';
 import { usePreferenceStore } from '../../store/preferenceStore';
 import { universeAPI, avatarAPI } from '../../lib/supabase';
 import { UserSearch } from './UserSearch';
+import { signInWithDashId } from '../../lib/dash-auth';
 
 interface UniversePanelProps {
   isOpen: boolean;
@@ -101,6 +102,13 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
   const [displayNameInput, setDisplayNameInput] = useState('');
   const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
   const [checkingUsername, setCheckingUsername] = useState(false);
+
+  // DASH ID login state
+  const [showDashLogin, setShowDashLogin] = useState(false);
+  const [dashId, setDashId] = useState('');
+  const [dashPin, setDashPin] = useState('');
+  const [dashLoading, setDashLoading] = useState(false);
+  const [dashError, setDashError] = useState('');
 
   // Backup state
   const [passphrase, setPassphrase] = useState('');
@@ -163,6 +171,32 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
         setUsernameInput('');
         setPinInput('');
       }
+    }
+  };
+
+  // Handle DASH ID login (central DASH auth)
+  const handleDashLogin = async () => {
+    if (!dashId || dashPin.length < 4) {
+      setDashError('Enter your DASH ID and 6-digit PIN');
+      return;
+    }
+
+    setDashLoading(true);
+    setDashError('');
+
+    const result = await signInWithDashId(dashId, dashPin, 'V');
+
+    setDashLoading(false);
+
+    if (result.success && result.session) {
+      setMessage({ type: 'success', text: `Welcome ${result.session.user.full_name}!` });
+      setShowDashLogin(false);
+      setDashId('');
+      setDashPin('');
+      // Note: DASH login sets localStorage which DashAuthBadge reads
+      // VOYO's universeStore remains separate - user can use both
+    } else {
+      setDashError(result.error || 'Login failed');
     }
   };
 
@@ -430,130 +464,87 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
 
               {/* AUTH TAB */}
               {activeTab === 'auth' && (
-                <div className="space-y-4">
-                  {/* Mode Toggle */}
-                  <div className="flex bg-white/5 rounded-xl p-1">
-                    <button
-                      onClick={() => setAuthMode('login')}
-                      className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-                        authMode === 'login'
-                          ? 'bg-purple-500 text-white'
-                          : 'text-white/50 hover:text-white'
-                      }`}
-                    >
-                      Login
-                    </button>
-                    <button
-                      onClick={() => setAuthMode('signup')}
-                      className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-                        authMode === 'signup'
-                          ? 'bg-purple-500 text-white'
-                          : 'text-white/50 hover:text-white'
-                      }`}
-                    >
-                      Claim Username
-                    </button>
-                  </div>
-
-                  {/* Username Input */}
-                  <div>
-                    <label className="text-white/50 text-xs uppercase tracking-wider mb-2 block">
-                      Username
-                    </label>
-                    <div className="relative">
-                      <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white/30" />
-                      <input
-                        type="text"
-                        value={usernameInput}
-                        onChange={(e) => setUsernameInput(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
-                        placeholder="yourname"
-                        className="w-full pl-10 pr-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/30 focus:outline-none focus:border-purple-500/50"
-                      />
-                      {authMode === 'signup' && usernameInput.length >= 3 && (
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                          {checkingUsername ? (
-                            <RefreshCw className="w-4 h-4 text-white/50 animate-spin" />
-                          ) : usernameAvailable ? (
-                            <Check className="w-4 h-4 text-green-400" />
-                          ) : (
-                            <X className="w-4 h-4 text-red-400" />
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    {authMode === 'signup' && (
-                      <p className="text-white/30 text-xs mt-1">
-                        voyomusic.com/{usernameInput || 'yourname'}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Display Name (signup only) */}
-                  {authMode === 'signup' && (
-                    <div>
-                      <label className="text-white/50 text-xs uppercase tracking-wider mb-2 block">
-                        Display Name (optional)
-                      </label>
-                      <div className="relative">
-                        <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white/30" />
-                        <input
-                          type="text"
-                          value={displayNameInput}
-                          onChange={(e) => setDisplayNameInput(e.target.value)}
-                          placeholder="Your Name"
-                          className="w-full pl-10 pr-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/30 focus:outline-none focus:border-purple-500/50"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* PIN Input */}
-                  <div>
-                    <label className="text-white/50 text-xs uppercase tracking-wider mb-2 block">
-                      PIN Code
-                    </label>
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white/30" />
-                      <input
-                        type="password"
-                        value={pinInput}
-                        onChange={(e) => setPinInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                        placeholder="6-digit PIN"
-                        maxLength={6}
-                        className="w-full pl-10 pr-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/30 focus:outline-none focus:border-purple-500/50 tracking-[0.5em] text-center"
-                      />
-                    </div>
-                    <p className="text-white/30 text-xs mt-1">
-                      {authMode === 'signup'
-                        ? 'Choose a 6-digit PIN to secure your universe'
-                        : 'Enter your PIN'}
+                <div className="space-y-6">
+                  {/* Welcome Message */}
+                  <div className="text-center">
+                    <h3 className="text-white text-lg font-bold mb-2">Welcome to VOYO Verse</h3>
+                    <p className="text-white/50 text-sm">
+                      Your music universe across the DASH ecosystem
                     </p>
                   </div>
 
-                  {/* Submit Button */}
-                  <button
-                    onClick={handleAuthSubmit}
-                    disabled={isLoading || usernameInput.length < 3 || pinInput.length < 4 || (authMode === 'signup' && usernameAvailable === false)}
-                    className="w-full py-4 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isLoading ? (
-                      <RefreshCw className="w-5 h-5 animate-spin" />
-                    ) : authMode === 'signup' ? (
-                      <>
-                        <UserPlus className="w-5 h-5" />
-                        Claim voyomusic.com/{usernameInput || '...'}
-                      </>
-                    ) : (
-                      <>
-                        <LogIn className="w-5 h-5" />
-                        Enter Verse
-                      </>
+                  {/* Sign in with DASH ID - Primary Action */}
+                  <div className="space-y-3 p-4 rounded-2xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-purple-500/30">
+                    <h4 className="text-white font-semibold text-sm flex items-center gap-2">
+                      <LogIn className="w-4 h-4" />
+                      Sign in with DASH ID
+                    </h4>
+
+                    {dashError && (
+                      <p className="text-red-400 text-xs bg-red-500/10 px-3 py-2 rounded-lg">{dashError}</p>
                     )}
+
+                    {/* DASH ID Input */}
+                    <div className="relative">
+                      <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-purple-400/50" />
+                      <input
+                        type="text"
+                        value={dashId}
+                        onChange={(e) => setDashId(e.target.value.toUpperCase())}
+                        placeholder="Your DASH ID (e.g., 00AAD)"
+                        className="w-full pl-10 pr-4 py-3 rounded-xl bg-black/40 border border-purple-500/30 text-white placeholder:text-white/40 focus:outline-none focus:border-purple-500/60"
+                      />
+                    </div>
+
+                    {/* DASH PIN Input */}
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-purple-400/50" />
+                      <input
+                        type="password"
+                        value={dashPin}
+                        onChange={(e) => setDashPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        placeholder="6-digit PIN"
+                        maxLength={6}
+                        className="w-full pl-10 pr-4 py-3 rounded-xl bg-black/40 border border-purple-500/30 text-white placeholder:text-white/40 tracking-[0.4em] text-center focus:outline-none focus:border-purple-500/60"
+                      />
+                    </div>
+
+                    {/* Sign In Button */}
+                    <button
+                      onClick={handleDashLogin}
+                      disabled={dashLoading || !dashId || dashPin.length < 4}
+                      className="w-full py-3.5 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
+                    >
+                      {dashLoading ? (
+                        <RefreshCw className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <>
+                          <LogIn className="w-5 h-5" />
+                          Enter My Verse
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Divider */}
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-px bg-white/10" />
+                    <span className="text-white/30 text-xs">new to DASH?</span>
+                    <div className="flex-1 h-px bg-white/10" />
+                  </div>
+
+                  {/* Claim Username - Opens Command Center */}
+                  <button
+                    onClick={() => window.open('https://hub.dasuperhub.com', '_blank')}
+                    className="w-full py-4 rounded-xl bg-white/5 border border-white/20 text-white font-semibold flex items-center justify-center gap-2 hover:bg-white/10 transition-colors"
+                  >
+                    <UserPlus className="w-5 h-5" />
+                    Claim Your Username
                   </button>
 
-                  {/* No email notice */}
+                  {/* Info */}
                   <p className="text-center text-white/30 text-xs">
-                    No email needed. Just username + PIN.
+                    One identity across VOYO, Daclub, Dash Edu & more
                   </p>
                 </div>
               )}
