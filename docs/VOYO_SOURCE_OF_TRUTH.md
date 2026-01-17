@@ -273,9 +273,11 @@
 | 16e10b7 | Delete voyoDJ.ts + audit docs | Cleanup dead code |
 | 8be04af | Canonized data loader | 122K tracks to Supabase |
 | 232ed39 | Wire vibeEngine to VibesSection | Complete vibe UI |
+| 2e1a633 | VOYO Moments schema + service | Short-form video clips |
 
 ### Features Built
 - vibeEngine now powers VibesSection component
+- **VOYO Moments**: Short-form video clips (15-60s) linking to full tracks
 - 122,402 tracks loaded with enrichment data
 - Category filter pills (regional, mood, activity, era, cultural)
 - Tier badges (A/B/C/D) on track cards
@@ -347,7 +349,7 @@ src/
 │   ├── playlistStore.ts       # User playlists
 │   └── downloadStore.ts       # Offline caching
 │
-├── services/                   # 24 business logic services
+├── services/                   # 25 business logic services
 │   ├── api.ts                 # Hybrid API (Worker + Fly.io)
 │   ├── audioEngine.ts         # Web Audio boost profiles
 │   ├── personalization.ts     # Scoring engine
@@ -356,6 +358,7 @@ src/
 │   ├── trackVerifier.ts       # Unplayable detection
 │   ├── intelligentDJ.ts       # Advanced mixing
 │   ├── videoIntelligence.ts   # Collective brain
+│   ├── momentsService.ts      # Short-form clips → full tracks
 │   ├── lyricsEngine.ts        # Synced lyrics
 │   └── ...
 │
@@ -533,14 +536,17 @@ All previously uncommitted work has been committed in Phase 11.
 2. ~~Load canonized data to DB~~ ✅ 122,402 tracks
 3. ~~Wire vibeEngine to UI~~ ✅ VibesSection updated
 4. ~~Delete dead code~~ ✅ voyoDJ.ts removed
+5. ~~VOYO Moments schema~~ ✅ 003_moments_schema.sql
+6. ~~Moments service~~ ✅ momentsService.ts (710 lines)
 
 ## Remaining Integration
 | Priority | Item | Status | Effort |
 |----------|------|--------|--------|
 | 1 | Apply migration 002 | Pending | 5 min (manual in Supabase) |
-| 2 | R2 audio streaming | Orphaned | 4 hours |
-| 3 | DASH Command Center | Pending | External dependency |
-| 4 | voyomusic.com domain | Pending | DNS config |
+| 2 | Apply migration 003 (Moments) | Pending | 5 min (manual in Supabase) |
+| 3 | R2 audio streaming | Orphaned | 4 hours |
+| 4 | DASH Command Center | Pending | External dependency |
+| 5 | voyomusic.com domain | Pending | DNS config |
 
 ## R2 Audio Status (41K files orphaned)
 - Files exist: `voyo-audio` bucket (128/ and 64/ folders)
@@ -550,8 +556,27 @@ All previously uncommitted work has been committed in Phase 11.
 
 ## Blockers
 - Migration 002 must be applied in Supabase SQL Editor
+- Migration 003 (Moments) must be applied in Supabase SQL Editor
 - DASH Command Center must be live for cross-product auth
 - R2 integration requires backend endpoint
+
+## VOYO Moments System (NEW)
+**Like TikTok sounds - short clips that promote full songs**
+
+### Flow
+1. **Moments Discovery** finds viral clips (Instagram, TikTok, YouTube Shorts)
+2. **AI Linking** (Gemini) matches clip to parent track in `video_intelligence`
+3. **User swipes** through moments in vertical feed
+4. **"Play Full Song"** tap opens the real track
+
+### Tables
+- `voyo_moments` - Short clips (15-60s) with source platform, engagement metrics
+- `voyo_moment_tracks` - Many-to-many linking (moment can have multiple songs)
+
+### Key Metrics
+- `voyo_full_song_taps` - Strong signal: user wants the full song!
+- `conversion_rate` - full_song_taps / plays
+- `heat_score` - Combined popularity (auto-calculated via trigger)
 
 ---
 
@@ -561,10 +586,12 @@ All previously uncommitted work has been committed in Phase 11.
 |------|---------|-------|
 | src/store/playerStore.ts | Core playback engine | 1,176 |
 | src/store/universeStore.ts | Auth & profile sync | 755 |
+| src/services/momentsService.ts | Short clips → full tracks | 710 |
 | src/lib/vibeEngine.ts | Vibe query system | 607 |
 | src/brain/VoyoBrain.ts | AI DJ orchestration | ~400 |
 | src/services/personalization.ts | Scoring engine | ~300 |
 | src/lib/dash-auth.tsx | DASH auth bridge | 312 |
+| supabase/migrations/003_moments_schema.sql | Moments tables + RPC | 356 |
 
 ---
 
