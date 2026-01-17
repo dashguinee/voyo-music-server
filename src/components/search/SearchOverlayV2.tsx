@@ -12,10 +12,10 @@ import { Track } from '../../types';
 import { searchMusic, SearchResult } from '../../services/api';
 import { getThumb } from '../../utils/thumbnail';
 import { SmartImage } from '../ui/SmartImage';
-import { TRACKS } from '../../data/tracks';
 import { searchCache } from '../../utils/searchCache';
 import { addSearchResultsToPool } from '../../services/personalization';
 import { syncSearchResults } from '../../services/databaseSync';
+import { searchTracks as searchDatabase } from '../../services/databaseDiscovery';
 import { AlbumSection } from './AlbumSection';
 import { VibesSection } from './VibesSection';
 
@@ -314,49 +314,9 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
     }
   }, [isOpen]);
 
-  // Search seed data locally - MEMOIZED for performance
-  const searchSeedData = useCallback((searchQuery: string): SearchResult[] => {
-    const query = searchQuery.toLowerCase().trim();
-    if (!query) return [];
+  // VIBES FIRST: No more static seed data - database is the source of truth
 
-    // Search in title, artist, album, and tags
-    const matches = TRACKS.filter(track => {
-      const title = track.title.toLowerCase();
-      const artist = track.artist.toLowerCase();
-      const album = (track.album || '').toLowerCase();
-      const tags = track.tags.join(' ').toLowerCase();
-
-      return title.includes(query) ||
-             artist.includes(query) ||
-             album.includes(query) ||
-             tags.includes(query);
-    });
-
-    // Convert Track to SearchResult format
-    return matches.slice(0, 5).map(track => ({
-      voyoId: track.trackId, // Seed data has raw YouTube IDs
-      title: track.title,
-      artist: track.artist,
-      duration: track.duration,
-      thumbnail: getThumb(track.trackId), // Direct YouTube thumbnail
-      views: track.oyeScore,
-    }));
-  }, []);
-
-  // Memoized seed results for current query
-  const seedResults = useMemo(() => {
-    if (!query || query.trim().length < 2) return [];
-    return searchSeedData(query);
-  }, [query, searchSeedData]);
-
-  // Show seed results INSTANTLY when they change
-  useEffect(() => {
-    if (seedResults.length > 0) {
-      setResults(seedResults);
-    }
-  }, [seedResults]);
-
-  // Hybrid search: seed data first, then YouTube - WITH CACHING
+  // VIBES FIRST: Search 324K database, YouTube fallback built-in
   const performSearch = useCallback(async (searchQuery: string) => {
     if (!searchQuery.trim() || searchQuery.trim().length < 2) {
       setResults([]);
@@ -372,64 +332,53 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
     setIsSearching(true);
     setError(null);
     try {
-      // 1. Search seed data first (instant results)
-      const seedResults = searchSeedData(searchQuery);
-
-      // Show seed results immediately
-      if (seedResults.length > 0) {
-        setResults(seedResults);
+      // CHECK CACHE FIRST
+      const cachedResults = searchCache.get(searchQuery);
+      if (cachedResults) {
+        setResults(cachedResults);
+        setIsSearching(false);
+        return;
       }
 
-      // 2. Search YouTube (async, may take longer) - only if 3+ chars
-      if (searchQuery.trim().length >= 3) {
-        // CHECK CACHE FIRST
-        const cachedResults = searchCache.get(searchQuery);
-        let youtubeResults: SearchResult[];
+      // VIBES FIRST: Search 324K database (has YouTube fallback built-in)
+      const dbTracks = await searchDatabase(searchQuery, 20);
 
-        if (cachedResults) {
-          // Cache hit - instant results!
-          youtubeResults = cachedResults;
-        } else {
-          // Cache miss - fetch from API
-          youtubeResults = await searchMusic(searchQuery, 15);
-          // Store in cache for next time
-          searchCache.set(searchQuery, youtubeResults);
-        }
-
-        // Check if this request was aborted
-        if (abortControllerRef.current?.signal.aborted) {
-          return;
-        }
-
-        // 3. Merge results, prioritizing seed data
-        const seedIds = new Set(seedResults.map(r => r.voyoId));
-        const uniqueYoutubeResults = youtubeResults.filter(r => !seedIds.has(r.voyoId));
-
-        // Combine: seed first, then YouTube
-        const mergedResults = [...seedResults, ...uniqueYoutubeResults];
-        setResults(mergedResults);
-        saveToHistory(searchQuery);
-
-        // DATABASE SYNC: Every search result goes to collective brain
-        syncSearchResults(mergedResults);
+      // Check if this request was aborted
+      if (abortControllerRef.current?.signal.aborted) {
+        return;
       }
+
+      // Convert Track to SearchResult format
+      const searchResults: SearchResult[] = dbTracks.map(track => ({
+        voyoId: track.trackId || track.id,
+        title: track.title,
+        artist: track.artist,
+        duration: track.duration || 0,
+        thumbnail: track.coverUrl || getThumb(track.trackId || track.id),
+        views: track.oyeScore || 0,
+      }));
+
+      setResults(searchResults);
+      saveToHistory(searchQuery);
+
+      // Cache for next time
+      if (searchResults.length > 0) {
+        searchCache.set(searchQuery, searchResults);
+      }
+
+      // DATABASE SYNC: Every search result goes to collective brain
+      syncSearchResults(searchResults);
+
     } catch (err: any) {
       // Ignore abort errors
       if (err?.name === 'AbortError') return;
 
-      // Still show seed results even if YouTube fails
-      const seedResults = searchSeedData(searchQuery);
-      if (seedResults.length > 0) {
-        setResults(seedResults);
-        setError('YouTube search unavailable. Showing local results only.');
-      } else {
-        setError('Search failed. Check your connection.');
-        setResults([]);
-      }
+      setError('Search failed. Check your connection.');
+      setResults([]);
     } finally {
       setIsSearching(false);
     }
-  }, [searchSeedData]);
+  }, []);
 
   const handleSearch = (value: string) => {
     setQuery(value);

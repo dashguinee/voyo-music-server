@@ -1034,11 +1034,11 @@ function App() {
       });
     });
 
-    // INITIAL REFRESH: Refresh recommendations on app load (after small delay for stores to hydrate)
+    // VIBES FIRST: Load from 324K database immediately (minimal delay for store hydration)
     const initTimer = setTimeout(() => {
       usePlayerStore.getState().refreshRecommendations();
-      console.log('[VOYO] Initial recommendations refreshed');
-    }, 2000); // Increased to allow bootstrap to complete
+      console.log('[VOYO] VIBES FIRST: Loading from 324K database...');
+    }, 100); // Minimal delay - database is the source, not static seeds
 
     return () => clearTimeout(initTimer);
   }, []);

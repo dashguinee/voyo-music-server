@@ -180,8 +180,9 @@ function createPooledTrack(track: Track, source: PooledTrack['source']): PooledT
 export const useTrackPoolStore = create<TrackPoolStore>()(
   persist(
     (set, get) => ({
-      // Initialize with seed tracks
-      hotPool: TRACKS.map((t) => createPooledTrack(t, 'seed')),
+      // VIBES FIRST: Start empty, populate from 324K database
+      // Pool grows organically from user activity and database discovery
+      hotPool: [],
       coldPool: [],
 
       // Settings

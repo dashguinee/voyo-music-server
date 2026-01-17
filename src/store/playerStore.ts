@@ -80,37 +80,59 @@ function savePersistedState(state: PersistedState): void {
   }
 }
 
-function getPersistedTrack(): Track {
+function getPersistedTrack(): Track | null {
   const { currentTrackId } = loadPersistedState();
   if (currentTrackId) {
+    // Try to find in static tracks (for hydration)
     const track = TRACKS.find(t => t.id === currentTrackId || t.trackId === currentTrackId);
     if (track) return track;
+    // If not in static, create a minimal track object to be hydrated from database later
+    return {
+      id: currentTrackId,
+      trackId: currentTrackId,
+      title: 'Loading...',
+      artist: '',
+      coverUrl: `https://i.ytimg.com/vi/${currentTrackId}/hqdefault.jpg`,
+      duration: 0,
+      tags: [],
+      oyeScore: 0,
+      createdAt: new Date().toISOString(),
+    };
   }
-  return TRACKS[0];
+  return null; // No default - will be populated from database
 }
 
 function getPersistedQueue(): QueueItem[] {
   const { queue } = loadPersistedState();
   if (!queue || queue.length === 0) {
-    // Default initial queue
-    return TRACKS.slice(1, 4).map((track) => ({
-      track,
-      addedAt: new Date().toISOString(),
-      source: 'auto' as const,
-    }));
+    // No default queue - will be populated from database
+    return [];
   }
   // Hydrate queue items with full track objects
   return queue
     .map((item) => {
-      const track = TRACKS.find(t => t.id === item.trackId || t.trackId === item.trackId);
-      if (!track) return null;
+      // Try static tracks first
+      let track = TRACKS.find(t => t.id === item.trackId || t.trackId === item.trackId);
+      // If not found, create minimal track to be hydrated from database
+      if (!track) {
+        track = {
+          id: item.trackId,
+          trackId: item.trackId,
+          title: 'Loading...',
+          artist: '',
+          coverUrl: `https://i.ytimg.com/vi/${item.trackId}/hqdefault.jpg`,
+          duration: 0,
+          tags: [],
+          oyeScore: 0,
+          createdAt: new Date().toISOString(),
+        };
+      }
       return {
         track,
         addedAt: item.addedAt,
         source: item.source,
       };
-    })
-    .filter(Boolean) as QueueItem[];
+    });
 }
 
 function getPersistedHistory(): HistoryItem[] {
@@ -119,16 +141,29 @@ function getPersistedHistory(): HistoryItem[] {
   // Hydrate history items with full track objects
   return history
     .map((item) => {
-      const track = TRACKS.find(t => t.id === item.trackId || t.trackId === item.trackId);
-      if (!track) return null;
+      // Try static tracks first
+      let track = TRACKS.find(t => t.id === item.trackId || t.trackId === item.trackId);
+      // If not found, create minimal track to be hydrated from database
+      if (!track) {
+        track = {
+          id: item.trackId,
+          trackId: item.trackId,
+          title: 'Loading...',
+          artist: '',
+          coverUrl: `https://i.ytimg.com/vi/${item.trackId}/hqdefault.jpg`,
+          duration: 0,
+          tags: [],
+          oyeScore: 0,
+          createdAt: new Date().toISOString(),
+        };
+      }
       return {
         track,
         playedAt: item.playedAt,
         duration: item.duration,
         oyeReactions: item.oyeReactions,
       };
-    })
-    .filter(Boolean) as HistoryItem[];
+    });
 }
 
 interface PlayerStore {
@@ -302,11 +337,11 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   queue: getPersistedQueue(),
   history: getPersistedHistory(),
 
-  // PERSONALIZED BELTS: Start with static tracks, then upgrade to pool-aware on first refresh
-  // (Lazy init to avoid circular dependency during store creation)
-  hotTracks: getPersonalizedHotTracks(5),
-  aiPicks: getRandomTracks(5),
-  discoverTracks: getPersonalizedDiscoveryTracks(TRACKS[0], 5, []),
+  // VIBES FIRST: Start empty, load from 324K database immediately
+  // Database discovery populates these on first refreshRecommendations() call
+  hotTracks: [],
+  aiPicks: [],
+  discoverTracks: [],
   isAiMode: true,
 
   currentMood: 'afro',
@@ -315,7 +350,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   oyeScore: 0,
 
   isRouletteMode: false,
-  rouletteTracks: TRACKS,
+  rouletteTracks: [], // Will be populated from database
 
   // VOYO Superapp Tab - restored from localStorage
   voyoActiveTab: _persistedState.voyoActiveTab || 'music',
@@ -977,21 +1012,12 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
           discovery.getDiscoveryTracks(15),
         ]);
 
-        // If database returned tracks, use them (blended with pool for variety)
+        // If database returned tracks, use them (pure database, no static fallback)
         if (dbHot.length > 0 || dbDiscover.length > 0) {
-          const poolHot = getPoolAwareHotTracks(5);
-          const poolDiscover = state.currentTrack
-            ? getPoolAwareDiscoveryTracks(state.currentTrack, 5, excludeIds)
-            : getPoolAwareDiscoveryTracks(TRACKS[0], 5, excludeIds);
-
-          // Blend: Database first, pool for variety
-          const blendedHot = [...dbHot.slice(0, 10), ...poolHot.slice(0, 5)];
-          const blendedDiscover = [...dbDiscover.slice(0, 10), ...poolDiscover.slice(0, 5)];
-
           set({
-            hotTracks: blendedHot,
-            aiPicks: getRandomTracks(5),
-            discoverTracks: blendedDiscover,
+            hotTracks: dbHot.slice(0, 15),
+            aiPicks: dbDiscover.slice(0, 5), // AI picks from discovery results
+            discoverTracks: dbDiscover.slice(0, 15),
           });
           console.log(`[VOYO] 🔥 VIBES FIRST: ${dbHot.length} hot + ${dbDiscover.length} discover from 324K database`);
           return;
@@ -1000,30 +1026,27 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         console.warn('[VOYO] Database discovery failed, using pool fallback:', err);
       }
 
-      // Fallback to POOL-AWARE v3.0
-      const hotTracks = getPoolAwareHotTracks(5);
-      const discoverTracks = state.currentTrack
+      // Fallback: Keep existing tracks, don't replace with static seeds
+      console.warn('[VOYO] Database failed and no fallback - keeping current state');
+    });
+
+    // No immediate fallback - let database load (prevents showing static seeds)
+    // State starts empty, database populates it within 100ms
+
+    // Only update if we have pool tracks from user activity (no static seeds)
+    const poolHot = getPoolAwareHotTracks(5);
+    if (poolHot.length > 0) {
+      const poolDiscover = state.currentTrack
         ? getPoolAwareDiscoveryTracks(state.currentTrack, 5, excludeIds)
-        : getPoolAwareDiscoveryTracks(TRACKS[0], 5, excludeIds);
+        : [];
 
       set({
-        hotTracks,
-        aiPicks: getRandomTracks(5),
-        discoverTracks,
+        hotTracks: poolHot,
+        aiPicks: [],
+        discoverTracks: poolDiscover,
       });
-    });
-
-    // Immediate fallback while async loads (prevents empty state)
-    const hotTracks = getPoolAwareHotTracks(5);
-    const discoverTracks = state.currentTrack
-      ? getPoolAwareDiscoveryTracks(state.currentTrack, 5, excludeIds)
-      : getPoolAwareDiscoveryTracks(TRACKS[0], 5, excludeIds);
-
-    set({
-      hotTracks,
-      aiPicks: getRandomTracks(5),
-      discoverTracks,
-    });
+    }
+    // If no pool tracks, keep state empty - database will populate soon
   },
 
   toggleAiMode: () => set((state) => ({ isAiMode: !state.isAiMode })),
