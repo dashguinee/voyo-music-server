@@ -12,6 +12,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { Innertube } from 'youtubei.js';
+import { S3Client, HeadObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import {
   encodeVoyoId,
   decodeVoyoId,
@@ -20,6 +21,108 @@ import {
   isValidYouTubeId,
   getVoyoError
 } from './stealth.js';
+
+// ========================================
+// R2 CLOUDFLARE STORAGE CONFIGURATION
+// ========================================
+const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID || '2b9fcfd8cd9aedbd862ffd071d66a3e';
+const R2_ACCESS_KEY = process.env.R2_ACCESS_KEY || '82679709fb4e9f7e77f1b159991c9551';
+const R2_SECRET_KEY = process.env.R2_SECRET_KEY || '306f3d28d29500228a67c8cf70cebe03bba3c765fee173aacb26614276e7bb52';
+const R2_BUCKET = process.env.R2_BUCKET || 'voyo-audio';
+
+// S3 Client configured for Cloudflare R2
+const r2Client = new S3Client({
+  region: 'auto',
+  endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  credentials: {
+    accessKeyId: R2_ACCESS_KEY,
+    secretAccessKey: R2_SECRET_KEY,
+  },
+});
+
+// R2 audio availability cache (5 min TTL)
+const r2Cache = new Map();
+const R2_CACHE_TTL = 5 * 60 * 1000;
+
+/**
+ * Check if audio exists in R2 bucket
+ * @param {string} trackId - YouTube video ID
+ * @param {string} quality - '128' or '64'
+ * @returns {Promise<boolean>}
+ */
+async function checkR2Audio(trackId, quality = '128') {
+  const cacheKey = `${trackId}-${quality}`;
+  const cached = r2Cache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < R2_CACHE_TTL) {
+    return cached.exists;
+  }
+
+  try {
+    await r2Client.send(new HeadObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: `${quality}/${trackId}.mp3`,
+    }));
+    r2Cache.set(cacheKey, { exists: true, timestamp: Date.now() });
+    return true;
+  } catch (err) {
+    r2Cache.set(cacheKey, { exists: false, timestamp: Date.now() });
+    return false;
+  }
+}
+
+/**
+ * Stream audio from R2 bucket
+ * @param {string} trackId - YouTube video ID
+ * @param {string} quality - '128' or '64'
+ * @param {object} req - HTTP request
+ * @param {object} res - HTTP response
+ */
+async function streamR2Audio(trackId, quality, req, res) {
+  const key = `${quality}/${trackId}.mp3`;
+
+  try {
+    // Get object with range support
+    const range = req.headers.range;
+    const params = {
+      Bucket: R2_BUCKET,
+      Key: key,
+    };
+
+    if (range) {
+      params.Range = range;
+    }
+
+    const command = new GetObjectCommand(params);
+    const response = await r2Client.send(command);
+
+    const headers = {
+      'Content-Type': 'audio/mpeg',
+      'Accept-Ranges': 'bytes',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Range',
+      'Cache-Control': 'public, max-age=31536000', // 1 year (immutable audio)
+    };
+
+    if (response.ContentLength) {
+      headers['Content-Length'] = response.ContentLength;
+    }
+    if (response.ContentRange) {
+      headers['Content-Range'] = response.ContentRange;
+    }
+
+    const statusCode = range && response.ContentRange ? 206 : 200;
+    res.writeHead(statusCode, headers);
+
+    // Pipe the stream
+    response.Body.pipe(res);
+
+    console.log(`[R2] Streaming ${key} (${quality}kbps)`);
+  } catch (err) {
+    console.error(`[R2] Stream error for ${key}:`, err.message);
+    throw err;
+  }
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1613,6 +1716,128 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ========================================
+  // R2 AUDIO STREAMING ENDPOINTS
+  // ========================================
+
+  // Check if audio exists in R2
+  if (pathname === '/r2/exists' && query.v) {
+    if (!isValidYouTubeId(query.v)) {
+      res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid video ID' }));
+      return;
+    }
+
+    try {
+      const quality = query.q === '64' ? '64' : '128';
+      const exists = await checkR2Audio(query.v, quality);
+
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        exists,
+        trackId: query.v,
+        quality,
+        url: exists ? `${API_BASE}/r2/stream/${query.v}?q=${quality}` : null
+      }));
+    } catch (err) {
+      res.writeHead(500, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+    }
+    return;
+  }
+
+  // Stream audio from R2 (with YouTube fallback)
+  if (pathname.startsWith('/r2/stream/')) {
+    const trackId = pathname.split('/r2/stream/')[1];
+
+    if (!isValidYouTubeId(trackId)) {
+      res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid video ID' }));
+      return;
+    }
+
+    try {
+      const quality = query.q === '64' ? '64' : '128';
+
+      // Check if exists in R2
+      const existsInR2 = await checkR2Audio(trackId, quality);
+
+      if (existsInR2) {
+        // Stream directly from R2 - FAST!
+        console.log(`[R2] 🚀 Serving from R2: ${trackId} (${quality}kbps)`);
+        await streamR2Audio(trackId, quality, req, res);
+        return;
+      }
+
+      // FALLBACK: Not in R2, redirect to YouTube proxy
+      console.log(`[R2] Track ${trackId} not in R2, falling back to YouTube`);
+      res.writeHead(302, {
+        ...corsHeaders,
+        'Location': `${API_BASE}/proxy?v=${trackId}&quality=high`
+      });
+      res.end();
+    } catch (err) {
+      console.error(`[R2] Error streaming ${trackId}:`, err.message);
+      // On any error, fallback to YouTube
+      res.writeHead(302, {
+        ...corsHeaders,
+        'Location': `${API_BASE}/proxy?v=${trackId}&quality=high`
+      });
+      res.end();
+    }
+    return;
+  }
+
+  // Get best stream URL (R2 first, then YouTube)
+  if (pathname === '/r2/best' && query.v) {
+    if (!isValidYouTubeId(query.v)) {
+      res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid video ID' }));
+      return;
+    }
+
+    try {
+      const quality = query.q === '64' ? '64' : '128';
+      const existsInR2 = await checkR2Audio(query.v, quality);
+
+      if (existsInR2) {
+        res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          source: 'r2',
+          url: `${API_BASE}/r2/stream/${query.v}?q=${quality}`,
+          trackId: query.v,
+          quality: `${quality}kbps`,
+          cached: true
+        }));
+      } else {
+        res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          source: 'youtube',
+          url: `${API_BASE}/proxy?v=${query.v}&quality=high`,
+          trackId: query.v,
+          quality: 'high',
+          cached: false
+        }));
+      }
+    } catch (err) {
+      res.writeHead(500, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+    }
+    return;
+  }
+
+  // R2 stats - how many tracks are cached
+  if (pathname === '/r2/stats') {
+    res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      cacheSize: r2Cache.size,
+      bucket: R2_BUCKET,
+      endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+      note: '41K+ pre-cached tracks in R2'
+    }));
+    return;
+  }
+
   // 404
   res.writeHead(404, { ...corsHeaders, 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ error: 'Not found' }));
@@ -1643,6 +1868,11 @@ server.listen(PORT, () => {
   console.log(`   - GET /stream?v=ID&quality=LEVEL     → Get raw stream URL`);
   console.log(`   - GET /search?q=QUERY                → Search YouTube`);
   console.log(`   - GET /thumbnail?id=VIDEO_ID         → Proxy thumbnails`);
+  console.log(`\n   ☁️  R2 CLOUDFLARE STORAGE (41K+ cached tracks):`);
+  console.log(`   - GET /r2/exists?v=ID&q=128|64       → Check if in R2`);
+  console.log(`   - GET /r2/stream/VIDEO_ID?q=128|64   → Stream from R2 (fast!)`);
+  console.log(`   - GET /r2/best?v=ID&q=128|64         → Best URL (R2 or YouTube)`);
+  console.log(`   - GET /r2/stats                      → R2 cache stats`);
   console.log(`\n   💾 OFFLINE PLAYBACK:`);
   console.log(`   - GET /download?v=VIDEO_ID           → Download track`);
   console.log(`   - DELETE /download?v=VIDEO_ID        → Delete downloaded track`);

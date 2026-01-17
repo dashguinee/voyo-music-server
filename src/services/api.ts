@@ -132,20 +132,48 @@ export interface StreamResult {
   url: string;
   cached: boolean;
   boosting: boolean;
-  source: 'voyo_cache' | 'youtube_direct';
+  source: 'r2' | 'voyo_cache' | 'youtube_direct';
   quality: string;
 }
 
 /**
- * Get audio stream URL - VOYO BOOST SYSTEM
+ * Check if track exists in R2 cache (41K+ pre-downloaded tracks)
+ */
+export async function checkR2Cache(videoId: string, quality: '128' | '64' = '128'): Promise<{
+  exists: boolean;
+  url: string | null;
+}> {
+  const youtubeId = decodeVoyoId(videoId);
+
+  try {
+    const response = await fetch(`${API_URL}/r2/exists?v=${youtubeId}&q=${quality}`, {
+      signal: AbortSignal.timeout(3000) // Fast check
+    });
+
+    if (!response.ok) {
+      return { exists: false, url: null };
+    }
+
+    const data = await response.json();
+    return {
+      exists: data.exists || false,
+      url: data.url || null
+    };
+  } catch {
+    return { exists: false, url: null };
+  }
+}
+
+/**
+ * Get audio stream URL - R2 + VOYO BOOST SYSTEM
  *
  * Flow:
- * 1. If cached on server: Returns our cached URL (fast, high quality)
- * 2. If not cached: Returns YouTube URL + starts background download
- * 3. Next play of same track: Served from cache
+ * 1. Check R2 first (41K+ pre-cached tracks) - FASTEST
+ * 2. If not in R2, check local server cache
+ * 3. If not cached: Returns YouTube URL + starts background download
+ * 4. Next play of same track: Served from cache
  *
- * Browser plays DIRECTLY from URL (user's residential IP for YouTube,
- * or our server for cached content)
+ * Browser plays DIRECTLY from URL (R2 for cached, YouTube for live)
  */
 export async function getAudioStream(videoId: string, quality?: string): Promise<string> {
   const youtubeId = decodeVoyoId(videoId);
@@ -156,10 +184,29 @@ export async function getAudioStream(videoId: string, quality?: string): Promise
     quality = usePlayerStore.getState().streamQuality;
   }
 
+  // Map quality to R2 format (128 or 64)
+  const r2Quality = quality === 'low' ? '64' : '128';
+
   try {
-    const response = await fetch(`${API_URL}/stream?v=${youtubeId}&quality=${quality}`, {
+    // STEP 1: Check R2 first (fast parallel check)
+    const r2Check = checkR2Cache(youtubeId, r2Quality);
+
+    // STEP 2: Also prepare YouTube fallback (parallel)
+    const ytFallback = fetch(`${API_URL}/stream?v=${youtubeId}&quality=${quality}`, {
       signal: AbortSignal.timeout(15000)
     });
+
+    // Wait for R2 check first (it's faster)
+    const r2Result = await r2Check;
+
+    if (r2Result.exists && r2Result.url) {
+      console.log(`[API] 🚀 R2 HIT: ${youtubeId} (${r2Quality}kbps)`);
+      return r2Result.url;
+    }
+
+    // R2 miss - wait for YouTube fallback
+    console.log(`[API] R2 miss, falling back to YouTube: ${youtubeId}`);
+    const response = await ytFallback;
 
     if (!response.ok) {
       throw new Error(`Server returned ${response.status}`);
@@ -174,6 +221,7 @@ export async function getAudioStream(videoId: string, quality?: string): Promise
     throw new Error(data.error || 'No URL returned');
 
   } catch (err) {
+    console.error('[API] Stream error:', err);
     return `iframe:${youtubeId}`;
   }
 }
