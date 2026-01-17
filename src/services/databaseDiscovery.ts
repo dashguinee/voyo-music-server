@@ -239,14 +239,17 @@ export async function getFamiliarTracks(limit: number = 10): Promise<Track[]> {
 // ============================================
 
 /**
- * Search tracks: Supabase first (324K), YouTube fallback
+ * Search tracks: Database first (324K), YouTube fallback for new content
+ * STREAMLINED: No delays, instant results
  */
 export async function searchTracks(query: string, limit: number = 20): Promise<Track[]> {
   if (!query.trim()) return [];
 
   const essence = getVibeEssence();
+  let dbResults: Track[] = [];
+  let youtubeResults: Track[] = [];
 
-  // Try Supabase first
+  // STEP 1: Try database (324K tracks - should have most content)
   if (supabaseConfigured) {
     try {
       const { data, error } = await getSupabase().rpc('search_tracks_by_vibe', {
@@ -260,23 +263,36 @@ export async function searchTracks(query: string, limit: number = 20): Promise<T
       });
 
       if (!error && data && data.length > 0) {
-        console.log(`[Discovery] Search: ${data.length} results from 324K database`);
-        return data.map(toTrack);
+        dbResults = data.map(toTrack);
+        console.log(`[Discovery] Search: ${dbResults.length} from database`);
       }
     } catch (err) {
-      console.warn('[Discovery] Search DB error, falling back to YouTube:', err);
+      console.warn('[Discovery] Database search error:', err);
     }
   }
 
-  // Fallback to YouTube search
-  console.log('[Discovery] Search: Falling back to YouTube');
-  try {
-    const results = await searchMusic(query, limit);
-    return results.map(searchResultToTrack);
-  } catch (err) {
-    console.error('[Discovery] YouTube search failed:', err);
-    return [];
+  // STEP 2: If database found enough results, return immediately
+  if (dbResults.length >= 5) {
+    return dbResults;
   }
+
+  // STEP 3: Database sparse - supplement with YouTube (for new releases)
+  try {
+    const results = await searchMusic(query, limit - dbResults.length);
+    youtubeResults = results.map(searchResultToTrack);
+    if (youtubeResults.length > 0) {
+      console.log(`[Discovery] Search: +${youtubeResults.length} from YouTube`);
+    }
+  } catch (err) {
+    // YouTube failed - that's OK, we might have database results
+    console.warn('[Discovery] YouTube search unavailable');
+  }
+
+  // STEP 4: Merge results (database first, then YouTube)
+  const dbIds = new Set(dbResults.map(t => t.trackId || t.id));
+  const uniqueYoutube = youtubeResults.filter(t => !dbIds.has(t.trackId || t.id));
+
+  return [...dbResults, ...uniqueYoutube];
 }
 
 // ============================================

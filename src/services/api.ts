@@ -32,32 +32,30 @@ export interface StreamResponse {
 
 /**
  * Search music - Uses our backend with yt-dlp
+ * Fast timeout (8s) - database is primary source, this is fallback
  */
 export async function searchMusic(query: string, limit: number = 10): Promise<SearchResult[]> {
-  try {
-    const response = await fetch(
-      `${API_URL}/api/search?q=${encodeURIComponent(query)}&limit=${limit}`,
-      { signal: AbortSignal.timeout(15000) }
-    );
+  const response = await fetch(
+    `${API_URL}/api/search?q=${encodeURIComponent(query)}&limit=${limit}`,
+    { signal: AbortSignal.timeout(8000) } // 8s timeout - database is primary
+  );
 
-    if (!response.ok) {
-      throw new Error(`Search failed: ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    // Transform to VOYO format (backend returns VOYO IDs)
-    return (data.results || []).map((item: any) => ({
-      voyoId: item.id || item.voyoId,
-      title: item.title,
-      artist: item.artist || 'Unknown Artist',
-      duration: item.duration || 0,
-      thumbnail: `${API_URL}/cdn/art/${item.id || item.voyoId}`,
-      views: item.views || 0,
-    }));
-  } catch (error) {
-    throw error;
+  if (!response.ok) {
+    console.warn(`[API] YouTube search failed: ${response.status}`);
+    return []; // Return empty, don't throw - let caller handle gracefully
   }
+
+  const data = await response.json();
+
+  // Transform to VOYO format (backend returns VOYO IDs)
+  return (data.results || []).map((item: any) => ({
+    voyoId: item.id || item.voyoId,
+    title: item.title,
+    artist: item.artist || 'Unknown Artist',
+    duration: item.duration || 0,
+    thumbnail: `${API_URL}/cdn/art/${item.id || item.voyoId}`,
+    views: item.views || 0,
+  }));
 }
 
 // Alias for backward compatibility

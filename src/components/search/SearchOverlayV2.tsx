@@ -373,7 +373,9 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
       // Ignore abort errors
       if (err?.name === 'AbortError') return;
 
-      setError('Search failed. Check your connection.');
+      // Only show error if we have no results at all
+      console.warn('[Search] Error:', err);
+      setError(results.length === 0 ? 'No results found. Try a different search.' : null);
       setResults([]);
     } finally {
       setIsSearching(false);

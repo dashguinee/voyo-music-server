@@ -1034,13 +1034,9 @@ function App() {
       });
     });
 
-    // VIBES FIRST: Load from 324K database immediately (minimal delay for store hydration)
-    const initTimer = setTimeout(() => {
-      usePlayerStore.getState().refreshRecommendations();
-      console.log('[VOYO] VIBES FIRST: Loading from 324K database...');
-    }, 100); // Minimal delay - database is the source, not static seeds
-
-    return () => clearTimeout(initTimer);
+    // VIBES FIRST: Load from 324K database IMMEDIATELY
+    usePlayerStore.getState().refreshRecommendations();
+    console.log('[VOYO] VIBES FIRST: Loading from 324K database...');
   }, []);
 
   // REALTIME NOTIFICATIONS: Subscribe to Supabase events for DynamicIsland
