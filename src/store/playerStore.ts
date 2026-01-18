@@ -1052,6 +1052,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   toggleAiMode: () => set((state) => ({ isAiMode: !state.isAiMode })),
 
   // SMART DISCOVERY: Update discovery based on current track
+  // MERGE with existing database results, don't replace
   updateDiscoveryForTrack: (track) => {
     if (!track) return;
 
@@ -1059,12 +1060,26 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     const excludeIds = [
       track.id,
       ...state.queue.map((q) => q.track.id),
+      ...state.discoverTracks.map((t) => t.id), // Don't duplicate existing
     ].filter(Boolean) as string[];
 
     // POOL-AWARE v3.0: Pull from dynamic pool (VOYO intelligence learns from user)
     const relatedTracks = getPoolAwareDiscoveryTracks(track, 5, excludeIds);
 
-    set({ discoverTracks: relatedTracks });
+    // MERGE: Keep database tracks, add pool tracks on top (no replacement)
+    // Only add if pool returned meaningful results
+    if (relatedTracks.length >= 3) {
+      const merged = [...relatedTracks, ...state.discoverTracks];
+      // Deduplicate by id
+      const seen = new Set<string>();
+      const unique = merged.filter(t => {
+        if (seen.has(t.id)) return false;
+        seen.add(t.id);
+        return true;
+      });
+      set({ discoverTracks: unique.slice(0, 20) }); // Cap at 20
+    }
+    // If pool is sparse, keep existing database tracks
   },
 
   // Manually refresh discovery for current track
