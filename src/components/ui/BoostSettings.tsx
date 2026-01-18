@@ -174,7 +174,7 @@ export const BoostSettings = ({ isOpen, onClose }: BoostSettingsProps) => {
                 <div className="text-[10px] text-gray-500 mt-3 text-center">
                   {boostProfile === 'boosted' && '🔊 Warm bass boost with speaker protection'}
                   {boostProfile === 'calm' && '🌅 Relaxed, balanced listening - breathe in, breathe out'}
-                  {boostProfile === 'voyex' && isCurrentTrackBoosted && '✨ Full spectrum: Sub-bass, warmth, air & harmonics'}
+                  {boostProfile === 'voyex' && isCurrentTrackBoosted && '⚡ FULL JUICE NO LIMITS - Zero compression, max boost'}
                   {boostProfile === 'voyex' && !isCurrentTrackBoosted && '🔒 VOYEX unlocks when playing boosted tracks'}
                 </div>
               </div>

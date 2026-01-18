@@ -48,10 +48,11 @@ const BOOST_PRESETS = {
     compressor: { threshold: -15, knee: 15, ratio: 3, attack: 0.005, release: 0.3 }
   },
   voyex: {
-    gain: 1.25, bassFreq: 80, bassGain: 7, presenceFreq: 3000, presenceGain: 3,
-    subBassFreq: 45, subBassGain: 5, warmthFreq: 250, warmthGain: 2,
-    airFreq: 12000, airGain: 3, harmonicAmount: 15,
-    compressor: { threshold: -8, knee: 6, ratio: 8, attack: 0.002, release: 0.15 }
+    // FULL JUICE NO LIMITS - Maximum boost, zero compression
+    gain: 1.4, bassFreq: 80, bassGain: 9, presenceFreq: 3000, presenceGain: 4,
+    subBassFreq: 40, subBassGain: 8, warmthFreq: 250, warmthGain: 2,
+    airFreq: 12000, airGain: 4, harmonicAmount: 20,
+    compressor: { threshold: 0, knee: 40, ratio: 1, attack: 1, release: 1 } // Bypassed
   },
   xtreme: {
     gain: 1.35, bassFreq: 80, bassGain: 10, presenceFreq: 3000, presenceGain: 4,
