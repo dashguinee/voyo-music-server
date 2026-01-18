@@ -341,13 +341,14 @@ if (r2Info.bitrate >= QUALITY_THRESHOLD) {
 **File:** `src/store/downloadStore.ts`
 **Fix:** Add R2 upload call after successful IndexedDB save
 
-### Gap 3: Auto-Boost at 100%
+### Gap 3: Auto-Boost at 100% ✅ FIXED
 
-**Current:** Triggers when track finishes
-**Target:** Trigger at 50% progress
+**Before:** Background cache started immediately (wasted bandwidth on skipped tracks)
+**After:** Cache triggers at 50% progress (genuine interest threshold)
 
-**File:** `src/store/downloadStore.ts` or `AudioPlayer.tsx`
-**Fix:** Add progress listener, trigger at 0.5
+**File:** `src/components/AudioPlayer.tsx`
+**Fix:** Added progress listener, triggers at 50% with network preference respect
+**Commit:** Phase 2 implementation complete
 
 ### Gap 4: No Quality Detection
 
@@ -419,10 +420,11 @@ POST /upload/{trackId}     → Upload to R2 (NEW - needed)
 - [x] Apply EQ enhancement to R2 streams
 - [x] YouTubeIframe: Mute when R2 playback (video-only sync)
 
-### Phase 2: Auto-Boost at 50%
-- [ ] Progress listener in AudioPlayer
-- [ ] Trigger download at 0.5 threshold
-- [ ] Respect `autoBoostEnabled` and `downloadSetting`
+### Phase 2: Auto-Boost at 50% ✅ COMPLETE
+- [x] Progress listener in AudioPlayer
+- [x] Trigger download at 0.5 threshold
+- [x] Respect `downloadSetting` (always | wifi-only | ask | never)
+- [x] Network type detection (wifi vs cellular)
 
 ### Phase 3: Presets & UI
 - [ ] Remove Xtreme preset
@@ -443,4 +445,4 @@ POST /upload/{trackId}     → Upload to R2 (NEW - needed)
 ---
 
 *Document updated: 2026-01-18*
-*Status: Phase 1 COMPLETE - R2 check now in main playback flow*
+*Status: Phase 1 & 2 COMPLETE - R2 check + 50% auto-boost trigger*

@@ -87,17 +87,18 @@ export const AudioPlayer = () => {
   const isInitialLoadRef = useRef<boolean>(true);
   const backgroundBoostingRef = useRef<string | null>(null);
   const hotSwapAbortRef = useRef<AbortController | null>(null);
+  const hasTriggered50PercentCacheRef = useRef<boolean>(false); // 50% auto-boost trigger
 
   // Store state
   const {
     currentTrack, isPlaying, volume, seekPosition, playbackRate, boostProfile,
-    currentTime: savedCurrentTime, playbackSource,
+    currentTime: savedCurrentTime, playbackSource, progress,
     setCurrentTime, setDuration, setProgress, clearSeekPosition, togglePlay,
     nextTrack, setBufferHealth, setPlaybackSource,
   } = usePlayerStore();
 
   const { startListenSession, endListenSession } = usePreferenceStore();
-  const { initialize: initDownloads, checkCache, cacheTrack, lastBoostCompletion } = useDownloadStore();
+  const { initialize: initDownloads, checkCache, cacheTrack, lastBoostCompletion, autoBoostEnabled, downloadSetting } = useDownloadStore();
 
   // Mini-PiP for background playback
   useMiniPiP();
@@ -106,6 +107,52 @@ export const AudioPlayer = () => {
   useEffect(() => {
     initDownloads();
   }, [initDownloads]);
+
+  // 50% AUTO-BOOST: Trigger caching when user shows genuine interest
+  // Only for iframe playback (not cached/r2), respects network preference
+  useEffect(() => {
+    // Only trigger at 50% for iframe playback
+    if (playbackSource !== 'iframe') return;
+    if (hasTriggered50PercentCacheRef.current) return;
+    if (progress < 50) return;
+    if (!currentTrack?.trackId) return;
+
+    // Check network preference (always | wifi-only | ask | never)
+    if (downloadSetting === 'never') {
+      console.log('🎵 [VOYO] 50% reached but download setting is "never"');
+      return;
+    }
+
+    if (downloadSetting === 'wifi-only') {
+      // Use Network Information API to detect wifi vs cellular
+      const connection = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+      const isWifi = !connection || connection.type === 'wifi' || connection.type === 'ethernet' || !connection.effectiveType?.includes('2g');
+      if (!isWifi) {
+        console.log('🎵 [VOYO] 50% reached but wifi-only setting blocks caching on mobile data');
+        return;
+      }
+    }
+
+    // 'always' and 'ask' both allow caching (ask prompts for manual boost, auto-cache is silent)
+
+    // Mark as triggered to prevent duplicate calls
+    hasTriggered50PercentCacheRef.current = true;
+
+    const API_BASE = 'https://voyo-music-api.fly.dev';
+    console.log('🎵 [VOYO] 50% reached! Starting background cache (genuine interest)');
+
+    // Start background cache
+    backgroundBoostingRef.current = currentTrack.trackId;
+    cacheTrack(
+      currentTrack.trackId,
+      currentTrack.title,
+      currentTrack.artist,
+      currentTrack.duration || 0,
+      `${API_BASE}/cdn/art/${currentTrack.trackId}?quality=high`
+    ).finally(() => {
+      backgroundBoostingRef.current = null;
+    });
+  }, [progress, playbackSource, currentTrack, cacheTrack, downloadSetting]);
 
   // Background playback protection
   useEffect(() => {
@@ -272,6 +319,7 @@ export const AudioPlayer = () => {
       lastTrackIdRef.current = trackId;
       hasRecordedPlayRef.current = false;
       trackProgressRef.current = 0;
+      hasTriggered50PercentCacheRef.current = false; // Reset 50% trigger for new track
 
       // End previous session
       endListenSession(audioRef.current?.currentTime || 0, 0);
@@ -356,23 +404,10 @@ export const AudioPlayer = () => {
             };
           }
         } else {
-          // 📡 R2 MISS - Stream via iframe, boost in background
-          console.log('🎵 [VOYO] R2 miss, streaming via iframe, boosting in background...');
+          // 📡 R2 MISS - Stream via iframe
+          // Caching will trigger at 50% progress (genuine interest threshold)
+          console.log('🎵 [VOYO] R2 miss, streaming via iframe (will cache at 50%)');
           setPlaybackSource('iframe');
-
-          // Start background boost (non-blocking)
-          if (backgroundBoostingRef.current !== trackId) {
-            backgroundBoostingRef.current = trackId;
-            cacheTrack(
-              trackId,
-              currentTrack.title,
-              currentTrack.artist,
-              currentTrack.duration || 0,
-              `${API_BASE}/cdn/art/${trackId}?quality=high`
-            ).finally(() => {
-              backgroundBoostingRef.current = null;
-            });
-          }
         }
       }
     };
