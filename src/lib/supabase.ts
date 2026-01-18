@@ -1785,4 +1785,166 @@ export const playlistAPI = {
   },
 };
 
+// ============================================
+// ACTIVITY FEED API - Social Activity Stream
+// ============================================
+
+export interface FriendActivity {
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+  nowPlaying: NowPlaying | null;
+  portalOpen: boolean;
+  lastActive: string;
+}
+
+export const activityFeedAPI = {
+  /**
+   * Get activity from people you follow (who's listening now)
+   */
+  async getFriendsActivity(username: string, limit = 20): Promise<FriendActivity[]> {
+    if (!supabase) return [];
+
+    // First get list of who I follow
+    const following = await followsAPI.getFollowing(username);
+    if (following.length === 0) return [];
+
+    // Get their current listening status
+    const { data, error } = await supabase
+      .from('universes')
+      .select('username, public_profile, now_playing, portal_open, last_active')
+      .in('username', following)
+      .order('last_active', { ascending: false })
+      .limit(limit);
+
+    if (error || !data) return [];
+
+    return data.map((u: any) => ({
+      username: u.username,
+      displayName: u.public_profile?.displayName || u.username,
+      avatarUrl: u.public_profile?.avatarUrl || null,
+      nowPlaying: u.now_playing,
+      portalOpen: u.portal_open || false,
+      lastActive: u.last_active,
+    }));
+  },
+
+  /**
+   * Get friends currently listening (portal open with track)
+   */
+  async getLiveListeners(username: string): Promise<FriendActivity[]> {
+    if (!supabase) return [];
+
+    const following = await followsAPI.getFollowing(username);
+    if (following.length === 0) return [];
+
+    const { data, error } = await supabase
+      .from('universes')
+      .select('username, public_profile, now_playing, portal_open, last_active')
+      .in('username', following)
+      .eq('portal_open', true)
+      .not('now_playing', 'is', null)
+      .order('last_active', { ascending: false });
+
+    if (error || !data) return [];
+
+    return data.map((u: any) => ({
+      username: u.username,
+      displayName: u.public_profile?.displayName || u.username,
+      avatarUrl: u.public_profile?.avatarUrl || null,
+      nowPlaying: u.now_playing,
+      portalOpen: true,
+      lastActive: u.last_active,
+    }));
+  },
+
+  /**
+   * Subscribe to activity changes from friends (real-time)
+   */
+  subscribeToFriendsActivity(
+    followingUsernames: string[],
+    onActivity: (activity: FriendActivity) => void
+  ) {
+    if (!supabase || followingUsernames.length === 0) return null;
+
+    // Subscribe to universe updates for all followed users
+    return supabase
+      .channel('friends_activity')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'universes',
+        },
+        (payload) => {
+          const updated = payload.new as any;
+          // Only emit if this is someone we follow
+          if (followingUsernames.includes(updated.username)) {
+            onActivity({
+              username: updated.username,
+              displayName: updated.public_profile?.displayName || updated.username,
+              avatarUrl: updated.public_profile?.avatarUrl || null,
+              nowPlaying: updated.now_playing,
+              portalOpen: updated.portal_open || false,
+              lastActive: updated.last_active,
+            });
+          }
+        }
+      )
+      .subscribe();
+  },
+
+  /**
+   * Get users who recently started following you
+   */
+  async getRecentFollowers(username: string, limit = 10): Promise<{
+    username: string;
+    displayName: string;
+    avatarUrl: string | null;
+    followedAt: string;
+  }[]> {
+    if (!supabase) return [];
+
+    const { data: followData, error } = await supabase
+      .from('follows')
+      .select('follower, created_at')
+      .eq('following', username.toLowerCase())
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error || !followData) return [];
+
+    // Get profile info for each follower
+    const followers = followData.map((f: any) => f.follower);
+    const { data: profiles } = await supabase
+      .from('universes')
+      .select('username, public_profile')
+      .in('username', followers);
+
+    const profileMap = new Map<string, any>();
+    for (const p of profiles || []) {
+      profileMap.set(p.username, p.public_profile);
+    }
+
+    return followData.map((f: any) => {
+      const profile = profileMap.get(f.follower);
+      return {
+        username: f.follower,
+        displayName: profile?.displayName || f.follower,
+        avatarUrl: profile?.avatarUrl || null,
+        followedAt: f.created_at,
+      };
+    });
+  },
+
+  /**
+   * Unsubscribe from activity
+   */
+  unsubscribe(channel: any) {
+    if (!supabase || !channel) return;
+    supabase.removeChannel(channel);
+  },
+};
+
 export default supabase;

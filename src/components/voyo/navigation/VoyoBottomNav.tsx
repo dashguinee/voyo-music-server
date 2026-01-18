@@ -8,8 +8,10 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Home, Sparkles, Play } from 'lucide-react';
+import { Home, Sparkles, Play, MessageCircle } from 'lucide-react';
 import { usePlayerStore } from '../../../store/playerStore';
+import { useUniverseStore } from '../../../store/universeStore';
+import { directMessagesAPI } from '../../../lib/supabase';
 
 interface VoyoBottomNavProps {
   onDahub?: () => void;
@@ -18,8 +20,41 @@ interface VoyoBottomNavProps {
 
 export const VoyoBottomNav = ({ onDahub, onHome }: VoyoBottomNavProps) => {
   const { voyoActiveTab, setVoyoTab, isPlaying } = usePlayerStore();
+  const { currentUsername, isLoggedIn } = useUniverseStore();
   const [promptState, setPromptState] = useState<'clean' | 'love' | 'keep'>('clean');
   const [promptCount, setPromptCount] = useState(0);
+  const [unreadDMs, setUnreadDMs] = useState(0);
+
+  // Fetch unread DM count
+  useEffect(() => {
+    if (!currentUsername || !isLoggedIn) {
+      setUnreadDMs(0);
+      return;
+    }
+
+    const fetchUnread = async () => {
+      const count = await directMessagesAPI.getUnreadCount(currentUsername);
+      setUnreadDMs(count);
+    };
+
+    fetchUnread();
+
+    // Poll every 30 seconds for new messages
+    const interval = setInterval(fetchUnread, 30000);
+
+    // Also subscribe to real-time DM notifications
+    const subscription = directMessagesAPI.subscribe(currentUsername, () => {
+      // When new message arrives, increment count
+      setUnreadDMs(prev => prev + 1);
+    });
+
+    return () => {
+      clearInterval(interval);
+      if (subscription) {
+        directMessagesAPI.unsubscribe(subscription);
+      }
+    };
+  }, [currentUsername, isLoggedIn]);
 
   // VOYO button toggles between Player (music) and Feed
   const isOnFeed = voyoActiveTab === 'feed';
@@ -148,7 +183,21 @@ export const VoyoBottomNav = ({ onDahub, onHome }: VoyoBottomNavProps) => {
           whileTap={{ scale: 0.95 }}
         >
           <div className="flex flex-col items-center gap-1 px-4 py-1.5 rounded-xl text-white/40 hover:text-white/60">
-            <Sparkles className="w-4 h-4" />
+            <div className="relative">
+              <Sparkles className="w-4 h-4" />
+              {/* DM notification badge */}
+              {unreadDMs > 0 && (
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-gradient-to-r from-pink-500 to-purple-500 flex items-center justify-center"
+                >
+                  <span className="text-[9px] font-bold text-white">
+                    {unreadDMs > 99 ? '99+' : unreadDMs}
+                  </span>
+                </motion.div>
+              )}
+            </div>
             <span className="text-[10px] font-bold uppercase tracking-widest">DaHub</span>
           </div>
         </motion.button>

@@ -23,6 +23,7 @@ import { useReactionStore } from '../../store/reactionStore';
 import { useDownloadStore } from '../../store/downloadStore';
 import { Track } from '../../types';
 import { TiviPlusCrossPromo } from '../voyo/TiviPlusCrossPromo';
+import { FriendActivity } from '../social/FriendActivity';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -1143,6 +1144,11 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
       {/* Greeting */}
       <div className="px-4 pt-4 pb-6">
         <h1 className="text-2xl font-bold text-white">{greeting}, Dash</h1>
+      </div>
+
+      {/* Friends Activity - Social Section */}
+      <div className="px-4">
+        <FriendActivity />
       </div>
 
       {/* Continue Listening */}
