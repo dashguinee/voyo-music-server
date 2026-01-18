@@ -128,7 +128,8 @@ export const YouTubeIframe = memo(() => {
     }
 
     containerRef.current.innerHTML = '';
-    const isBoosted = usePlayerStore.getState().playbackSource === 'cached';
+    const ps = usePlayerStore.getState().playbackSource;
+    const isBoosted = ps === 'cached' || ps === 'r2';
 
     playerRef.current = new (window as any).YT.Player(containerRef.current, {
       width: '100%',
@@ -150,7 +151,8 @@ export const YouTubeIframe = memo(() => {
       events: {
         onReady: (e: any) => {
           initializingRef.current = false;
-          const isBoostedNow = usePlayerStore.getState().playbackSource === 'cached';
+          const psNow = usePlayerStore.getState().playbackSource;
+          const isBoostedNow = psNow === 'cached' || psNow === 'r2';
           if (isBoostedNow) {
             e.target.mute();
           } else {
@@ -208,18 +210,18 @@ export const YouTubeIframe = memo(() => {
     }
   }, [isPlaying]);
 
-  // Volume sync (only when not boosted)
+  // Volume sync (only when not boosted/r2)
   useEffect(() => {
     const player = playerRef.current;
-    if (!player?.setVolume || playbackSource === 'cached') return;
+    if (!player?.setVolume || playbackSource === 'cached' || playbackSource === 'r2') return;
     player.setVolume(volume * 100);
   }, [volume, playbackSource]);
 
-  // Mute/unmute based on boost status
+  // Mute/unmute based on boost status (cached or r2 = muted for video-only sync)
   useEffect(() => {
     const player = playerRef.current;
     if (!player?.mute) return;
-    if (playbackSource === 'cached') {
+    if (playbackSource === 'cached' || playbackSource === 'r2') {
       player.mute();
     } else {
       player.unMute();
@@ -237,10 +239,10 @@ export const YouTubeIframe = memo(() => {
     }
   }, [seekPosition, clearSeekPosition]);
 
-  // Fallback sync: When boosted, video should follow audio (not vice versa)
+  // Fallback sync: When boosted/r2, video should follow audio (not vice versa)
   // Only kicks in if drift exceeds threshold - YouTube rarely buffers
   useEffect(() => {
-    if (playbackSource !== 'cached' || !isPlaying) return;
+    if ((playbackSource !== 'cached' && playbackSource !== 'r2') || !isPlaying) return;
 
     const DRIFT_THRESHOLD = 2; // seconds - only sync if drift is noticeable
     const CHECK_INTERVAL = 5000; // check every 5 seconds

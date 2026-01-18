@@ -1,17 +1,18 @@
 /**
  * VOYO Music - Hybrid Audio Player
  *
- * FLOW:
- * 1. Track cached? → Play from Boost (cached audio) instantly
- * 2. Track NOT cached? → Stream via iframe, background boost starts
- * 3. Boost completes? → Hot-swap to cached audio seamlessly
+ * FLOW (Collective Intelligence):
+ * 1. Check IndexedDB cache (local boost) → Play instantly with EQ
+ * 2. Check R2 collective cache → Play with EQ (41K+ shared tracks)
+ * 3. Fall to YouTube iframe → Background boost to both local + R2
  *
  * COORDINATION with YouTubeIframe:
  * - playbackSource === 'iframe' → Iframe handles audio (unmuted)
- * - playbackSource === 'cached' → Boost handles audio, iframe muted (video only)
+ * - playbackSource === 'cached' → Local boost handles audio, iframe muted (video only)
+ * - playbackSource === 'r2' → R2 stream handles audio with EQ, iframe muted (video only)
  *
  * AUDIO ENHANCEMENT:
- * - Only applies to Boost (cached) audio
+ * - Applies to cached AND r2 audio (via Web Audio API)
  * - 4 presets: Boosted, Calm, VOYEX, Xtreme
  */
 
@@ -22,6 +23,7 @@ import { usePreferenceStore } from '../store/preferenceStore';
 import { useDownloadStore } from '../store/downloadStore';
 import { useTrackPoolStore } from '../store/trackPoolStore';
 import { audioEngine } from '../services/audioEngine';
+import { checkR2Cache } from '../services/api';
 import { recordPoolEngagement } from '../services/personalization';
 import { recordTrackInSession } from '../services/poolCurator';
 import { recordPlay as djRecordPlay } from '../services/intelligentDJ';
@@ -108,7 +110,7 @@ export const AudioPlayer = () => {
   // Background playback protection
   useEffect(() => {
     const handleVisibility = () => {
-      if (document.visibilityState === 'hidden' && playbackSource === 'cached') {
+      if (document.visibilityState === 'hidden' && (playbackSource === 'cached' || playbackSource === 'r2')) {
         const { isPlaying: shouldPlay } = usePlayerStore.getState();
         if (audioRef.current && shouldPlay) {
           if (audioContextRef.current?.state === 'suspended') {
@@ -317,26 +319,60 @@ export const AudioPlayer = () => {
           };
         }
       } else {
-        // 📡 NOT CACHED - Stream via iframe, boost in background
-        console.log('🎵 [VOYO] Streaming via iframe, boosting in background...');
-        setPlaybackSource('iframe');
+        // 📡 NOT IN LOCAL CACHE - Check R2 collective cache before iframe
+        console.log('🎵 [VOYO] Not in local cache, checking R2 collective...');
 
-        // REMOVED: Auto-toggle was causing refresh bug
-        // On page refresh, this would set isPlaying=true even though browser blocks autoplay
-        // User must tap play after refresh - don't auto-start
+        const r2Result = await checkR2Cache(trackId);
 
-        // Start background boost (non-blocking)
-        if (backgroundBoostingRef.current !== trackId) {
-          backgroundBoostingRef.current = trackId;
-          cacheTrack(
-            trackId,
-            currentTrack.title,
-            currentTrack.artist,
-            currentTrack.duration || 0,
-            `${API_BASE}/cdn/art/${trackId}?quality=high`
-          ).finally(() => {
-            backgroundBoostingRef.current = null;
-          });
+        if (r2Result.exists && r2Result.url) {
+          // 🚀 R2 HIT - Play from collective cache with EQ
+          console.log('🎵 [VOYO] R2 HIT! Playing from collective cache');
+          setPlaybackSource('r2');
+
+          const { boostProfile: profile } = usePlayerStore.getState();
+          setupAudioEnhancement(profile);
+
+          if (audioRef.current) {
+            audioRef.current.volume = 0;
+            audioRef.current.src = r2Result.url;
+            audioRef.current.load();
+
+            audioRef.current.oncanplaythrough = () => {
+              if (!audioRef.current) return;
+
+              if (isInitialLoadRef.current && savedCurrentTime > 5) {
+                audioRef.current.currentTime = savedCurrentTime;
+                isInitialLoadRef.current = false;
+              }
+
+              const { isPlaying: shouldPlay } = usePlayerStore.getState();
+              if (shouldPlay && audioRef.current.paused) {
+                audioContextRef.current?.state === 'suspended' && audioContextRef.current.resume();
+                audioRef.current.play().then(() => {
+                  audioRef.current!.volume = 1.0;
+                  recordPlayEvent();
+                }).catch(() => {});
+              }
+            };
+          }
+        } else {
+          // 📡 R2 MISS - Stream via iframe, boost in background
+          console.log('🎵 [VOYO] R2 miss, streaming via iframe, boosting in background...');
+          setPlaybackSource('iframe');
+
+          // Start background boost (non-blocking)
+          if (backgroundBoostingRef.current !== trackId) {
+            backgroundBoostingRef.current = trackId;
+            cacheTrack(
+              trackId,
+              currentTrack.title,
+              currentTrack.artist,
+              currentTrack.duration || 0,
+              `${API_BASE}/cdn/art/${trackId}?quality=high`
+            ).finally(() => {
+              backgroundBoostingRef.current = null;
+            });
+          }
         }
       }
     };
@@ -461,9 +497,9 @@ export const AudioPlayer = () => {
     };
   }, [lastBoostCompletion, currentTrack?.trackId, playbackSource, isPlaying, checkCache, setPlaybackSource, setupAudioEnhancement]);
 
-  // Handle play/pause (only when cached mode)
+  // Handle play/pause (only when using audio element: cached or r2)
   useEffect(() => {
-    if (playbackSource !== 'cached' || !audioRef.current) return;
+    if ((playbackSource !== 'cached' && playbackSource !== 'r2') || !audioRef.current) return;
 
     const audio = audioRef.current;
     if (isPlaying && audio.paused && audio.src && audio.readyState >= 1) {
@@ -473,9 +509,9 @@ export const AudioPlayer = () => {
     }
   }, [isPlaying, playbackSource]);
 
-  // Handle volume (only when cached mode)
+  // Handle volume (only when using audio element: cached or r2)
   useEffect(() => {
-    if (playbackSource !== 'cached' || !audioRef.current) return;
+    if ((playbackSource !== 'cached' && playbackSource !== 'r2') || !audioRef.current) return;
 
     if (audioEnhancedRef.current && gainNodeRef.current) {
       const profileGain = BOOST_PRESETS[currentProfileRef.current].gain;
@@ -486,29 +522,29 @@ export const AudioPlayer = () => {
     }
   }, [volume, playbackSource]);
 
-  // Handle seek (only when cached mode)
+  // Handle seek (only when using audio element: cached or r2)
   useEffect(() => {
-    if (seekPosition === null || playbackSource !== 'cached' || !audioRef.current) return;
+    if (seekPosition === null || (playbackSource !== 'cached' && playbackSource !== 'r2') || !audioRef.current) return;
     audioRef.current.currentTime = seekPosition;
     clearSeekPosition();
   }, [seekPosition, playbackSource, clearSeekPosition]);
 
-  // Handle playback rate
+  // Handle playback rate (only when using audio element: cached or r2)
   useEffect(() => {
-    if (playbackSource !== 'cached' || !audioRef.current) return;
+    if ((playbackSource !== 'cached' && playbackSource !== 'r2') || !audioRef.current) return;
     audioRef.current.playbackRate = playbackRate;
   }, [playbackRate, playbackSource]);
 
-  // Handle boost preset changes
+  // Handle boost preset changes (only when using audio element: cached or r2)
   useEffect(() => {
-    if (playbackSource === 'cached' && audioEnhancedRef.current) {
+    if ((playbackSource === 'cached' || playbackSource === 'r2') && audioEnhancedRef.current) {
       updateBoostPreset(boostProfile as BoostPreset);
     }
   }, [boostProfile, playbackSource, updateBoostPreset]);
 
-  // Media Session (only when cached mode)
+  // Media Session (only when using audio element: cached or r2)
   useEffect(() => {
-    if (!('mediaSession' in navigator) || !currentTrack || playbackSource !== 'cached') return;
+    if (!('mediaSession' in navigator) || !currentTrack || (playbackSource !== 'cached' && playbackSource !== 'r2')) return;
 
     navigator.mediaSession.metadata = new MediaMetadata({
       title: currentTrack.title,
@@ -526,9 +562,9 @@ export const AudioPlayer = () => {
     navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
   }, [currentTrack, isPlaying, playbackSource, togglePlay, nextTrack]);
 
-  // Audio element handlers (only active when cached mode)
+  // Audio element handlers (only active when using audio element: cached or r2)
   const handleTimeUpdate = useCallback(() => {
-    if (playbackSource !== 'cached' || !audioRef.current?.duration) return;
+    if ((playbackSource !== 'cached' && playbackSource !== 'r2') || !audioRef.current?.duration) return;
     const el = audioRef.current;
     const progress = (el.currentTime / el.duration) * 100;
     setCurrentTime(el.currentTime);
@@ -545,12 +581,12 @@ export const AudioPlayer = () => {
   }, [playbackSource, setCurrentTime, setProgress]);
 
   const handleDurationChange = useCallback(() => {
-    if (playbackSource !== 'cached' || !audioRef.current?.duration) return;
+    if ((playbackSource !== 'cached' && playbackSource !== 'r2') || !audioRef.current?.duration) return;
     setDuration(audioRef.current.duration);
   }, [playbackSource, setDuration]);
 
   const handleEnded = useCallback(() => {
-    if (playbackSource !== 'cached') return;
+    if (playbackSource !== 'cached' && playbackSource !== 'r2') return;
     if (currentTrack) {
       endListenSession(audioRef.current?.currentTime || 0, 0);
       recordPoolEngagement(currentTrack.trackId, 'complete', { completionRate: trackProgressRef.current });
@@ -561,7 +597,7 @@ export const AudioPlayer = () => {
   }, [playbackSource, currentTrack, nextTrack, endListenSession]);
 
   const handleProgress = useCallback(() => {
-    if (playbackSource !== 'cached' || !audioRef.current?.buffered.length) return;
+    if ((playbackSource !== 'cached' && playbackSource !== 'r2') || !audioRef.current?.buffered.length) return;
     const health = audioEngine.getBufferHealth(audioRef.current);
     setBufferHealth(health.percentage, health.status);
   }, [playbackSource, setBufferHealth]);
@@ -575,10 +611,10 @@ export const AudioPlayer = () => {
       onDurationChange={handleDurationChange}
       onEnded={handleEnded}
       onProgress={handleProgress}
-      onPlaying={() => playbackSource === 'cached' && setBufferHealth(100, 'healthy')}
-      onWaiting={() => playbackSource === 'cached' && setBufferHealth(50, 'warning')}
+      onPlaying={() => (playbackSource === 'cached' || playbackSource === 'r2') && setBufferHealth(100, 'healthy')}
+      onWaiting={() => (playbackSource === 'cached' || playbackSource === 'r2') && setBufferHealth(50, 'warning')}
       onPause={() => {
-        if (playbackSource !== 'cached') return;
+        if (playbackSource !== 'cached' && playbackSource !== 'r2') return;
         const { isPlaying: shouldPlay } = usePlayerStore.getState();
         const audio = audioRef.current;
         // Removed 100ms delay - play immediately if should be playing

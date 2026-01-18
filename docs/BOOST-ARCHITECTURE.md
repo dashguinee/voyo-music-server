@@ -50,7 +50,7 @@ Every user contributes to the collective library. The more people play and boost
 | **YouTube** | Fallback video/audio | Unlimited | `youtube.com/embed` |
 | **IndexedDB** | Local cache (boosted) | User device | Browser local |
 
-### Current Playback Flow (AudioPlayer.tsx)
+### Current Playback Flow (AudioPlayer.tsx) ✅ UPDATED
 
 ```
 User plays track
@@ -68,28 +68,38 @@ User plays track
               │
               ▼
 ┌─────────────────────────────┐
-│ 2. Play via YouTube Iframe  │ ← No R2 check currently!
+│ 2. Check R2 Edge Worker     │ ← checkR2Cache() - NEW!
+│    GET /exists/{trackId}    │
+└─────────────────────────────┘
+       │
+       ├── HIT → Play R2 stream + Apply EQ enhancement
+       │         playbackSource = 'r2'
+       │
+       └── MISS ↓
+              │
+              ▼
+┌─────────────────────────────┐
+│ 3. Play via YouTube Iframe  │
 │    playbackSource = 'iframe'│
 └─────────────────────────────┘
        │
        └── Background: Start cacheTrack() download
 ```
 
-**ISSUE:** Current flow doesn't check R2 before falling back to iframe!
+**FIXED:** R2 check now happens before iframe fallback! (Phase 1 Complete)
 
-### Current R2 Check (api.ts - NOT USED in main flow)
+### R2 Check (api.ts) ✅ NOW USED IN MAIN FLOW
 
 ```typescript
-// This exists but isn't called in main playback!
-async function getAudioStream(videoId: string): Promise<string> {
-  // 1. Check R2 via Edge Worker
-  const r2Result = await checkR2Cache(youtubeId);
+// Now called in AudioPlayer.tsx loadTrack()!
+async function checkR2Cache(videoId: string): Promise<{exists, url}> {
+  // Fast edge check (2s timeout)
+  const response = await fetch(`${EDGE_WORKER_URL}/exists/${youtubeId}`);
 
-  if (r2Result.exists && r2Result.url) {
-    return r2Result.url;  // R2 stream
+  if (data.exists) {
+    return { exists: true, url: `${EDGE_WORKER_URL}/audio/${youtubeId}` };
   }
-
-  return `iframe:${youtubeId}`;  // Fallback
+  return { exists: false, url: null };
 }
 ```
 
@@ -314,13 +324,14 @@ if (r2Info.bitrate >= QUALITY_THRESHOLD) {
 
 ## IMPLEMENTATION GAPS
 
-### Gap 1: R2 Check Missing in Main Flow
+### Gap 1: R2 Check Missing in Main Flow ✅ FIXED
 
-**Current:** AudioPlayer checks IndexedDB → falls back to iframe
-**Target:** AudioPlayer checks IndexedDB → R2 → iframe
+**Before:** AudioPlayer checks IndexedDB → falls back to iframe
+**After:** AudioPlayer checks IndexedDB → R2 → iframe
 
-**File:** `src/components/AudioPlayer.tsx` line ~280
-**Fix:** Call `getAudioStream()` from `api.ts` before iframe fallback
+**File:** `src/components/AudioPlayer.tsx` line ~320
+**Fix:** Call `checkR2Cache()` from `api.ts` before iframe fallback
+**Commit:** Phase 1 implementation complete
 
 ### Gap 2: No R2 Upload on Boost
 
@@ -402,10 +413,11 @@ POST /upload/{trackId}     → Upload to R2 (NEW - needed)
 
 ## IMPLEMENTATION PHASES
 
-### Phase 1: Fix Playback Flow (Priority)
-- [ ] AudioPlayer: Check R2 before iframe fallback
-- [ ] Add `playbackSource = 'r2'` state
-- [ ] Apply EQ enhancement to R2 streams
+### Phase 1: Fix Playback Flow (Priority) ✅ COMPLETE
+- [x] AudioPlayer: Check R2 before iframe fallback
+- [x] Add `playbackSource = 'r2'` state
+- [x] Apply EQ enhancement to R2 streams
+- [x] YouTubeIframe: Mute when R2 playback (video-only sync)
 
 ### Phase 2: Auto-Boost at 50%
 - [ ] Progress listener in AudioPlayer
@@ -431,4 +443,4 @@ POST /upload/{trackId}     → Upload to R2 (NEW - needed)
 ---
 
 *Document updated: 2026-01-18*
-*Status: Current vs Target architecture documented*
+*Status: Phase 1 COMPLETE - R2 check now in main playback flow*
