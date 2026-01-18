@@ -13,6 +13,7 @@
 
 import { supabase, isSupabaseConfigured as supabaseConfigured } from '../lib/supabase';
 import { getVibeEssence, getEssenceForQuery, type VibeEssence } from './essenceEngine';
+import { searchMusic as searchYouTube } from './api';
 import { TRACKS } from '../data/tracks';
 import type { Track } from '../types';
 
@@ -247,7 +248,6 @@ export async function searchTracks(query: string, limit: number = 20): Promise<T
 
   const essence = getVibeEssence();
   let dbResults: Track[] = [];
-  let youtubeResults: Track[] = [];
 
   // STEP 1: Try database (324K tracks - should have most content)
   if (supabaseConfigured) {
@@ -265,20 +265,41 @@ export async function searchTracks(query: string, limit: number = 20): Promise<T
       if (!error && data && data.length > 0) {
         dbResults = data.map(toTrack);
         console.log(`[Discovery] Search: ${dbResults.length} from database`);
+        return dbResults;
       }
     } catch (err) {
       console.warn('[Discovery] Database search error:', err);
     }
   }
 
-  // STEP 2: Return database results (324K tracks should cover any query)
-  // No Fly.io fallback - prevents rate limiting at scale
-  if (dbResults.length > 0) {
-    return dbResults;
+  // STEP 2: YouTube fallback when database fails or empty
+  console.log(`[Discovery] Database miss for "${query}", trying YouTube...`);
+  try {
+    const ytResults = await searchYouTube(query, limit);
+    if (ytResults.length > 0) {
+      const tracks: Track[] = ytResults.map(r => ({
+        id: r.voyoId,
+        trackId: r.voyoId,
+        title: r.title,
+        artist: r.artist,
+        album: 'YouTube',
+        coverUrl: r.thumbnail,
+        duration: r.duration,
+        tags: ['search', 'youtube'],
+        mood: 'afro',
+        region: 'NG',
+        oyeScore: r.views || 0,
+        createdAt: new Date().toISOString(),
+      }));
+      console.log(`[Discovery] YouTube fallback: ${tracks.length} results`);
+      return tracks;
+    }
+  } catch (err) {
+    console.warn('[Discovery] YouTube search error:', err);
   }
 
-  // STEP 3: Database empty - return empty (scouts add content server-side)
-  console.log(`[Discovery] No results for "${query}" in 324K database`);
+  // STEP 3: Both failed
+  console.log(`[Discovery] No results for "${query}"`);
   return [];
 }
 
