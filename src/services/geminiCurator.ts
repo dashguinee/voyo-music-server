@@ -23,7 +23,7 @@ import { safeAddManyToPool } from './trackVerifier';
 
 // Gemini API Configuration
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
 // Curator Configuration
 const CURATOR_TRIGGER_TRACKS = 5;  // Curate after every 5 tracks

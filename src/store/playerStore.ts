@@ -993,60 +993,78 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   },
 
   // Recommendation Actions
+  // ACCUMULATOR MODE: Merge new discoveries, never lose good tracks
   refreshRecommendations: () => {
     const state = get();
-    // IMPROVED DEDUP: Exclude more history (last 20) to prevent repeats
-    const excludeIds = [
+
+    // POOL CONFIG - Keep recommendations alive!
+    const MAX_HOT_POOL = 50;      // Was 15 - now accumulates
+    const MAX_DISCOVER_POOL = 50; // Was 15 - now accumulates
+    const FETCH_SIZE = 20;        // Fetch more each time
+
+    // Exclude currently playing, queued, and recent history
+    const excludeIds = new Set([
       state.currentTrack?.id,
       ...state.queue.map((q) => q.track.id),
-      ...state.history.slice(-20).map((h) => h.track.id), // Increased from 5 to 20
-    ].filter(Boolean) as string[];
+      ...state.history.slice(-30).map((h) => h.track.id),
+    ].filter(Boolean) as string[]);
 
-    // VIBES FIRST v4.0: Try 324K database first, fallback to pool
-    // Async fetch in background - updates state when ready
+    // VIBES FIRST v5.0: MERGE mode - accumulate, don't replace
     getDatabaseDiscovery().then(async (discovery) => {
       try {
-        // Fetch HOT + DISCOVERY from Supabase (user essence → 324K tracks)
+        // Fetch fresh tracks from 324K database
         const [dbHot, dbDiscover] = await Promise.all([
-          discovery.getHotTracks(15),
-          discovery.getDiscoveryTracks(15),
+          discovery.getHotTracks(FETCH_SIZE),
+          discovery.getDiscoveryTracks(FETCH_SIZE),
         ]);
 
-        // If database returned tracks, use them (pure database, no static fallback)
         if (dbHot.length > 0 || dbDiscover.length > 0) {
+          const currentState = get();
+
+          // MERGE HOT: Existing + New, dedupe, cap at MAX
+          const existingHotIds = new Set(currentState.hotTracks.map(t => t.id));
+          const newHot = dbHot.filter(t => !existingHotIds.has(t.id) && !excludeIds.has(t.id));
+          const mergedHot = [...currentState.hotTracks, ...newHot].slice(0, MAX_HOT_POOL);
+
+          // MERGE DISCOVER: Existing + New, dedupe, cap at MAX
+          const existingDiscoverIds = new Set(currentState.discoverTracks.map(t => t.id));
+          const newDiscover = dbDiscover.filter(t => !existingDiscoverIds.has(t.id) && !excludeIds.has(t.id));
+          const mergedDiscover = [...currentState.discoverTracks, ...newDiscover].slice(0, MAX_DISCOVER_POOL);
+
+          // AI picks from top of discover pool
+          const aiPicks = mergedDiscover.slice(0, 5);
+
           set({
-            hotTracks: dbHot.slice(0, 15),
-            aiPicks: dbDiscover.slice(0, 5), // AI picks from discovery results
-            discoverTracks: dbDiscover.slice(0, 15),
+            hotTracks: mergedHot,
+            aiPicks: aiPicks,
+            discoverTracks: mergedDiscover,
           });
-          console.log(`[VOYO] 🔥 VIBES FIRST: ${dbHot.length} hot + ${dbDiscover.length} discover from 324K database`);
+
+          const hotAdded = newHot.length;
+          const discoverAdded = newDiscover.length;
+          if (hotAdded > 0 || discoverAdded > 0) {
+            console.log(`[VOYO] 🔥 ACCUMULATED: +${hotAdded} hot (${mergedHot.length} total), +${discoverAdded} discover (${mergedDiscover.length} total)`);
+          }
           return;
         }
       } catch (err) {
-        console.warn('[VOYO] Database discovery failed, using pool fallback:', err);
+        console.warn('[VOYO] Database discovery failed, keeping existing pool:', err);
       }
-
-      // Fallback: Keep existing tracks, don't replace with static seeds
-      console.warn('[VOYO] Database failed and no fallback - keeping current state');
     });
 
-    // No immediate fallback - let database load (prevents showing static seeds)
-    // State starts empty, database populates it within 100ms
-
-    // Only update if we have pool tracks from user activity (no static seeds)
-    const poolHot = getPoolAwareHotTracks(5);
+    // Pool fallback: Also merge, don't replace
+    const poolHot = getPoolAwareHotTracks(10);
     if (poolHot.length > 0) {
-      const poolDiscover = state.currentTrack
-        ? getPoolAwareDiscoveryTracks(state.currentTrack, 5, excludeIds)
-        : [];
+      const currentState = get();
+      const existingIds = new Set(currentState.hotTracks.map(t => t.id));
+      const newPoolHot = poolHot.filter(t => !existingIds.has(t.id));
 
-      set({
-        hotTracks: poolHot,
-        aiPicks: [],
-        discoverTracks: poolDiscover,
-      });
+      if (newPoolHot.length > 0) {
+        set({
+          hotTracks: [...currentState.hotTracks, ...newPoolHot].slice(0, MAX_HOT_POOL),
+        });
+      }
     }
-    // If no pool tracks, keep state empty - database will populate soon
   },
 
   toggleAiMode: () => set((state) => ({ isAiMode: !state.isAiMode })),
@@ -1077,7 +1095,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         seen.add(t.id);
         return true;
       });
-      set({ discoverTracks: unique.slice(0, 20) }); // Cap at 20
+      set({ discoverTracks: unique.slice(0, 50) }); // Cap at 50 - accumulator mode
     }
     // If pool is sparse, keep existing database tracks
   },

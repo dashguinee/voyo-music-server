@@ -195,6 +195,18 @@ export const useTrackPoolStore = create<TrackPoolStore>()(
       // =====================================
 
       addToPool: (track, source) => {
+        // CONTENT FILTER: Block non-music content (news, podcasts, etc.)
+        const NON_MUSIC_KEYWORDS = [
+          'news', 'live:', 'breaking', 'trump', 'president', 'election',
+          'warning', 'alert', 'podcast', 'interview', 'speech', 'conference',
+          'urgent', 'update:', 'full movie', 'documentary', 'lecture', 'sermon'
+        ];
+        const lowerTitle = track.title.toLowerCase();
+        if (NON_MUSIC_KEYWORDS.some(kw => lowerTitle.includes(kw))) {
+          console.log(`[Pool] Blocked non-music: ${track.title}`);
+          return; // Don't add non-music to pool
+        }
+
         // DATABASE SYNC: Track entered the pool - sync to collective brain
         syncToDatabase(track).catch(() => {});
 

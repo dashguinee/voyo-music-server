@@ -52,6 +52,32 @@ export interface DiscoveryResult {
 // HELPERS
 // ============================================
 
+// ============================================
+// CONTENT FILTER (Block non-music)
+// ============================================
+
+const NON_MUSIC_KEYWORDS = [
+  'news', 'live:', 'breaking', 'trump', 'president', 'election',
+  'warning', 'alert', 'podcast', 'interview', 'speech', 'conference',
+  'urgent', 'update:', 'reaction', 'drama', 'beef', 'diss',
+  'full movie', 'documentary', 'lecture', 'sermon', 'preaching'
+];
+
+/**
+ * Check if a track is likely non-music content
+ */
+function isNonMusic(title: string): boolean {
+  const lowerTitle = title.toLowerCase();
+  return NON_MUSIC_KEYWORDS.some(keyword => lowerTitle.includes(keyword));
+}
+
+/**
+ * Filter out non-music content from track list
+ */
+function filterMusicOnly<T extends { title: string }>(tracks: T[]): T[] {
+  return tracks.filter(track => !isNonMusic(track.title));
+}
+
 /**
  * Convert database track to app Track format
  */
@@ -136,8 +162,10 @@ export async function getHotTracks(limit: number = 30): Promise<Track[]> {
       return getFallbackTracks('hot', limit);
     }
 
-    console.log(`[Discovery] HOT: ${data?.length || 0} tracks from 324K database`);
-    return (data || []).map(toTrack);
+    // Filter out non-music content (news, podcasts, etc.)
+    const musicOnly = filterMusicOnly(data || []);
+    console.log(`[Discovery] HOT: ${musicOnly.length} tracks from 324K database (filtered ${(data?.length || 0) - musicOnly.length} non-music)`);
+    return musicOnly.map(toTrack);
   } catch (err) {
     console.error('[Discovery] Hot tracks exception:', err);
     return getFallbackTracks('hot', limit);
@@ -180,8 +208,10 @@ export async function getDiscoveryTracks(limit: number = 30): Promise<Track[]> {
       return getFallbackTracks('discovery', limit);
     }
 
-    console.log(`[Discovery] DISCOVERY: ${data?.length || 0} tracks (expanding horizons)`);
-    return (data || []).map(toTrack);
+    // Filter out non-music content (news, podcasts, etc.)
+    const musicOnly = filterMusicOnly(data || []);
+    console.log(`[Discovery] DISCOVERY: ${musicOnly.length} tracks (filtered ${(data?.length || 0) - musicOnly.length} non-music)`);
+    return musicOnly.map(toTrack);
   } catch (err) {
     console.error('[Discovery] Discovery tracks exception:', err);
     return getFallbackTracks('discovery', limit);
