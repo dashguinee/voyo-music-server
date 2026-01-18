@@ -120,8 +120,28 @@ async function doVerification(
   console.log(`[TrackVerifier] 🔍 Verifying: ${artist} - ${title}`);
 
   try {
-    // Search for the real track
-    const searchQuery = `${artist} ${title}`;
+    // Clean up search query - remove duplicate artist from title
+    let cleanTitle = title;
+    const artistLower = artist.toLowerCase();
+
+    // If title starts with artist name, remove it (e.g., "AK4SEVEN - MoF" → "MoF")
+    if (cleanTitle.toLowerCase().startsWith(artistLower)) {
+      cleanTitle = cleanTitle.slice(artist.length).replace(/^[\s\-–—:]+/, '').trim();
+    }
+    // Also check for "Artist feat." pattern at start
+    if (cleanTitle.toLowerCase().startsWith(artistLower.split(' ')[0])) {
+      const artistFirstWord = artist.split(' ')[0];
+      if (cleanTitle.toLowerCase().startsWith(artistFirstWord.toLowerCase())) {
+        // Check if it's "AK feat. X" pattern - keep it but search differently
+        const featMatch = cleanTitle.match(/^[^-–—]+(?:feat\.?|ft\.?|featuring)[^-–—]+[-–—]\s*/i);
+        if (featMatch) {
+          cleanTitle = cleanTitle.slice(featMatch[0].length).trim();
+        }
+      }
+    }
+
+    const searchQuery = cleanTitle ? `${artist} ${cleanTitle}` : artist;
+    console.log(`[TrackVerifier] 🔍 Search query: ${searchQuery}`);
     const results = await searchMusic(searchQuery, 3);
 
     if (results.length === 0) {
