@@ -319,6 +319,9 @@ export const BoostButton = ({ variant = 'toolbar', className = '' }: BoostButton
   // Toggle state: true = using boosted, false = using original
   const [usingBoosted, setUsingBoosted] = useState(true);
 
+  // R2 = Server boosted (collective cache) - show as "cloud boosted"
+  const isServerBoosted = playbackSource === 'r2';
+
   // Check if current track is already boosted
   useEffect(() => {
     const checkBoosted = async () => {
@@ -379,8 +382,10 @@ export const BoostButton = ({ variant = 'toolbar', className = '' }: BoostButton
   const isDownloading = downloadStatus?.status === 'downloading';
   const isQueued = downloadStatus?.status === 'queued';
   const progress = downloadStatus?.progress || 0;
-  // Active = boosted AND using boosted audio (not toggled to original)
-  const isActive = isBoosted && usingBoosted;
+  // Active = locally boosted AND using boosted audio (not toggled to original)
+  const isLocalBoosted = isBoosted && usingBoosted;
+  // Active includes BOTH local boost and server R2 boost
+  const isActive = isLocalBoosted || isServerBoosted;
   // Show toggle indicator when boosted but using original
   const isToggled = isBoosted && !usingBoosted;
 
@@ -430,7 +435,7 @@ export const BoostButton = ({ variant = 'toolbar', className = '' }: BoostButton
         } ${className}`}
         whileHover={{ scale: 1.15, y: -2 }}
         whileTap={{ scale: 0.9 }}
-        title={isActive ? `${boostProfile.charAt(0).toUpperCase() + boostProfile.slice(1)} Mode (tap to use original)` : isToggled ? 'Using original (tap for boosted)' : isDownloading ? `Boosting ${progress}%` : 'Boost (HD + Enhanced Audio)'}
+        title={isServerBoosted ? `Server Boosted (R2 Collective)` : isLocalBoosted ? `${boostProfile.charAt(0).toUpperCase() + boostProfile.slice(1)} Mode (tap to rewind)` : isToggled ? 'Using original (tap for boosted)' : isDownloading ? `Boosting ${progress}%` : 'Boost (HD + Enhanced Audio)'}
       >
         {/* Glow effect when boosted - color based on preset */}
         {isActive && (
@@ -440,6 +445,20 @@ export const BoostButton = ({ variant = 'toolbar', className = '' }: BoostButton
             animate={{ scale: [1, 1.4, 1], opacity: [0.5, 0.8, 0.5] }}
             transition={{ duration: 2, repeat: Infinity }}
           />
+        )}
+
+        {/* Server boost indicator (R2 collective) - small cloud badge */}
+        {isServerBoosted && !isLocalBoosted && (
+          <motion.div
+            className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shadow-lg z-10"
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            title="Streaming from R2 Collective"
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="white">
+              <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/>
+            </svg>
+          </motion.div>
         )}
 
         {/* Completion burst when boost finishes */}
