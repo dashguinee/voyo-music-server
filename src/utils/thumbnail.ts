@@ -45,32 +45,29 @@ export const getThumbWithFallback = (trackId: string) => ({
 });
 
 /**
- * Generate placeholder SVG with gradient and initial letter
- * Used when no thumbnail is available
+ * Generate DASH-branded placeholder SVG
+ * Used when no thumbnail is available - shows DASH branding instead of generic
  */
-export const generatePlaceholder = (title: string, size: number = 200): string => {
+export const generatePlaceholder = (title: string, size: number = 400): string => {
   const initial = title.charAt(0).toUpperCase();
-  const hash = Math.abs(title.split('').reduce((acc, char) => {
-    return ((acc << 5) - acc) + char.charCodeAt(0);
-  }, 0));
-
-  const hue1 = hash % 360;
-  const hue2 = (hash + 60) % 360;
 
   const svg = `
-    <svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" style="stop-color:hsl(${hue1}, 70%, 50%)" />
-          <stop offset="100%" style="stop-color:hsl(${hue2}, 70%, 40%)" />
-        </linearGradient>
-      </defs>
-      <rect width="${size}" height="${size}" fill="url(#grad)" />
-      <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
-        font-family="system-ui, sans-serif" font-size="${size * 0.4}" font-weight="bold"
-        fill="white" opacity="0.9">${initial}</text>
-    </svg>
-  `.trim();
+<svg width="${size}" height="${size}" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="dashGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#a855f7"/>
+      <stop offset="50%" style="stop-color:#7c3aed"/>
+      <stop offset="100%" style="stop-color:#4c1d95"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="400" fill="#0a0a0a"/>
+  <circle cx="200" cy="160" r="70" fill="#1a1a1a" stroke="url(#dashGrad)" stroke-width="3"/>
+  <circle cx="200" cy="160" r="50" fill="none" stroke="#a855f7" stroke-opacity="0.3" stroke-width="1"/>
+  <circle cx="200" cy="160" r="30" fill="none" stroke="#a855f7" stroke-opacity="0.2" stroke-width="1"/>
+  <text x="200" y="175" text-anchor="middle" fill="url(#dashGrad)" font-family="system-ui, sans-serif" font-size="48" font-weight="700">${initial}</text>
+  <text x="200" y="290" text-anchor="middle" fill="url(#dashGrad)" font-family="system-ui, sans-serif" font-size="28" font-weight="700" letter-spacing="6">DASH</text>
+  <text x="200" y="320" text-anchor="middle" fill="#666666" font-family="system-ui, sans-serif" font-size="11" letter-spacing="2">LOADING VIBES</text>
+</svg>`.trim();
 
   return `data:image/svg+xml;base64,${btoa(svg)}`;
 };

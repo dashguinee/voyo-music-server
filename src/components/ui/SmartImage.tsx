@@ -214,6 +214,7 @@ const SmartImageInner: React.FC<SmartImageProps> = ({
           });
         } else {
           // No artist+title - can't self-heal, show placeholder immediately
+          console.warn(`[SmartImage] ⚠️ No artist/title for self-heal, trackId: ${trackId}, src: ${src?.slice(0, 50)}`);
           const placeholderSrc = generatePlaceholder(alt || 'Track', 400);
           setCurrentSrc(placeholderSrc);
           setLoadState('loaded');
