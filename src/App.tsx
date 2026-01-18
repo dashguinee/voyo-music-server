@@ -28,7 +28,7 @@ import { OfflineIndicator } from './components/ui/OfflineIndicator';
 import { VoyoSplash } from './components/voyo/VoyoSplash';
 import { UniversePanel } from './components/universe/UniversePanel';
 import { useReactionStore } from './store/reactionStore';
-import { useUniverseStore } from './store/universeStore';
+import { useAuth } from './hooks/useAuth';
 
 // DEBUG: Load intent engine verification tools (available in browser console)
 import './utils/debugIntent';
@@ -1027,8 +1027,21 @@ function App() {
 
   // REALTIME NOTIFICATIONS: Subscribe to Supabase events for DynamicIsland
   useEffect(() => {
-    const { subscribeToReactions, recentReactions, unsubscribeFromReactions } = useReactionStore.getState();
-    const { currentUsername, viewingUniverse } = useUniverseStore.getState();
+    const { subscribeToReactions, unsubscribeFromReactions } = useReactionStore.getState();
+
+    // Get current DASH ID from localStorage (Command Center auth)
+    const getDashId = () => {
+      try {
+        const stored = localStorage.getItem('dash_citizen_storage');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          return parsed.state?.dashId || null;
+        }
+      } catch { /* ignore */ }
+      return null;
+    };
+
+    const currentDashId = getDashId();
 
     // Subscribe to reactions realtime
     subscribeToReactions();
@@ -1040,7 +1053,7 @@ function App() {
         const newReaction = state.recentReactions[0];
 
         // Only notify if reaction is from someone else
-        if (newReaction.username !== currentUsername) {
+        if (newReaction.username !== currentDashId) {
           // Determine notification based on reaction context
           const currentTrack = usePlayerStore.getState().currentTrack;
 
@@ -1076,46 +1089,22 @@ function App() {
       });
     });
 
-    // Listen for portal/universe events
-    const unsubUniverse = useUniverseStore.subscribe((state, prevState) => {
-      // Someone visited your universe
-      if (state.viewingUniverse && !prevState.viewingUniverse && state.isViewingOther) {
-        (window as any).pushNotification?.({
-          id: `visit-${Date.now()}`,
-          type: 'system',
-          title: 'Portal Visit',
-          subtitle: `${state.viewingUniverse.username} is checking out your vibe`
-        });
-      }
-
-      // Portal now-playing updates (when viewing someone's portal)
-      if (state.viewingUniverse?.nowPlaying &&
-          state.viewingUniverse.nowPlaying !== prevState.viewingUniverse?.nowPlaying) {
-        const np = state.viewingUniverse.nowPlaying;
-        (window as any).pushNotification?.({
-          id: `portal-np-${Date.now()}`,
-          type: 'music',
-          title: state.viewingUniverse.username,
-          subtitle: `now playing ${np.title}`
-        });
-      }
-    });
-
     // Subscribe to incoming DMs for DynamicIsland notifications
-    let dmSubscription: any = null;
+    let dmUnsubscribe: (() => void) | null = null;
     const setupDMSubscription = async () => {
-      const { directMessagesAPI, isSupabaseConfigured } = await import('./lib/supabase');
-      if (!isSupabaseConfigured) return;
+      const { messagesAPI, isConfigured } = await import('./lib/voyo-api');
+      if (!isConfigured) return;
 
-      const currentUser = useUniverseStore.getState().currentUsername;
-      if (!currentUser) return;
+      const dashId = getDashId();
+      if (!dashId) return;
 
-      dmSubscription = directMessagesAPI.subscribe(currentUser, (newMessage) => {
+      // Subscribe returns an unsubscribe function
+      dmUnsubscribe = messagesAPI.subscribeToIncoming(dashId, (newMessage) => {
         // Push to DynamicIsland
         (window as any).pushNotification?.({
           id: `dm-${newMessage.id}`,
           type: 'message',
-          title: newMessage.from_user,
+          title: newMessage.from_id,
           subtitle: newMessage.message.slice(0, 50) + (newMessage.message.length > 50 ? '...' : '')
         });
       });
@@ -1125,11 +1114,8 @@ function App() {
     return () => {
       unsubscribeFromReactions();
       unsubReactions();
-      unsubUniverse();
-      if (dmSubscription) {
-        import('./lib/supabase').then(({ directMessagesAPI }) => {
-          directMessagesAPI.unsubscribe(dmSubscription);
-        });
+      if (dmUnsubscribe) {
+        dmUnsubscribe();
       }
     };
   }, []);

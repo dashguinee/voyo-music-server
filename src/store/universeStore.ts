@@ -1,20 +1,23 @@
 /**
- * VOYO Universe Store
+ * VOYO Universe Store - DEPRECATED
  *
- * The CORE of voyomusic.com/username architecture
+ * ⚠️ MIGRATION NOTICE (Jan 2026):
+ * This store is DEPRECATED. Use DASH Command Center auth instead:
+ * - Authentication: Use useAuth() hook from hooks/useAuth.ts
+ * - Identity: DASH ID is the primary key (not username)
+ * - Friends: Use friendsAPI from voyo-api.ts (queries Command Center)
+ * - Profile: Use profileAPI from voyo-api.ts (queries voyo_profiles table)
  *
- * Philosophy:
+ * This file is kept for backward compatibility but should not be used in new code.
+ *
+ * OLD ARCHITECTURE (deprecated):
  * - URL IS your identity (voyomusic.com/username)
  * - PIN IS your key (no email, no OAuth)
- * - Supabase IS the smart KV (username → universe)
- * - localStorage IS offline cache
- * - Downloads stay LOCAL
  *
- * This store manages:
- * - Authentication (PIN-based)
- * - Universe sync (Supabase ↔ localStorage)
- * - Portal real-time (Supabase Realtime)
- * - Backup/restore
+ * NEW ARCHITECTURE:
+ * - URL: voyomusic.com/{dashId}
+ * - Display: V{dashId} (e.g., V0046AAD)
+ * - Auth: DASH Command Center (hub.dasuperhub.com)
  */
 
 import { create } from 'zustand';

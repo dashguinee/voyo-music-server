@@ -10,8 +10,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Radio, Play, Users, Music2, ChevronRight } from 'lucide-react';
-import { useUniverseStore } from '../../store/universeStore';
-import { activityFeedAPI, followsAPI, FriendActivity as FriendActivityType } from '../../lib/supabase';
+import { useAuth } from '../../hooks/useAuth';
+import { friendsAPI, activityAPI, FriendActivity as FriendActivityType } from '../../lib/voyo-api';
 
 interface FriendActivityProps {
   onJoinPortal?: (username: string) => void;
@@ -19,7 +19,7 @@ interface FriendActivityProps {
 
 export const FriendActivity = ({ onJoinPortal }: FriendActivityProps) => {
   const navigate = useNavigate();
-  const { currentUsername, isLoggedIn } = useUniverseStore();
+  const { dashId, isLoggedIn } = useAuth();
 
   const [liveListeners, setLiveListeners] = useState<FriendActivityType[]>([]);
   const [recentActivity, setRecentActivity] = useState<FriendActivityType[]>([]);
@@ -28,7 +28,7 @@ export const FriendActivity = ({ onJoinPortal }: FriendActivityProps) => {
 
   // Load activity on mount
   useEffect(() => {
-    if (!currentUsername || !isLoggedIn) {
+    if (!dashId || !isLoggedIn) {
       setIsLoading(false);
       return;
     }
@@ -36,17 +36,27 @@ export const FriendActivity = ({ onJoinPortal }: FriendActivityProps) => {
     const loadActivity = async () => {
       setIsLoading(true);
 
-      // Get following list and activity in parallel
-      const [following, activity] = await Promise.all([
-        followsAPI.getFollowing(currentUsername),
-        activityFeedAPI.getFriendsActivity(currentUsername, 20),
+      // Get friends from Command Center and their VOYO activity
+      const [friends, activity] = await Promise.all([
+        friendsAPI.getVoyoFriends(dashId),
+        activityAPI.getFriendsActivity(dashId),
       ]);
 
-      setFollowingList(following);
+      setFollowingList(friends.map(f => f.dash_id));
+
+      // Enrich activity with friend display info
+      const enrichedActivity = activity.map(a => {
+        const friend = friends.find(f => f.dash_id === a.dash_id);
+        return {
+          ...a,
+          displayName: friend?.name || `V${a.dash_id}`,
+          avatarUrl: friend?.avatar,
+        };
+      });
 
       // Separate live (portal open) from recent
-      const live = activity.filter(a => a.portalOpen && a.nowPlaying);
-      const recent = activity.filter(a => !a.portalOpen || !a.nowPlaying);
+      const live = enrichedActivity.filter(a => a.portal_open && a.now_playing);
+      const recent = enrichedActivity.filter(a => !a.portal_open || !a.now_playing);
 
       setLiveListeners(live);
       setRecentActivity(recent.slice(0, 5));
@@ -54,43 +64,7 @@ export const FriendActivity = ({ onJoinPortal }: FriendActivityProps) => {
     };
 
     loadActivity();
-
-    // Set up real-time subscription
-    let subscription: any = null;
-
-    const setupSubscription = async () => {
-      const following = await followsAPI.getFollowing(currentUsername);
-      if (following.length > 0) {
-        subscription = activityFeedAPI.subscribeToFriendsActivity(
-          following,
-          (activity) => {
-            // Update state based on activity
-            if (activity.portalOpen && activity.nowPlaying) {
-              setLiveListeners(prev => {
-                const filtered = prev.filter(l => l.username !== activity.username);
-                return [activity, ...filtered];
-              });
-              setRecentActivity(prev => prev.filter(r => r.username !== activity.username));
-            } else {
-              setLiveListeners(prev => prev.filter(l => l.username !== activity.username));
-              setRecentActivity(prev => {
-                const filtered = prev.filter(r => r.username !== activity.username);
-                return [activity, ...filtered].slice(0, 5);
-              });
-            }
-          }
-        );
-      }
-    };
-
-    setupSubscription();
-
-    return () => {
-      if (subscription) {
-        activityFeedAPI.unsubscribe(subscription);
-      }
-    };
-  }, [currentUsername, isLoggedIn]);
+  }, [dashId, isLoggedIn]);
 
   // Handle click on friend
   const handleFriendClick = (username: string, hasPortal: boolean) => {
@@ -206,7 +180,7 @@ export const FriendActivity = ({ onJoinPortal }: FriendActivityProps) => {
           {/* Live listeners first */}
           {liveListeners.map((friend) => (
             <motion.div
-              key={friend.username}
+              key={friend.dash_id}
               layout
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -215,7 +189,7 @@ export const FriendActivity = ({ onJoinPortal }: FriendActivityProps) => {
             >
               <LiveFriendCard
                 friend={friend}
-                onClick={() => handleFriendClick(friend.username, true)}
+                onClick={() => handleFriendClick(friend.dash_id, true)}
               />
             </motion.div>
           ))}
@@ -223,7 +197,7 @@ export const FriendActivity = ({ onJoinPortal }: FriendActivityProps) => {
           {/* Recent activity (not live) */}
           {recentActivity.map((friend) => (
             <motion.div
-              key={friend.username}
+              key={friend.dash_id}
               layout
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -232,7 +206,7 @@ export const FriendActivity = ({ onJoinPortal }: FriendActivityProps) => {
             >
               <RecentFriendCard
                 friend={friend}
-                onClick={() => handleFriendClick(friend.username, false)}
+                onClick={() => handleFriendClick(friend.dash_id, false)}
               />
             </motion.div>
           ))}
@@ -250,6 +224,8 @@ const LiveFriendCard = ({
   friend: FriendActivityType;
   onClick: () => void;
 }) => {
+  const displayName = friend.displayName || `V${friend.dash_id}`;
+
   return (
     <motion.button
       onClick={onClick}
@@ -258,10 +234,10 @@ const LiveFriendCard = ({
       whileTap={{ scale: 0.98 }}
     >
       {/* Album art background */}
-      {friend.nowPlaying?.thumbnail && (
+      {friend.now_playing?.thumbnail && (
         <div className="absolute inset-0 opacity-30">
           <img
-            src={friend.nowPlaying.thumbnail}
+            src={friend.now_playing.thumbnail}
             alt=""
             className="w-full h-full object-cover blur-xl"
           />
@@ -284,13 +260,13 @@ const LiveFriendCard = ({
           {friend.avatarUrl ? (
             <img
               src={friend.avatarUrl}
-              alt={friend.displayName}
+              alt={displayName}
               className="w-full h-full rounded-full object-cover ring-2 ring-green-500/50"
             />
           ) : (
             <div className="w-full h-full rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center ring-2 ring-green-500/50">
               <span className="text-xl font-bold text-white">
-                {friend.displayName.charAt(0).toUpperCase()}
+                {displayName.charAt(0).toUpperCase()}
               </span>
             </div>
           )}
@@ -303,17 +279,17 @@ const LiveFriendCard = ({
 
         {/* Name */}
         <p className="text-white font-semibold text-sm truncate text-center">
-          {friend.displayName}
+          {displayName}
         </p>
 
         {/* Currently playing */}
-        {friend.nowPlaying && (
+        {friend.now_playing && (
           <div className="mt-2 p-2 rounded-lg bg-black/30">
             <p className="text-white/90 text-xs font-medium truncate">
-              {friend.nowPlaying.title}
+              {friend.now_playing.title}
             </p>
             <p className="text-white/50 text-[10px] truncate">
-              {friend.nowPlaying.artist}
+              {friend.now_playing.artist}
             </p>
           </div>
         )}
@@ -336,8 +312,11 @@ const RecentFriendCard = ({
   friend: FriendActivityType;
   onClick: () => void;
 }) => {
+  const displayName = friend.displayName || `V${friend.dash_id}`;
+
   // Calculate "time ago"
   const getTimeAgo = (dateStr: string) => {
+    if (!dateStr) return 'Unknown';
     const date = new Date(dateStr);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
@@ -364,13 +343,13 @@ const RecentFriendCard = ({
           {friend.avatarUrl ? (
             <img
               src={friend.avatarUrl}
-              alt={friend.displayName}
+              alt={displayName}
               className="w-full h-full rounded-full object-cover opacity-70"
             />
           ) : (
             <div className="w-full h-full rounded-full bg-gradient-to-br from-purple-500/50 to-pink-500/50 flex items-center justify-center">
               <span className="text-lg font-bold text-white/70">
-                {friend.displayName.charAt(0).toUpperCase()}
+                {displayName.charAt(0).toUpperCase()}
               </span>
             </div>
           )}
@@ -378,12 +357,12 @@ const RecentFriendCard = ({
 
         {/* Name */}
         <p className="text-white/70 font-medium text-sm truncate text-center">
-          {friend.displayName}
+          {displayName}
         </p>
 
         {/* Last active */}
         <p className="text-white/30 text-[10px] text-center">
-          {getTimeAgo(friend.lastActive)}
+          {getTimeAgo(friend.last_active)}
         </p>
       </div>
     </motion.button>

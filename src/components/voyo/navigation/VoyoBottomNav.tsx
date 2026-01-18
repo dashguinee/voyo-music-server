@@ -10,8 +10,8 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Home, Sparkles, Play, MessageCircle } from 'lucide-react';
 import { usePlayerStore } from '../../../store/playerStore';
-import { useUniverseStore } from '../../../store/universeStore';
-import { directMessagesAPI } from '../../../lib/supabase';
+import { useAuth } from '../../../hooks/useAuth';
+import { messagesAPI } from '../../../lib/voyo-api';
 
 interface VoyoBottomNavProps {
   onDahub?: () => void;
@@ -20,20 +20,20 @@ interface VoyoBottomNavProps {
 
 export const VoyoBottomNav = ({ onDahub, onHome }: VoyoBottomNavProps) => {
   const { voyoActiveTab, setVoyoTab, isPlaying } = usePlayerStore();
-  const { currentUsername, isLoggedIn } = useUniverseStore();
+  const { dashId, isLoggedIn } = useAuth();
   const [promptState, setPromptState] = useState<'clean' | 'love' | 'keep'>('clean');
   const [promptCount, setPromptCount] = useState(0);
   const [unreadDMs, setUnreadDMs] = useState(0);
 
   // Fetch unread DM count
   useEffect(() => {
-    if (!currentUsername || !isLoggedIn) {
+    if (!dashId || !isLoggedIn) {
       setUnreadDMs(0);
       return;
     }
 
     const fetchUnread = async () => {
-      const count = await directMessagesAPI.getUnreadCount(currentUsername);
+      const count = await messagesAPI.getUnreadCount(dashId);
       setUnreadDMs(count);
     };
 
@@ -42,19 +42,18 @@ export const VoyoBottomNav = ({ onDahub, onHome }: VoyoBottomNavProps) => {
     // Poll every 30 seconds for new messages
     const interval = setInterval(fetchUnread, 30000);
 
-    // Also subscribe to real-time DM notifications
-    const subscription = directMessagesAPI.subscribe(currentUsername, () => {
-      // When new message arrives, increment count
+    // Subscribe to real-time DM notifications
+    const subscription = messagesAPI.subscribe(dashId, () => {
       setUnreadDMs(prev => prev + 1);
     });
 
     return () => {
       clearInterval(interval);
       if (subscription) {
-        directMessagesAPI.unsubscribe(subscription);
+        messagesAPI.unsubscribe(subscription);
       }
     };
-  }, [currentUsername, isLoggedIn]);
+  }, [dashId, isLoggedIn]);
 
   // VOYO button toggles between Player (music) and Feed
   const isOnFeed = voyoActiveTab === 'feed';

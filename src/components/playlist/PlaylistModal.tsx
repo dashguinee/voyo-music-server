@@ -8,7 +8,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Plus, Check, Music2, Globe, Lock } from 'lucide-react';
 import { usePlaylistStore, Playlist } from '../../store/playlistStore';
-import { useUniverseStore } from '../../store/universeStore';
+import { useAuth } from '../../hooks/useAuth';
 
 interface PlaylistModalProps {
   isOpen: boolean;
@@ -19,7 +19,7 @@ interface PlaylistModalProps {
 
 export const PlaylistModal = ({ isOpen, onClose, trackId, trackTitle }: PlaylistModalProps) => {
   const { playlists, createPlaylist, addTrackToPlaylist, removeTrackFromPlaylist, syncToCloud } = usePlaylistStore();
-  const { isLoggedIn, currentUsername } = useUniverseStore();
+  const { isLoggedIn, dashId } = useAuth();
 
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
@@ -34,8 +34,8 @@ export const PlaylistModal = ({ isOpen, onClose, trackId, trackTitle }: Playlist
     }
 
     // Sync to cloud if logged in
-    if (isLoggedIn && currentUsername) {
-      setTimeout(() => syncToCloud(currentUsername), 500);
+    if (isLoggedIn && dashId) {
+      setTimeout(() => syncToCloud(dashId), 500);
     }
   };
 
@@ -46,8 +46,8 @@ export const PlaylistModal = ({ isOpen, onClose, trackId, trackTitle }: Playlist
     addTrackToPlaylist(playlist.id, trackId);
 
     // Sync to cloud if logged in
-    if (isLoggedIn && currentUsername) {
-      setTimeout(() => syncToCloud(currentUsername), 500);
+    if (isLoggedIn && dashId) {
+      setTimeout(() => syncToCloud(dashId), 500);
     }
 
     setNewName('');

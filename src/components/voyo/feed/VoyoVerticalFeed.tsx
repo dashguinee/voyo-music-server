@@ -25,11 +25,11 @@ import {
 } from 'lucide-react';
 import { useReactionStore, Reaction, ReactionCategory, ReactionType, TrackHotspot } from '../../../store/reactionStore';
 import { usePlayerStore } from '../../../store/playerStore';
-import { useUniverseStore } from '../../../store/universeStore';
+import { useAuth } from '../../../hooks/useAuth';
 import { useTrackPoolStore } from '../../../store/trackPoolStore';
 import { useDownloadStore } from '../../../store/downloadStore';
 import { safeAddManyToPool } from '../../../services/trackVerifier';
-import { followsAPI } from '../../../lib/supabase';
+import { friendsAPI } from '../../../lib/voyo-api';
 import { TRACKS, pipedTrackToVoyoTrack } from '../../../data/tracks';
 import { searchAlbums, getAlbumTracks } from '../../../services/piped';
 import { mediaCache } from '../../../services/mediaCache';
@@ -942,7 +942,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
 
   const { recentReactions, fetchRecentReactions, subscribeToReactions, isSubscribed, createReaction, computeHotspots, getCategoryScore, getTopCategories, getHotspots } = useReactionStore();
   const { setCurrentTrack, addToQueue, currentTrack, isPlaying, togglePlay, progress, duration, seekTo, volume, setVolume } = usePlayerStore();
-  const { currentUsername } = useUniverseStore();
+  const { dashId } = useAuth();
   const { hotPool, recordReaction } = useTrackPoolStore();
   const { boostTrack } = useDownloadStore();
 
@@ -956,21 +956,24 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
     }
   }, [isActive, fetchRecentReactions, subscribeToReactions, isSubscribed]);
 
-  // Fetch following list on mount
+  // Fetch following list on mount - stored locally for artist follows
   useEffect(() => {
     const loadFollowing = async () => {
-      if (!currentUsername) return;
+      if (!dashId) return;
       setIsLoadingFollows(true);
       try {
-        const following = await followsAPI.getFollowing(currentUsername);
-        setFollowingList(new Set(following.map(u => u.toLowerCase())));
+        // Artist follows are stored locally (not same as friend follows in Command Center)
+        const stored = localStorage.getItem(`voyo_artist_follows_${dashId}`);
+        if (stored) {
+          setFollowingList(new Set(JSON.parse(stored)));
+        }
       } catch (e) {
         console.error('[Feed] Failed to load following:', e);
       }
       setIsLoadingFollows(false);
     };
     loadFollowing();
-  }, [currentUsername]);
+  }, [dashId]);
 
   // Engagement tracking - show ContinuePlayingButton after 6s of playback
   const playTimeRef = useRef(0);
@@ -1008,13 +1011,13 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
     }
   }, [showContinueButton]);
 
-  // Handle follow/unfollow artist
-  const handleFollowArtist = useCallback(async (artistUsername: string) => {
-    if (!currentUsername) return;
+  // Handle follow/unfollow artist (stored locally per user)
+  const handleFollowArtist = useCallback((artistUsername: string) => {
+    if (!dashId) return;
     const normalizedArtist = artistUsername.toLowerCase().replace(/\s+/g, '_');
     const isFollowing = followingList.has(normalizedArtist);
 
-    // Optimistic update
+    // Update state
     const newFollowing = new Set(followingList);
     if (isFollowing) {
       newFollowing.delete(normalizedArtist);
@@ -1023,19 +1026,15 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
     }
     setFollowingList(newFollowing);
 
-    // Persist to Supabase
+    // Persist to localStorage (artist follows are local, not in Command Center)
     try {
-      if (isFollowing) {
-        await followsAPI.unfollow(currentUsername, normalizedArtist);
-      } else {
-        await followsAPI.follow(currentUsername, normalizedArtist);
-      }
+      localStorage.setItem(`voyo_artist_follows_${dashId}`, JSON.stringify([...newFollowing]));
     } catch (e) {
       // Revert on error
       setFollowingList(followingList);
       console.error('[Feed] Follow action failed:', e);
     }
-  }, [currentUsername, followingList]);
+  }, [dashId, followingList]);
 
   // Handle seek to hotspot
   const handleSeekToHotspot = useCallback((position: number) => {
@@ -1412,7 +1411,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
       : undefined;
 
     createReaction({
-      username: currentUsername || 'anonymous',
+      username: dashId || 'anonymous',
       trackId,
       trackTitle,
       trackArtist,
@@ -1423,7 +1422,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
     });
 
     console.log(`[Feed] Reaction ${type} at position ${trackPosition}% on ${trackTitle}`);
-  }, [createReaction, currentTrack, progress, currentUsername]);
+  }, [createReaction, currentTrack, progress, dashId]);
 
   // Handle add comment - with track position
   const handleAddComment = useCallback((trackId: string, trackTitle: string, trackArtist: string, text: string) => {
@@ -1432,7 +1431,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
       : undefined;
 
     createReaction({
-      username: currentUsername || 'anonymous',
+      username: dashId || 'anonymous',
       trackId,
       trackTitle,
       trackArtist,
@@ -1442,7 +1441,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
       comment: text,
       trackPosition,
     });
-  }, [createReaction, currentTrack, progress, currentUsername]);
+  }, [createReaction, currentTrack, progress, dashId]);
 
   // Handle share - use Web Share API if available
   const handleShare = useCallback((trackId: string, trackTitle: string, trackArtist: string) => {

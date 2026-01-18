@@ -3,18 +3,20 @@
  * Snapchat + WhatsApp hybrid social hub
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform, PanInfo } from 'framer-motion';
 import {
   Settings, Plus, X, Play, Pause, Volume2,
-  Send, Heart, ChevronRight, BadgeCheck, Music2, User
+  Send, Heart, ChevronRight, BadgeCheck, Music2, User, UserPlus, Search, Check, Loader2
 } from 'lucide-react';
 import { UniversePanel } from '../universe/UniversePanel';
 import { usePlayerStore } from '../../store/playerStore';
-import { useUniverseStore } from '../../store/universeStore';
+import { useAuth } from '../../hooks/useAuth';
 import { getYouTubeThumbnail } from '../../data/tracks';
 import { DirectMessageChat } from '../chat/DirectMessageChat';
-import { followsAPI, directMessagesAPI, universeAPI, Conversation, isSupabaseConfigured } from '../../lib/supabase';
+import { friendsAPI, messagesAPI, profileAPI } from '../../lib/voyo-api';
+import { isConfigured as isSupabaseConfigured } from '../../lib/voyo-api';
+import type { Conversation } from '../../lib/voyo-api';
 
 // Helper to format time ago
 function getTimeAgo(timestamp: number): string {
@@ -398,11 +400,18 @@ export const Hub = ({ onOpenProfile }: HubProps) => {
     avatar: string | null;
   } | null>(null);
 
+  // Add Friend modal state
+  const [showAddFriend, setShowAddFriend] = useState(false);
+  const [addFriendId, setAddFriendId] = useState('');
+  const [addFriendNickname, setAddFriendNickname] = useState('');
+  const [addFriendStatus, setAddFriendStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [addFriendError, setAddFriendError] = useState('');
+
   // Connect to real player state
   const { currentTrack, queue } = usePlayerStore();
 
-  // Get current logged in user
-  const { currentUsername } = useUniverseStore();
+  // Get current logged in user (DASH ID from Command Center)
+  const { dashId, displayName } = useAuth();
   const myNowPlaying = currentTrack ? { title: currentTrack.title, artist: currentTrack.artist } : null;
 
   // Real data state
@@ -417,53 +426,122 @@ export const Hub = ({ onOpenProfile }: HubProps) => {
   const [realConversations, setRealConversations] = useState<Conversation[]>([]);
   const [isLoadingReal, setIsLoadingReal] = useState(true);
 
-  // Load real followed users and conversations
-  useEffect(() => {
-    if (!currentUsername || !isSupabaseConfigured) {
+  // Load real friends (from Command Center) and conversations
+  const loadRealData = useCallback(async () => {
+    if (!dashId || !isSupabaseConfigured) {
       setIsLoadingReal(false);
       return;
     }
 
-    const loadRealData = async () => {
-      try {
-        // Load followed users
-        const following = await followsAPI.getFollowing(currentUsername);
+    try {
+      // Load VOYO friends from Command Center (filtered to VOYO users)
+      const voyoFriends = await friendsAPI.getVoyoFriends(dashId);
 
-        // Get profiles for each followed user (f is username string)
-        const friendProfiles = await Promise.all(
-          following.map(async (username) => {
-            const result = await universeAPI.getPublicProfile(username);
-            return {
-              id: username,
-              name: result.profile?.displayName || username,
-              avatar: result.profile?.avatarUrl || '',
-              isOnline: result.portalOpen,
-              nowPlaying: result.nowPlaying ? { title: result.nowPlaying.title, artist: result.nowPlaying.artist } : null,
-              portalOpen: result.portalOpen,
-            };
-          })
-        );
-        setRealFriends(friendProfiles);
+      // Map friends to display format
+      const friendProfiles = await Promise.all(
+        voyoFriends.map(async (friend) => {
+          // Get their VOYO profile for now_playing
+          const profile = await profileAPI.getProfile(friend.dash_id);
+          return {
+            id: friend.dash_id,
+            name: friend.name || `V${friend.dash_id}`,
+            avatar: friend.avatar || '',
+            isOnline: profile?.portal_open || false,
+            nowPlaying: profile?.now_playing ? {
+              title: profile.now_playing.title,
+              artist: profile.now_playing.artist
+            } : null,
+            portalOpen: profile?.portal_open || false,
+          };
+        })
+      );
+      setRealFriends(friendProfiles);
 
-        // Load DM conversations
-        const convos = await directMessagesAPI.getConversations(currentUsername);
-        setRealConversations(convos);
-      } catch (err) {
-        console.error('[VOYO] Failed to load real data:', err);
-      }
-      setIsLoadingReal(false);
-    };
+      // Load DM conversations
+      const convos = await messagesAPI.getConversations(dashId);
+      setRealConversations(convos);
+    } catch (err) {
+      console.error('[VOYO] Failed to load real data:', err);
+    }
+    setIsLoadingReal(false);
+  }, [dashId]);
+
+  // Initial data load
+  useEffect(() => {
     loadRealData();
-  }, [currentUsername]);
+  }, [loadRealData]);
+
+  // Handle adding a friend
+  const handleAddFriend = async () => {
+    if (!dashId || !addFriendId.trim()) return;
+
+    const friendId = addFriendId.trim().toUpperCase();
+
+    // Can't add yourself
+    if (friendId === dashId) {
+      setAddFriendError("Can't add yourself!");
+      setAddFriendStatus('error');
+      return;
+    }
+
+    setAddFriendStatus('loading');
+    setAddFriendError('');
+
+    try {
+      const success = await friendsAPI.addFriend(
+        dashId,
+        friendId,
+        addFriendNickname.trim() || undefined
+      );
+
+      if (success) {
+        setAddFriendStatus('success');
+        // Reset after 1.5s and close
+        setTimeout(() => {
+          setShowAddFriend(false);
+          setAddFriendId('');
+          setAddFriendNickname('');
+          setAddFriendStatus('idle');
+          // Reload friends list
+          loadRealData();
+        }, 1500);
+      } else {
+        setAddFriendError('Could not add friend. They may already be your friend.');
+        setAddFriendStatus('error');
+      }
+    } catch (err) {
+      setAddFriendError('Something went wrong');
+      setAddFriendStatus('error');
+    }
+  };
+
   const nextTrack = queue[0] || null;
 
   // Auto-fill note with what I'm listening to if empty
   const displayNote = myNote || (myNowPlaying ? `♪ ${myNowPlaying.title}` : '');
   const isAutoNote = !myNote && myNowPlaying;
 
+  // Merge real friends with mock friends for display
+  // Real friends from Command Center take priority
+  const displayFriends = realFriends.length > 0
+    ? realFriends.map(rf => ({
+        id: rf.id,
+        name: rf.name,
+        avatar: rf.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(rf.name)}&background=8b5cf6&color=fff`,
+        hasStory: false, // Real friends don't have stories yet
+        isOnline: rf.isOnline,
+        storyPreview: null,
+        nowPlaying: rf.nowPlaying ? {
+          title: rf.nowPlaying.title,
+          artist: rf.nowPlaying.artist,
+          thumbnail: '' // Would need to fetch from track data
+        } : null,
+      }))
+    : friends;
+
   // Filter messages by tab
   const unreadCount = messages.filter(m => m.isNew).length;
-  const storiesCount = friends.filter(f => f.hasStory).length;
+  const storiesCount = displayFriends.filter(f => f.hasStory).length;
   // Merge real conversations with mock messages for display
   const displayMessages = realConversations.length > 0
     ? realConversations.map((c) => ({
@@ -495,9 +573,9 @@ export const Hub = ({ onOpenProfile }: HubProps) => {
 
       {/* Direct Message Chat */}
       <AnimatePresence>
-        {activeChat && currentUsername && (
+        {activeChat && dashId && (
           <DirectMessageChat
-            currentUser={currentUsername}
+            currentUser={dashId}
             otherUser={activeChat.username}
             otherUserDisplayName={activeChat.displayName}
             otherUserAvatar={activeChat.avatar}
@@ -513,13 +591,24 @@ export const Hub = ({ onOpenProfile }: HubProps) => {
       <div className="sticky top-0 z-20 bg-[#0a0a0f]/95 backdrop-blur-xl border-b border-white/[0.05]">
         <div className="flex items-center justify-between px-6 py-5">
           <h1 className="text-xl font-bold text-white tracking-tight">DAHUB</h1>
-          <motion.button
-            onClick={() => setIsUniverseOpen(true)}
-            className="p-2 -mr-2 rounded-full hover:bg-white/[0.08] active:bg-white/[0.12] transition-colors"
-            whileTap={{ scale: 0.95 }}
-          >
-            <Settings className="w-5 h-5 text-white/60" />
-          </motion.button>
+          <div className="flex items-center gap-1">
+            {/* Add Friend Button */}
+            <motion.button
+              onClick={() => setShowAddFriend(true)}
+              className="p-2 rounded-full hover:bg-white/[0.08] active:bg-white/[0.12] transition-colors"
+              whileTap={{ scale: 0.95 }}
+            >
+              <UserPlus className="w-5 h-5 text-white/60" />
+            </motion.button>
+            {/* Settings Button */}
+            <motion.button
+              onClick={() => setIsUniverseOpen(true)}
+              className="p-2 -mr-2 rounded-full hover:bg-white/[0.08] active:bg-white/[0.12] transition-colors"
+              whileTap={{ scale: 0.95 }}
+            >
+              <Settings className="w-5 h-5 text-white/60" />
+            </motion.button>
+          </div>
         </div>
       </div>
 
@@ -669,6 +758,151 @@ export const Hub = ({ onOpenProfile }: HubProps) => {
         )}
       </AnimatePresence>
 
+      {/* Add Friend Modal */}
+      <AnimatePresence>
+        {showAddFriend && (
+          <motion.div
+            className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-xl flex items-center justify-center p-6"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => {
+              if (addFriendStatus !== 'loading') {
+                setShowAddFriend(false);
+                setAddFriendId('');
+                setAddFriendNickname('');
+                setAddFriendStatus('idle');
+                setAddFriendError('');
+              }
+            }}
+          >
+            <motion.div
+              className="w-full max-w-sm bg-[#1a1a24] rounded-3xl p-6 shadow-2xl border border-white/10"
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ type: 'spring', damping: 25 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-white font-bold text-lg">Add Friend</h2>
+                <button
+                  onClick={() => {
+                    if (addFriendStatus !== 'loading') {
+                      setShowAddFriend(false);
+                      setAddFriendId('');
+                      setAddFriendNickname('');
+                      setAddFriendStatus('idle');
+                      setAddFriendError('');
+                    }
+                  }}
+                  className="p-2 -mr-2 rounded-full hover:bg-white/10 transition-colors"
+                >
+                  <X className="w-5 h-5 text-white/60" />
+                </button>
+              </div>
+
+              {/* Success State */}
+              {addFriendStatus === 'success' ? (
+                <div className="flex flex-col items-center py-8">
+                  <motion.div
+                    className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center mb-4"
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: 'spring', damping: 15 }}
+                  >
+                    <Check className="w-8 h-8 text-green-500" />
+                  </motion.div>
+                  <p className="text-white font-semibold text-lg">Friend Added!</p>
+                  <p className="text-white/50 text-sm mt-1">{addFriendId} is now your friend</p>
+                </div>
+              ) : (
+                <>
+                  {/* DASH ID Input */}
+                  <div className="mb-4">
+                    <label className="text-white/60 text-xs font-medium uppercase tracking-wider mb-2 block">
+                      DASH ID
+                    </label>
+                    <div className="relative">
+                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+                      <input
+                        type="text"
+                        value={addFriendId}
+                        onChange={(e) => {
+                          setAddFriendId(e.target.value.toUpperCase());
+                          setAddFriendStatus('idle');
+                          setAddFriendError('');
+                        }}
+                        placeholder="e.g. 002MD"
+                        className="w-full pl-11 pr-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/30 outline-none focus:border-purple-500/50 transition-colors font-mono"
+                        autoFocus
+                        disabled={addFriendStatus === 'loading'}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Nickname Input (Optional) */}
+                  <div className="mb-6">
+                    <label className="text-white/60 text-xs font-medium uppercase tracking-wider mb-2 block">
+                      Nickname <span className="text-white/30">(optional)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={addFriendNickname}
+                      onChange={(e) => setAddFriendNickname(e.target.value)}
+                      placeholder="e.g. Mama"
+                      className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/30 outline-none focus:border-purple-500/50 transition-colors"
+                      disabled={addFriendStatus === 'loading'}
+                    />
+                  </div>
+
+                  {/* Error Message */}
+                  {addFriendError && (
+                    <motion.p
+                      className="text-red-400 text-sm text-center mb-4"
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                    >
+                      {addFriendError}
+                    </motion.p>
+                  )}
+
+                  {/* Add Button */}
+                  <motion.button
+                    onClick={handleAddFriend}
+                    disabled={!addFriendId.trim() || addFriendStatus === 'loading'}
+                    className={`w-full py-3.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all ${
+                      !addFriendId.trim() || addFriendStatus === 'loading'
+                        ? 'bg-white/10 text-white/40 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg hover:shadow-purple-500/25'
+                    }`}
+                    whileTap={addFriendId.trim() && addFriendStatus !== 'loading' ? { scale: 0.98 } : {}}
+                  >
+                    {addFriendStatus === 'loading' ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Adding...
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus className="w-4 h-4" />
+                        Add Friend
+                      </>
+                    )}
+                  </motion.button>
+
+                  {/* Help text */}
+                  <p className="text-white/30 text-xs text-center mt-4">
+                    Ask your friend for their DASH ID
+                  </p>
+                </>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Notes - Instagram Style (Clean Gray Bubbles) */}
       <div className="py-3">
         <div className="flex gap-4 overflow-x-auto pb-3 px-6 scrollbar-hide">
@@ -709,7 +943,7 @@ export const Hub = ({ onOpenProfile }: HubProps) => {
           </motion.button>
 
           {/* Friends with notes */}
-          {friends.map((friend) => {
+          {displayFriends.map((friend) => {
             const note = friendNotes.find(n => n.friend === friend.name);
             const autoNote = !note && friend.nowPlaying ? `♪${friend.nowPlaying.title}` : null;
             const friendDisplayNote = note?.note || autoNote;
@@ -718,7 +952,20 @@ export const Hub = ({ onOpenProfile }: HubProps) => {
               <motion.button
                 key={friend.id}
                 className="flex flex-col items-center flex-shrink-0"
-                onClick={() => friend.hasStory && setSelectedFriend(friend)}
+                onClick={() => {
+                  // For real friends, open chat. For mock friends with stories, open story viewer.
+                  if (realFriends.length > 0) {
+                    setActiveChat({
+                      username: friend.id,
+                      displayName: friend.name,
+                      avatar: friend.avatar,
+                    });
+                  } else if (friend.hasStory && friend.storyPreview) {
+                    // Only mock friends have stories - cast to the expected type
+                    const mockFriend = friends.find(f => f.id === friend.id);
+                    if (mockFriend) setSelectedFriend(mockFriend);
+                  }
+                }}
                 whileTap={{ scale: 0.92 }}
                 transition={{ duration: 0.15 }}
               >
@@ -866,7 +1113,7 @@ export const Hub = ({ onOpenProfile }: HubProps) => {
         {/* Activity List */}
         <div className="space-y-2">
           {messageTab === 'stories' ? (
-            /* Stories Tab */
+            /* Stories Tab - Only mock friends have stories */
             friends.filter(f => f.hasStory).map((friend) => (
               <motion.button
                 key={friend.id}
@@ -887,19 +1134,23 @@ export const Hub = ({ onOpenProfile }: HubProps) => {
           ) : (
             <>
               {/* Friends listening - Mixed board (album art + avatar) */}
-              {friends.filter(f => f.nowPlaying).map((friend) => {
+              {displayFriends.filter(f => f.nowPlaying).map((friend) => {
                 const msg = messages.find(m => m.friendId === friend.id);
                 if (messageTab === 'unread' && !msg?.isNew) return null;
                 return (
                   <motion.button
                     key={friend.id}
                     className="w-full flex items-center gap-4 p-4 rounded-2xl bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.05] active:bg-white/[0.06] transition-colors"
-                    onClick={() => setSelectedFriend(friend)}
+                    onClick={() => setActiveChat({
+                      username: friend.id,
+                      displayName: friend.name,
+                      avatar: friend.avatar,
+                    })}
                     whileTap={{ scale: 0.98 }}
                   >
                     {/* Album art + avatar overlay */}
                     <div className="relative flex-shrink-0">
-                      <img src={friend.nowPlaying?.thumbnail} alt="" className="w-13 h-13 rounded-xl object-cover shadow-md ring-1 ring-white/[0.05]" />
+                      <img src={friend.nowPlaying?.thumbnail || friend.avatar} alt="" className="w-13 h-13 rounded-xl object-cover shadow-md ring-1 ring-white/[0.05]" />
                       <img src={friend.avatar} alt="" className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full object-cover ring-[3px] ring-[#0a0a0f] shadow-lg" />
                     </div>
                     {/* Info */}
@@ -964,7 +1215,7 @@ export const Hub = ({ onOpenProfile }: HubProps) => {
         </div>
 
         {/* Empty state */}
-        {messageTab === 'unread' && filteredMessages.length === 0 && friends.filter(f => f.nowPlaying).every(f => !messages.find(m => m.friendId === f.id)?.isNew) && (
+        {messageTab === 'unread' && filteredMessages.length === 0 && displayFriends.filter(f => f.nowPlaying).every(f => !messages.find(m => m.friendId === f.id)?.isNew) && (
           <div className="py-12 text-center">
             <p className="text-white/40 text-sm font-medium">No unread activity</p>
           </div>

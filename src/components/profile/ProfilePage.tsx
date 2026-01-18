@@ -1,10 +1,14 @@
 /**
- * VOYO Profile Page - voyomusic.com/username
+ * VOYO Profile Page - voyomusic.com/:dashId
  *
- * The URL IS your identity:
- * - Visit /dash → see dash's public profile + live portal
- * - Enter PIN → full access to your universe
+ * The URL is your DASH ID (e.g., voyomusic.com/0046AAD)
+ * Display shows VOYO ID: V0046AAD
+ *
+ * Features:
+ * - View anyone's public profile + live portal
+ * - Sign in via Command Center for full access
  * - Join portal → sync playback with host
+ * - Add friends via Command Center
  */
 
 import { useState, useEffect, useRef } from 'react';
@@ -14,33 +18,29 @@ import {
   Play, Pause, Music2, Radio, Lock, Unlock, Eye, Users,
   ArrowLeft, User, Edit3, Heart, Share2, ExternalLink, QrCode, Copy, Check, X
 } from 'lucide-react';
-import { useUniverseStore } from '../../store/universeStore';
+import { useAuth } from '../../hooks/useAuth';
 import { usePlayerStore } from '../../store/playerStore';
-import { universeAPI, followsAPI, PublicProfile, NowPlaying } from '../../lib/supabase';
+import { profileAPI, friendsAPI, NowPlaying } from '../../lib/voyo-api';
+import type { VoyoProfile } from '../../lib/voyo-api';
 import { PortalChat } from '../portal/PortalChat';
 
 export const ProfilePage = () => {
-  const { username } = useParams<{ username: string }>();
+  // URL param is now dash_id (e.g., /0046AAD)
+  const { username: urlDashId } = useParams<{ username: string }>();
   const navigate = useNavigate();
 
-  // Universe store
-  const {
-    isLoggedIn,
-    currentUsername,
-    login,
-    viewUniverse,
-    leaveUniverse,
-    viewingUniverse,
-    isViewingOther,
-    isLoading,
-    error,
-  } = useUniverseStore();
+  // Auth from Command Center
+  const { isLoggedIn, dashId: myDashId } = useAuth();
+
+  // Local state for viewing universe
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Player store
   const { setCurrentTrack, currentTrack, isPlaying } = usePlayerStore();
 
   // Local state
-  const [profile, setProfile] = useState<PublicProfile | null>(null);
+  const [profile, setProfile] = useState<VoyoProfile | null>(null);
   const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null);
   const [portalOpen, setPortalOpen] = useState(false);
   const [showPinInput, setShowPinInput] = useState(false);
@@ -56,8 +56,9 @@ export const ProfilePage = () => {
   const [followingCount, setFollowingCount] = useState(0);
   const [isFollowLoading, setIsFollowLoading] = useState(false);
 
-  // Generate profile URL
-  const profileUrl = `${window.location.origin}/${username}`;
+  // Generate profile URL (uses DASH ID)
+  const profileUrl = `${window.location.origin}/${urlDashId}`;
+  const voyoId = urlDashId ? `V${urlDashId}` : '';
 
   // Copy to clipboard
   const handleCopy = (text: string) => {
@@ -71,7 +72,7 @@ export const ProfilePage = () => {
     if (navigator.share) {
       try {
         await navigator.share({
-          title: `${profile?.displayName || username}'s VOYO`,
+          title: `${voyoId}'s VOYO`,
           text: portalOpen ? 'Listen along with me on VOYO!' : 'Check out my VOYO profile',
           url: profileUrl,
         });
@@ -83,28 +84,27 @@ export const ProfilePage = () => {
     }
   };
 
-  // Check if viewing own profile
-  const isOwnProfile = currentUsername?.toLowerCase() === username?.toLowerCase();
+  // Check if viewing own profile (compare DASH IDs)
+  const isOwnProfile = myDashId?.toLowerCase() === urlDashId?.toLowerCase();
 
   // Load profile on mount
   useEffect(() => {
-    if (!username) return;
+    if (!urlDashId) return;
 
     const loadProfile = async () => {
       setLoadingProfile(true);
 
-      // If logged in and viewing own profile
-      if (isOwnProfile && isLoggedIn) {
-        // Could load from local state, but let's get fresh from server
-      }
+      try {
+        // Fetch VOYO profile using dash_id
+        const voyoProfile = await profileAPI.getProfile(urlDashId);
 
-      // Fetch public profile
-      const result = await universeAPI.getPublicProfile(username);
-
-      if (result.profile) {
-        setProfile(result.profile);
-        setNowPlaying(result.nowPlaying);
-        setPortalOpen(result.portalOpen);
+        if (voyoProfile) {
+          setProfile(voyoProfile);
+          setNowPlaying(voyoProfile.now_playing || null);
+          setPortalOpen(voyoProfile.portal_open || false);
+        }
+      } catch (err) {
+        console.error('[ProfilePage] Failed to load profile:', err);
       }
 
       setLoadingProfile(false);
@@ -112,100 +112,53 @@ export const ProfilePage = () => {
 
     loadProfile();
 
-    // Subscribe to real-time updates if portal is open
-    const setupRealtime = async () => {
-      const result = await universeAPI.getPublicProfile(username);
-      if (result.portalOpen) {
-        await viewUniverse(username);
-      }
-    };
-    setupRealtime();
+    // TODO: Subscribe to real-time updates if portal is open
+    // This would need a Supabase realtime subscription on voyo_profiles
+  }, [urlDashId]);
 
-    return () => {
-      leaveUniverse();
-    };
-  }, [username]);
-
-  // Load follow status
+  // Load friend status (friends are global in Command Center)
   useEffect(() => {
-    if (!username || !currentUsername || isOwnProfile) return;
+    if (!urlDashId || !myDashId || isOwnProfile) return;
 
-    const loadFollowStatus = async () => {
-      const [following, counts] = await Promise.all([
-        followsAPI.isFollowing(currentUsername, username),
-        followsAPI.getCounts(username),
-      ]);
-      setIsFollowing(following);
-      setFollowerCount(counts.followers);
-      setFollowingCount(counts.following);
+    const loadFriendStatus = async () => {
+      try {
+        // Check if this person is in my friends list (Command Center)
+        const friends = await friendsAPI.getFriends(myDashId);
+        const isFriend = friends.some(f => f.dash_id.toLowerCase() === urlDashId?.toLowerCase());
+        setIsFollowing(isFriend);
+        // Friend counts would come from Command Center API in future
+        setFollowerCount(0);
+        setFollowingCount(0);
+      } catch (err) {
+        console.error('[ProfilePage] Failed to load friend status:', err);
+      }
     };
-    loadFollowStatus();
-  }, [username, currentUsername, isOwnProfile]);
+    loadFriendStatus();
+  }, [urlDashId, myDashId, isOwnProfile]);
 
-  // Handle follow/unfollow
+  // Handle add/remove friend (opens Command Center since friends are global)
   const handleFollowToggle = async () => {
-    if (!username || !currentUsername || isFollowLoading) return;
+    if (!urlDashId || !myDashId || isFollowLoading) return;
 
-    setIsFollowLoading(true);
-    if (isFollowing) {
-      const success = await followsAPI.unfollow(currentUsername, username);
-      if (success) {
-        setIsFollowing(false);
-        setFollowerCount((c) => Math.max(0, c - 1));
-      }
-    } else {
-      const success = await followsAPI.follow(currentUsername, username);
-      if (success) {
-        setIsFollowing(true);
-        setFollowerCount((c) => c + 1);
-      }
-    }
-    setIsFollowLoading(false);
+    // Friends are managed in Command Center - open it for add/remove
+    // For now, we'll open Command Center hub
+    window.open(`https://hub.dasuperhub.com/friends?add=${urlDashId}`, '_blank');
+    // The UI won't update immediately - would need to refresh or add real-time sync
   };
 
-  // Update from viewingUniverse when it changes + AUTO-SYNC playback
+  // Portal sync state
   const [hasJoinedPortal, setHasJoinedPortal] = useState(false);
   const lastTrackIdRef = useRef<string | null>(null);
 
-  useEffect(() => {
-    if (viewingUniverse) {
-      setNowPlaying(viewingUniverse.nowPlaying);
-      setPortalOpen(viewingUniverse.portalOpen);
+  // TODO: Implement real-time portal sync via Supabase subscription
+  // For now, portal viewing works one-way (see what host is playing, join to sync)
 
-      // AUTO-SYNC: If viewer has joined portal and track changes, auto-play new track
-      if (hasJoinedPortal && viewingUniverse.nowPlaying) {
-        const newTrackId = viewingUniverse.nowPlaying.trackId;
-        if (lastTrackIdRef.current && lastTrackIdRef.current !== newTrackId) {
-          // Track changed! Auto-sync to new track
-          const track = {
-            id: newTrackId,
-            trackId: newTrackId,
-            title: viewingUniverse.nowPlaying.title,
-            artist: viewingUniverse.nowPlaying.artist,
-            coverUrl: viewingUniverse.nowPlaying.thumbnail,
-          };
-          setCurrentTrack(track as any);
-        }
-        lastTrackIdRef.current = newTrackId;
-      }
-    }
-  }, [viewingUniverse, hasJoinedPortal, setCurrentTrack]);
-
-  // Handle PIN login
+  // Handle PIN login (redirects to Command Center)
   const handlePinLogin = async () => {
-    if (!username || pin.length !== 6) return;
-
-    setPinError('');
-    const success = await login(username, pin);
-
-    if (success) {
-      setShowPinInput(false);
-      setPin('');
-      // Redirect to main app since they're now logged in
-      navigate('/');
-    } else {
-      setPinError('Invalid PIN');
-    }
+    // DASH ID auth happens through Command Center, not per-app PINs
+    // Open Command Center sign-in
+    window.open('https://hub.dasuperhub.com/signin', '_blank');
+    setShowPinInput(false);
   };
 
   // Handle join portal (sync playback)
@@ -250,10 +203,10 @@ export const ProfilePage = () => {
           <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-white/5 flex items-center justify-center">
             <User className="w-12 h-12 text-white/20" />
           </div>
-          <h1 className="text-2xl font-bold text-white mb-2">Universe not found</h1>
-          <p className="text-white/50 mb-4">@{username} hasn't claimed their universe yet</p>
+          <h1 className="text-2xl font-bold text-white mb-2">Profile not found</h1>
+          <p className="text-white/50 mb-4">{voyoId} hasn't joined VOYO yet</p>
           <p className="text-white/30 text-sm mb-8">
-            Want this username? Go to the app and claim it!
+            Know them? Invite them to VOYO Music!
           </p>
           <button
             onClick={() => navigate('/')}
@@ -266,6 +219,11 @@ export const ProfilePage = () => {
     );
   }
 
+  // Extract preferences for cleaner access
+  const displayName = profile.preferences?.display_name || voyoId;
+  const bio = profile.preferences?.bio || '';
+  const avatarUrl = profile.preferences?.avatar_url || '';
+
   return (
     <div className="min-h-screen bg-[#0a0a0f]">
       {/* Header */}
@@ -276,7 +234,7 @@ export const ProfilePage = () => {
           </button>
           <div className="flex items-center gap-2">
             <span className="text-white/60 text-sm font-medium">voyomusic.com/</span>
-            <span className="text-white text-sm font-bold">{username}</span>
+            <span className="text-white text-sm font-bold">{urlDashId}</span>
           </div>
           <div className="w-9" /> {/* Spacer */}
         </div>
@@ -288,16 +246,16 @@ export const ProfilePage = () => {
         <div className="flex flex-col items-center text-center mb-8">
           {/* Avatar */}
           <div className="relative mb-4">
-            {profile.avatarUrl ? (
+            {avatarUrl ? (
               <img
-                src={profile.avatarUrl}
-                alt={profile.displayName}
+                src={avatarUrl}
+                alt={displayName}
                 className="w-28 h-28 rounded-full object-cover ring-4 ring-purple-500/30"
               />
             ) : (
               <div className="w-28 h-28 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center ring-4 ring-purple-500/30">
                 <span className="text-4xl font-bold text-white">
-                  {profile.displayName?.charAt(0)?.toUpperCase() || '?'}
+                  {displayName?.charAt(0)?.toUpperCase() || 'V'}
                 </span>
               </div>
             )}
@@ -315,10 +273,10 @@ export const ProfilePage = () => {
           </div>
 
           {/* Name & Bio */}
-          <h1 className="text-2xl font-bold text-white mb-1">{profile.displayName}</h1>
-          <p className="text-white/40 text-sm mb-4">@{username}</p>
-          {profile.bio && (
-            <p className="text-white/60 text-sm max-w-xs mb-4">{profile.bio}</p>
+          <h1 className="text-2xl font-bold text-white mb-1">{displayName}</h1>
+          <p className="text-white/40 text-sm mb-4">{voyoId}</p>
+          {bio && (
+            <p className="text-white/60 text-sm max-w-xs mb-4">{bio}</p>
           )}
 
           {/* Follower Stats */}
@@ -347,8 +305,8 @@ export const ProfilePage = () => {
               </button>
             ) : (
               <>
-                {/* Follow Button */}
-                {currentUsername && (
+                {/* Add Friend Button (opens Command Center) */}
+                {myDashId && (
                   <motion.button
                     onClick={handleFollowToggle}
                     disabled={isFollowLoading}
@@ -364,12 +322,12 @@ export const ProfilePage = () => {
                     ) : isFollowing ? (
                       <>
                         <Check className="w-4 h-4" />
-                        Following
+                        Friends
                       </>
                     ) : (
                       <>
                         <Users className="w-4 h-4" />
-                        Follow
+                        Add Friend
                       </>
                     )}
                   </motion.button>
@@ -500,14 +458,14 @@ export const ProfilePage = () => {
           </div>
         )}
 
-        {/* Top Tracks - if public */}
-        {profile.topTracks && profile.topTracks.length > 0 && (
+        {/* Liked Tracks */}
+        {profile.likes && profile.likes.length > 0 && (
           <div className="mb-8">
             <p className="text-white/40 text-xs font-medium uppercase tracking-wider mb-4">
-              Top Tracks
+              Liked Tracks
             </p>
             <div className="space-y-2">
-              {profile.topTracks.slice(0, 5).map((trackId, i) => (
+              {profile.likes.slice(0, 5).map((trackId, i) => (
                 <div
                   key={trackId}
                   className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.02] hover:bg-white/[0.05] transition-colors"
@@ -519,7 +477,7 @@ export const ProfilePage = () => {
                   <div className="flex-1 min-w-0">
                     <p className="text-white/80 text-sm font-medium truncate">{trackId}</p>
                   </div>
-                  <Heart className="w-4 h-4 text-white/20" />
+                  <Heart className="w-4 h-4 text-pink-500" fill="#ec4899" />
                 </div>
               ))}
             </div>
@@ -564,9 +522,9 @@ export const ProfilePage = () => {
                 <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-purple-500/20 flex items-center justify-center">
                   <Lock className="w-8 h-8 text-purple-400" />
                 </div>
-                <h2 className="text-xl font-bold text-white mb-1">Enter PIN</h2>
+                <h2 className="text-xl font-bold text-white mb-1">Sign In with DASH</h2>
                 <p className="text-white/50 text-sm">
-                  Enter your 6-digit PIN to access @{username}
+                  Sign in via Command Center to access {voyoId}
                 </p>
               </div>
 
@@ -644,7 +602,7 @@ export const ProfilePage = () => {
                 </div>
                 <h2 className="text-xl font-bold text-white mb-1">Share Profile</h2>
                 <p className="text-white/50 text-sm">
-                  {portalOpen ? 'Invite friends to listen along!' : `Share @${username}'s profile`}
+                  {portalOpen ? 'Invite friends to listen along!' : `Share ${voyoId}'s profile`}
                 </p>
               </div>
 
@@ -661,7 +619,7 @@ export const ProfilePage = () => {
               <div className="p-3 rounded-xl bg-black/30 border border-white/10 mb-4">
                 <div className="flex items-center justify-between">
                   <code className="text-white/80 text-sm truncate flex-1 mr-2">
-                    voyomusic.com/{username}
+                    voyomusic.com/{urlDashId}
                   </code>
                   <button
                     onClick={() => handleCopy(profileUrl)}
@@ -689,7 +647,7 @@ export const ProfilePage = () => {
                   onClick={() => {
                     if (navigator.share) {
                       navigator.share({
-                        title: `${profile?.displayName || username}'s VOYO`,
+                        title: `${voyoId}'s VOYO`,
                         text: portalOpen ? 'Listen along with me!' : 'Check out my VOYO',
                         url: profileUrl,
                       });
@@ -715,10 +673,10 @@ export const ProfilePage = () => {
       </div>
 
       {/* Portal Chat - Shows when portal is open and user joined */}
-      {portalOpen && hasJoinedPortal && username && currentUsername && (
+      {portalOpen && hasJoinedPortal && urlDashId && myDashId && (
         <PortalChat
-          portalOwner={username}
-          currentUser={currentUsername}
+          portalOwner={urlDashId}
+          currentUser={myDashId}
           isPortalOpen={portalOpen}
         />
       )}

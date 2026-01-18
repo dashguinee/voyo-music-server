@@ -41,7 +41,7 @@ import { getTrackThumbnailUrl } from '../../utils/imageHelpers';
 import { useMobilePlay } from '../../hooks/useMobilePlay';
 import { PlaylistModal } from '../playlist/PlaylistModal';
 import { useReactionStore, Reaction, TrackStats } from '../../store/reactionStore';
-import { useUniverseStore } from '../../store/universeStore';
+import { useAuth } from '../../hooks/useAuth';
 
 // ============================================
 // ALBUM ART BACKGROUND
@@ -103,14 +103,14 @@ const CommunityVibesPanel = ({
   reactions,
   onAddComment,
   trackStats,
-  currentUsername,
+  dashId,
 }: {
   isExpanded: boolean;
   onToggle: () => void;
   reactions: Reaction[];
   onAddComment: (text: string) => void;
   trackStats: TrackStats | null;
-  currentUsername: string | null;
+  dashId: string | null;
 }) => {
   const [commentText, setCommentText] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -279,7 +279,7 @@ export const NowPlaying = ({ isOpen, onClose }: NowPlayingProps) => {
     trackReactions,
     trackStats: statsMap,
   } = useReactionStore();
-  const { currentUsername } = useUniverseStore();
+  const { dashId } = useAuth();
 
   // State
   const [isShuffled, setIsShuffled] = useState(false);
@@ -337,7 +337,7 @@ export const NowPlaying = ({ isOpen, onClose }: NowPlayingProps) => {
     spawnReaction('⚡');
     if (currentTrack) {
       createReaction({
-        username: currentUsername || 'anonymous',
+        username: dashId || 'anonymous',
         trackId: currentTrack.id,
         trackTitle: currentTrack.title,
         trackArtist: currentTrack.artist,
@@ -348,14 +348,14 @@ export const NowPlaying = ({ isOpen, onClose }: NowPlayingProps) => {
         trackPosition, // Include position for hotspot detection
       });
     }
-  }, [currentTrack, currentUsername, createReaction, spawnReaction, trackPosition]);
+  }, [currentTrack, dashId, createReaction, spawnReaction, trackPosition]);
 
   // Handle comment
   const handleAddComment = useCallback(async (text: string) => {
     if (!currentTrack) return;
     spawnReaction('🔥');
     await createReaction({
-      username: currentUsername || 'anonymous',
+      username: dashId || 'anonymous',
       trackId: currentTrack.id,
       trackTitle: currentTrack.title,
       trackArtist: currentTrack.artist,
@@ -366,7 +366,7 @@ export const NowPlaying = ({ isOpen, onClose }: NowPlayingProps) => {
       comment: text,
       trackPosition, // Include position for hotspot detection
     });
-  }, [currentTrack, currentUsername, createReaction, spawnReaction, trackPosition]);
+  }, [currentTrack, dashId, createReaction, spawnReaction, trackPosition]);
 
   // Auto-spawn ambient reactions
   useEffect(() => {
@@ -639,7 +639,7 @@ export const NowPlaying = ({ isOpen, onClose }: NowPlayingProps) => {
               reactions={realReactions}
               onAddComment={handleAddComment}
               trackStats={currentTrackStats}
-              currentUsername={currentUsername}
+              dashId={dashId}
             />
           </div>
 

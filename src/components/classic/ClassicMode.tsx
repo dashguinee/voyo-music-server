@@ -21,7 +21,7 @@ import { SmartImage } from '../ui/SmartImage';
 import { Track } from '../../types';
 import { PlaylistModal } from '../playlist/PlaylistModal';
 import { useReactionStore } from '../../store/reactionStore';
-import { useUniverseStore } from '../../store/universeStore';
+import { useAuth } from '../../hooks/useAuth';
 
 type ClassicTab = 'home' | 'hub' | 'library';
 
@@ -39,7 +39,7 @@ const MiniPlayer = ({ onVOYOClick, onOpenFull }: { onVOYOClick: () => void; onOp
     shuffleMode, repeatMode, toggleShuffle, cycleRepeat
   } = usePlayerStore();
   const { createReaction } = useReactionStore();
-  const { currentUsername } = useUniverseStore();
+  const { dashId } = useAuth();
   const [shouldScroll, setShouldScroll] = useState(false);
   const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
   const [showBubbles, setShowBubbles] = useState(false);
@@ -71,7 +71,7 @@ const MiniPlayer = ({ onVOYOClick, onOpenFull }: { onVOYOClick: () => void; onOp
   const handleOye = useCallback(() => {
     if (!currentTrack) return;
     createReaction({
-      username: currentUsername || 'anonymous',
+      username: dashId || 'anonymous',
       trackId: currentTrack.trackId || currentTrack.id,
       trackTitle: currentTrack.title,
       trackArtist: currentTrack.artist,
@@ -80,7 +80,7 @@ const MiniPlayer = ({ onVOYOClick, onOpenFull }: { onVOYOClick: () => void; onOp
       emoji: '⚡',
       reactionType: 'oye',
     });
-  }, [currentTrack, currentUsername, createReaction]);
+  }, [currentTrack, dashId, createReaction]);
 
   // Check if title needs scrolling (longer than container)
   useEffect(() => {

@@ -1,23 +1,23 @@
 /**
  * VOYO User Search
  *
- * Search for other users by username
+ * Search for other users by DASH ID
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, User, Radio, X } from 'lucide-react';
-import { universeAPI } from '../../lib/supabase';
+import { profileAPI, formatVoyoId } from '../../lib/voyo-api';
 
 interface SearchResult {
-  username: string;
+  dashId: string;
   displayName: string;
   avatarUrl: string | null;
   portalOpen: boolean;
 }
 
 interface UserSearchProps {
-  onSelectUser: (username: string) => void;
+  onSelectUser: (dashId: string) => void;
   onClose?: () => void;
 }
 
@@ -35,8 +35,14 @@ export const UserSearch = ({ onSelectUser, onClose }: UserSearchProps) => {
 
     const timer = setTimeout(async () => {
       setIsSearching(true);
-      const users = await universeAPI.searchUsers(query);
-      setResults(users);
+      const users = await profileAPI.search(query);
+      // Map to SearchResult format
+      setResults(users.map(u => ({
+        dashId: u.dash_id,
+        displayName: u.preferences?.display_name || formatVoyoId(u.dash_id),
+        avatarUrl: u.preferences?.avatar_url || null,
+        portalOpen: u.portal_open,
+      })));
       setIsSearching(false);
     }, 300);
 
@@ -64,8 +70,8 @@ export const UserSearch = ({ onSelectUser, onClose }: UserSearchProps) => {
         <input
           type="text"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by username..."
+          onChange={(e) => setQuery(e.target.value.toUpperCase())}
+          placeholder="Search by DASH ID..."
           className="w-full pl-10 pr-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/30 focus:outline-none focus:border-purple-500/50"
           autoFocus
         />
@@ -95,9 +101,9 @@ export const UserSearch = ({ onSelectUser, onClose }: UserSearchProps) => {
         <AnimatePresence>
           {results.map((user, index) => (
             <motion.button
-              key={user.username}
+              key={user.dashId}
               className="w-full p-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 flex items-center gap-3 transition-colors"
-              onClick={() => onSelectUser(user.username)}
+              onClick={() => onSelectUser(user.dashId)}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
@@ -113,7 +119,7 @@ export const UserSearch = ({ onSelectUser, onClose }: UserSearchProps) => {
                   />
                 ) : (
                   <span className="text-white font-bold text-lg">
-                    {user.displayName[0]?.toUpperCase()}
+                    {user.displayName[0]?.toUpperCase() || 'V'}
                   </span>
                 )}
               </div>
@@ -121,7 +127,7 @@ export const UserSearch = ({ onSelectUser, onClose }: UserSearchProps) => {
               {/* Info */}
               <div className="flex-1 text-left min-w-0">
                 <p className="text-white font-medium truncate">{user.displayName}</p>
-                <p className="text-white/40 text-sm">@{user.username}</p>
+                <p className="text-white/40 text-sm">V{user.dashId}</p>
               </div>
 
               {/* Portal Status */}

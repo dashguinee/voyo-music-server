@@ -1,52 +1,21 @@
 /**
- * VOYO Verse Panel
+ * VOYO Universe Panel
  *
- * voyomusic.com/username management
- *
- * Features:
- * - Login/Signup (PIN-based, no email)
- * - Verse stats (likes, listens, etc.)
- * - Backup to JSON file
- * - Passphrase backup
- * - Portal sharing
+ * voyomusic.com/:dashId management
+ * Auth via DASH Command Center
  */
 
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  X,
-  Download,
-  Upload,
-  Key,
-  QrCode,
-  Users,
-  Music,
-  Heart,
-  Clock,
-  Zap,
-  Copy,
-  Check,
-  RefreshCw,
-  Shield,
-  Globe,
-  Smartphone,
-  LogIn,
-  UserPlus,
-  LogOut,
-  AtSign,
-  Lock,
-  User,
-  Edit3,
-  Camera,
-  Save,
-  Search,
-  Trash2
+  X, Download, Upload, Key, Users, Music, Heart, Clock, Zap,
+  Copy, Check, RefreshCw, Shield, Globe, Smartphone, LogIn,
+  UserPlus, LogOut, Lock, Edit3, Camera, Save, Search, Trash2
 } from 'lucide-react';
-import { useUniverseStore } from '../../store/universeStore';
+import { useAuth } from '../../hooks/useAuth';
 import { usePreferenceStore } from '../../store/preferenceStore';
-import { universeAPI, avatarAPI } from '../../lib/supabase';
+import { profileAPI, formatVoyoId } from '../../lib/voyo-api';
 import { UserSearch } from './UserSearch';
-import { signInWithDashId } from '../../lib/dash-auth';
 
 interface UniversePanelProps {
   isOpen: boolean;
@@ -54,33 +23,11 @@ interface UniversePanelProps {
 }
 
 export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
-  const {
-    // Auth
-    isLoggedIn,
-    currentUsername,
-    isLoading,
-    error,
-    signup,
-    login,
-    logout,
-    checkUsername,
-    // Backup
-    downloadBackup,
-    generatePassphrase,
-    saveToCloud,
-    restoreFromCloud,
-    lastBackupAt,
-    // Portal
-    openPortal,
-    closePortal,
-    portalSession,
-    isPortalOpen,
-  } = useUniverseStore();
-
+  const { isLoggedIn, dashId, voyoId, displayName, signOut, openSignIn } = useAuth();
   const { trackPreferences } = usePreferenceStore();
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<'auth' | 'stats' | 'profile' | 'backup' | 'portal' | 'discover'>(
+  const [activeTab, setActiveTab] = useState<'auth' | 'stats' | 'profile' | 'portal' | 'discover'>(
     isLoggedIn ? 'stats' : 'auth'
   );
 
@@ -95,28 +42,12 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
-  // Auth form state
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
-  const [usernameInput, setUsernameInput] = useState('');
-  const [pinInput, setPinInput] = useState('');
-  const [displayNameInput, setDisplayNameInput] = useState('');
-  const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
-  const [checkingUsername, setCheckingUsername] = useState(false);
-
-  // DASH ID login state
-  const [showDashLogin, setShowDashLogin] = useState(false);
-  const [dashId, setDashId] = useState('');
-  const [dashPin, setDashPin] = useState('');
-  const [dashLoading, setDashLoading] = useState(false);
-  const [dashError, setDashError] = useState('');
-
-  // Backup state
-  const [passphrase, setPassphrase] = useState('');
-  const [passphraseInput, setPassphraseInput] = useState('');
+  // Portal state
+  const [isPortalOpen, setIsPortalOpen] = useState(false);
   const [portalUrl, setPortalUrl] = useState('');
+
+  // UI state
   const [copied, setCopied] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isRestoring, setIsRestoring] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Calculate stats
@@ -130,23 +61,6 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
     totalMinutes: Math.round(Object.values(trackPreferences).reduce((sum, p) => sum + p.totalDuration, 0) / 60)
   };
 
-  // Check username availability (debounced)
-  useEffect(() => {
-    if (authMode !== 'signup' || usernameInput.length < 3) {
-      setUsernameAvailable(null);
-      return;
-    }
-
-    const timer = setTimeout(async () => {
-      setCheckingUsername(true);
-      const available = await checkUsername(usernameInput);
-      setUsernameAvailable(available);
-      setCheckingUsername(false);
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, [usernameInput, authMode, checkUsername]);
-
   // Update active tab when login state changes
   useEffect(() => {
     if (isLoggedIn && activeTab === 'auth') {
@@ -154,86 +68,33 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
     }
   }, [isLoggedIn, activeTab]);
 
-  // Handle auth submit
-  const handleAuthSubmit = async () => {
-    if (authMode === 'signup') {
-      const success = await signup(usernameInput, pinInput, displayNameInput || undefined);
-      if (success) {
-        setMessage({ type: 'success', text: `Welcome to VOYO, ${usernameInput}!` });
-        setUsernameInput('');
-        setPinInput('');
-        setDisplayNameInput('');
-      }
-    } else {
-      const success = await login(usernameInput, pinInput);
-      if (success) {
-        setMessage({ type: 'success', text: 'Welcome back!' });
-        setUsernameInput('');
-        setPinInput('');
-      }
-    }
-  };
-
-  // Handle DASH ID login (central DASH auth)
-  const handleDashLogin = async () => {
-    if (!dashId || dashPin.length < 4) {
-      setDashError('Enter your DASH ID and 6-digit PIN');
-      return;
-    }
-
-    setDashLoading(true);
-    setDashError('');
-
-    const result = await signInWithDashId(dashId, dashPin, 'V');
-
-    setDashLoading(false);
-
-    if (result.success && result.session) {
-      setMessage({ type: 'success', text: `Welcome ${result.session.user.full_name}!` });
-      setShowDashLogin(false);
-      setDashId('');
-      setDashPin('');
-      // Note: DASH login sets localStorage which DashAuthBadge reads
-      // VOYO's universeStore remains separate - user can use both
-    } else {
-      setDashError(result.error || 'Login failed');
-    }
-  };
-
-  // Handle logout
-  const handleLogout = () => {
-    logout();
-    setActiveTab('auth');
-    setProfileLoaded(false);
-    setMessage({ type: 'success', text: 'Logged out' });
-  };
-
   // Load profile data when profile tab opens
   useEffect(() => {
-    if (activeTab === 'profile' && isLoggedIn && currentUsername && !profileLoaded) {
+    if (activeTab === 'profile' && isLoggedIn && dashId && !profileLoaded) {
       const loadProfile = async () => {
-        const result = await universeAPI.getPublicProfile(currentUsername);
-        if (result.profile) {
-          setEditDisplayName(result.profile.displayName || '');
-          setEditBio(result.profile.bio || '');
-          setEditAvatarUrl(result.profile.avatarUrl || '');
+        const profile = await profileAPI.getProfile(dashId);
+        if (profile) {
+          setEditDisplayName(profile.preferences?.display_name || displayName || '');
+          setEditBio(profile.preferences?.bio || '');
+          setEditAvatarUrl(profile.preferences?.avatar_url || '');
+          setIsPortalOpen(profile.portal_open || false);
           setProfileLoaded(true);
         }
       };
       loadProfile();
     }
-  }, [activeTab, isLoggedIn, currentUsername, profileLoaded]);
+  }, [activeTab, isLoggedIn, dashId, displayName, profileLoaded]);
 
   // Handle save profile
   const handleSaveProfile = async () => {
-    if (!currentUsername) return;
+    if (!dashId) return;
 
     setIsSavingProfile(true);
-    const success = await universeAPI.updateProfile(currentUsername, {
-      displayName: editDisplayName,
+    const success = await profileAPI.updatePreferences(dashId, {
+      display_name: editDisplayName,
       bio: editBio,
-      avatarUrl: editAvatarUrl || null,
-    });
+      avatar_url: editAvatarUrl || null,
+    } as any);
     setIsSavingProfile(false);
 
     if (success) {
@@ -243,102 +104,31 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
     }
   };
 
-  // Handle avatar file selection and upload
-  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !currentUsername) return;
+  // Handle logout
+  const handleLogout = () => {
+    signOut();
+    setActiveTab('auth');
+    setProfileLoaded(false);
+    setMessage({ type: 'success', text: 'Logged out' });
+  };
 
-    // Validate file type
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    if (!allowedTypes.includes(file.type)) {
-      setMessage({ type: 'error', text: 'Please upload a JPG, PNG, GIF or WebP image' });
-      return;
-    }
+  // Open/close portal
+  const handleTogglePortal = async () => {
+    if (!dashId) return;
 
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      setMessage({ type: 'error', text: 'Image must be under 5MB' });
-      return;
-    }
-
-    setIsUploadingAvatar(true);
-    const success = await avatarAPI.uploadAndUpdateProfile(currentUsername, file);
-    setIsUploadingAvatar(false);
+    const newState = !isPortalOpen;
+    const success = await profileAPI.setPortalOpen(dashId, newState);
 
     if (success) {
-      // Get the new avatar URL and update state
-      const avatarUrl = avatarAPI.getAvatarUrl(currentUsername);
-      // Add cache buster to force refresh
-      setEditAvatarUrl(avatarUrl ? `${avatarUrl}?t=${Date.now()}` : '');
-      setMessage({ type: 'success', text: 'Avatar uploaded!' });
-    } else {
-      setMessage({ type: 'error', text: 'Failed to upload avatar' });
+      setIsPortalOpen(newState);
+      if (newState) {
+        setPortalUrl(`${window.location.origin}/${dashId}`);
+        setMessage({ type: 'success', text: 'Portal opened!' });
+      } else {
+        setPortalUrl('');
+        setMessage({ type: 'success', text: 'Portal closed' });
+      }
     }
-
-    // Reset input
-    if (avatarInputRef.current) {
-      avatarInputRef.current.value = '';
-    }
-  };
-
-  // Handle avatar deletion
-  const handleDeleteAvatar = async () => {
-    if (!currentUsername) return;
-
-    setIsUploadingAvatar(true);
-    const deleted = await avatarAPI.deleteAvatar(currentUsername);
-    if (deleted) {
-      await universeAPI.updateProfile(currentUsername, { avatarUrl: null });
-      setEditAvatarUrl('');
-      setMessage({ type: 'success', text: 'Avatar removed' });
-    } else {
-      setMessage({ type: 'error', text: 'Failed to remove avatar' });
-    }
-    setIsUploadingAvatar(false);
-  };
-
-  // Generate new passphrase
-  const handleGeneratePassphrase = () => {
-    const newPassphrase = generatePassphrase();
-    setPassphrase(newPassphrase);
-    setMessage({ type: 'success', text: 'Passphrase generated! Save it somewhere safe.' });
-  };
-
-  // Save to cloud
-  const handleSaveToCloud = async () => {
-    if (!passphrase) {
-      setMessage({ type: 'error', text: 'Generate a passphrase first' });
-      return;
-    }
-    setIsSaving(true);
-    const success = await saveToCloud(passphrase);
-    setIsSaving(false);
-    setMessage(success
-      ? { type: 'success', text: 'Verse saved!' }
-      : { type: 'error', text: 'Save failed' }
-    );
-  };
-
-  // Restore from cloud
-  const handleRestoreFromCloud = async () => {
-    if (!passphraseInput) {
-      setMessage({ type: 'error', text: 'Enter your passphrase' });
-      return;
-    }
-    setIsRestoring(true);
-    const success = await restoreFromCloud(passphraseInput);
-    setIsRestoring(false);
-    setMessage(success
-      ? { type: 'success', text: 'Verse restored!' }
-      : { type: 'error', text: 'Invalid passphrase' }
-    );
-  };
-
-  // Open portal
-  const handleOpenPortal = async () => {
-    const url = await openPortal();
-    setPortalUrl(url);
-    setMessage({ type: 'success', text: 'Portal opened!' });
   };
 
   // Copy to clipboard
@@ -355,13 +145,6 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
       return () => clearTimeout(timer);
     }
   }, [message]);
-
-  // Show error from store
-  useEffect(() => {
-    if (error) {
-      setMessage({ type: 'error', text: error });
-    }
-  }, [error]);
 
   return (
     <AnimatePresence>
@@ -399,8 +182,8 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
                   </h2>
                   <p className="text-white/50 text-sm">
                     {isLoggedIn
-                      ? `voyomusic.com/${currentUsername}`
-                      : 'Claim your URL'}
+                      ? `voyomusic.com/${dashId}`
+                      : 'Sign in with DASH'}
                   </p>
                 </div>
               </div>
@@ -414,7 +197,6 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
                     { id: 'discover', icon: Search, label: 'Find' },
                     { id: 'profile', icon: Edit3, label: 'Profile' },
                     { id: 'portal', icon: Users, label: 'Portal' },
-                    { id: 'backup', icon: Shield, label: 'Backup' },
                   ]
                 : [{ id: 'auth', icon: LogIn, label: 'Login' }]
               ).map((tab) => (
@@ -465,7 +247,6 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
               {/* AUTH TAB */}
               {activeTab === 'auth' && (
                 <div className="space-y-6">
-                  {/* Welcome Message */}
                   <div className="text-center">
                     <h3 className="text-white text-lg font-bold mb-2">Welcome to VOYO Verse</h3>
                     <p className="text-white/50 text-sm">
@@ -473,58 +254,14 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
                     </p>
                   </div>
 
-                  {/* Sign in with DASH ID - Primary Action */}
-                  <div className="space-y-3 p-4 rounded-2xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-purple-500/30">
-                    <h4 className="text-white font-semibold text-sm flex items-center gap-2">
-                      <LogIn className="w-4 h-4" />
-                      Sign in with DASH ID
-                    </h4>
-
-                    {dashError && (
-                      <p className="text-red-400 text-xs bg-red-500/10 px-3 py-2 rounded-lg">{dashError}</p>
-                    )}
-
-                    {/* DASH ID Input */}
-                    <div className="relative">
-                      <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-purple-400/50" />
-                      <input
-                        type="text"
-                        value={dashId}
-                        onChange={(e) => setDashId(e.target.value.toUpperCase())}
-                        placeholder="Your DASH ID (e.g., 00AAD)"
-                        className="w-full pl-10 pr-4 py-3 rounded-xl bg-black/40 border border-purple-500/30 text-white placeholder:text-white/40 focus:outline-none focus:border-purple-500/60"
-                      />
-                    </div>
-
-                    {/* DASH PIN Input */}
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-purple-400/50" />
-                      <input
-                        type="password"
-                        value={dashPin}
-                        onChange={(e) => setDashPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                        placeholder="6-digit PIN"
-                        maxLength={6}
-                        className="w-full pl-10 pr-4 py-3 rounded-xl bg-black/40 border border-purple-500/30 text-white placeholder:text-white/40 tracking-[0.4em] text-center focus:outline-none focus:border-purple-500/60"
-                      />
-                    </div>
-
-                    {/* Sign In Button */}
-                    <button
-                      onClick={handleDashLogin}
-                      disabled={dashLoading || !dashId || dashPin.length < 4}
-                      className="w-full py-3.5 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
-                    >
-                      {dashLoading ? (
-                        <RefreshCw className="w-5 h-5 animate-spin" />
-                      ) : (
-                        <>
-                          <LogIn className="w-5 h-5" />
-                          Enter My Verse
-                        </>
-                      )}
-                    </button>
-                  </div>
+                  {/* Sign in with DASH ID */}
+                  <button
+                    onClick={openSignIn}
+                    className="w-full py-4 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold flex items-center justify-center gap-2"
+                  >
+                    <LogIn className="w-5 h-5" />
+                    Sign in with DASH ID
+                  </button>
 
                   {/* Divider */}
                   <div className="flex items-center gap-3">
@@ -539,12 +276,11 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
                     className="w-full py-4 rounded-xl bg-white/5 border border-white/20 text-white font-semibold flex items-center justify-center gap-2 hover:bg-white/10 transition-colors"
                   >
                     <UserPlus className="w-5 h-5" />
-                    Claim Your Username
+                    Get Your DASH ID
                   </button>
 
-                  {/* Info */}
                   <p className="text-center text-white/30 text-xs">
-                    One identity across VOYO, Daclub, Dash Edu & more
+                    One identity across VOYO, DashTV, Dash Edu & more
                   </p>
                 </div>
               )}
@@ -613,10 +349,10 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
                     <p className="text-white/50 text-xs mb-2">Your Verse URL</p>
                     <div className="flex items-center gap-2">
                       <code className="flex-1 text-white text-sm">
-                        voyomusic.com/{currentUsername}
+                        voyomusic.com/{dashId}
                       </code>
                       <button
-                        onClick={() => handleCopy(`${window.location.origin}/${currentUsername}`)}
+                        onClick={() => handleCopy(`${window.location.origin}/${dashId}`)}
                         className="p-2 rounded-lg bg-white/10 hover:bg-white/20"
                       >
                         {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4 text-white/70" />}
@@ -629,8 +365,8 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
               {/* DISCOVER TAB */}
               {activeTab === 'discover' && isLoggedIn && (
                 <UserSearch
-                  onSelectUser={(username) => {
-                    window.location.href = `/${username}`;
+                  onSelectUser={(selectedDashId) => {
+                    window.location.href = `/${selectedDashId}`;
                   }}
                 />
               )}
@@ -638,15 +374,6 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
               {/* PROFILE TAB */}
               {activeTab === 'profile' && isLoggedIn && (
                 <div className="space-y-4">
-                  {/* Hidden file input for avatar upload */}
-                  <input
-                    ref={avatarInputRef}
-                    type="file"
-                    accept="image/jpeg,image/png,image/gif,image/webp"
-                    onChange={handleAvatarChange}
-                    className="hidden"
-                  />
-
                   {/* Avatar */}
                   <div className="flex flex-col items-center">
                     <div className="relative mb-4">
@@ -660,45 +387,12 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
                       ) : (
                         <div className="w-24 h-24 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center ring-4 ring-purple-500/30">
                           <span className="text-3xl font-bold text-white">
-                            {editDisplayName?.charAt(0)?.toUpperCase() || currentUsername?.charAt(0)?.toUpperCase() || '?'}
+                            {editDisplayName?.charAt(0)?.toUpperCase() || dashId?.charAt(0)?.toUpperCase() || 'V'}
                           </span>
                         </div>
                       )}
-                      <button
-                        onClick={() => avatarInputRef.current?.click()}
-                        disabled={isUploadingAvatar}
-                        className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center border-2 border-[#1a1a2e] hover:bg-purple-600 transition-colors disabled:opacity-50"
-                      >
-                        {isUploadingAvatar ? (
-                          <RefreshCw className="w-4 h-4 text-white animate-spin" />
-                        ) : (
-                          <Camera className="w-4 h-4 text-white" />
-                        )}
-                      </button>
                     </div>
-                    <p className="text-white/40 text-sm">@{currentUsername}</p>
-
-                    {/* Avatar action buttons */}
-                    <div className="flex gap-2 mt-2">
-                      <button
-                        onClick={() => avatarInputRef.current?.click()}
-                        disabled={isUploadingAvatar}
-                        className="px-3 py-1.5 text-xs rounded-lg bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 disabled:opacity-50 flex items-center gap-1"
-                      >
-                        <Upload className="w-3 h-3" />
-                        Upload Photo
-                      </button>
-                      {editAvatarUrl && (
-                        <button
-                          onClick={handleDeleteAvatar}
-                          disabled={isUploadingAvatar}
-                          className="px-3 py-1.5 text-xs rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 disabled:opacity-50 flex items-center gap-1"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                          Remove
-                        </button>
-                      )}
-                    </div>
+                    <p className="text-white/40 text-sm">{voyoId}</p>
                   </div>
 
                   {/* Display Name */}
@@ -747,95 +441,13 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
                   {/* Preview Link */}
                   <div className="text-center">
                     <a
-                      href={`/${currentUsername}`}
+                      href={`/${dashId}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-purple-400 text-sm hover:underline"
                     >
                       Preview your public profile
                     </a>
-                  </div>
-                </div>
-              )}
-
-              {/* BACKUP TAB */}
-              {activeTab === 'backup' && isLoggedIn && (
-                <div className="space-y-4">
-                  {lastBackupAt && (
-                    <div className="p-3 rounded-xl bg-green-500/10 border border-green-500/20 text-green-400 text-sm">
-                      Last backup: {new Date(lastBackupAt).toLocaleDateString()}
-                    </div>
-                  )}
-
-                  {/* Download Backup */}
-                  <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-                    <h3 className="text-white font-semibold mb-2">Download Backup</h3>
-                    <p className="text-white/50 text-sm mb-3">Export your universe as JSON</p>
-                    <button
-                      onClick={downloadBackup}
-                      className="w-full py-3 rounded-xl bg-purple-500/20 border border-purple-500/30 text-purple-400 flex items-center justify-center gap-2 hover:bg-purple-500/30"
-                    >
-                      <Download className="w-5 h-5" />
-                      Download Verse
-                    </button>
-                  </div>
-
-                  {/* Passphrase Backup */}
-                  <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-                    <h3 className="text-white font-semibold mb-2">Passphrase Backup</h3>
-                    <p className="text-white/50 text-sm mb-3">Encrypt with memorable words</p>
-
-                    {!passphrase ? (
-                      <button
-                        onClick={handleGeneratePassphrase}
-                        className="w-full py-3 rounded-xl bg-white/5 border border-white/10 text-white/70 flex items-center justify-center gap-2 hover:bg-white/10"
-                      >
-                        <Key className="w-5 h-5" />
-                        Generate Passphrase
-                      </button>
-                    ) : (
-                      <div className="space-y-3">
-                        <div className="p-3 rounded-xl bg-black/30 border border-white/10">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-white/50 text-xs">YOUR PASSPHRASE</span>
-                            <button onClick={() => handleCopy(passphrase)} className="text-purple-400 hover:text-purple-300">
-                              {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                            </button>
-                          </div>
-                          <p className="text-white font-mono text-sm">{passphrase}</p>
-                        </div>
-
-                        <button
-                          onClick={handleSaveToCloud}
-                          disabled={isSaving}
-                          className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white flex items-center justify-center gap-2 disabled:opacity-50"
-                        >
-                          {isSaving ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Shield className="w-5 h-5" />}
-                          {isSaving ? 'Saving...' : 'Save to Cloud'}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Restore */}
-                  <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-                    <h3 className="text-white font-semibold mb-2">Restore Verse</h3>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={passphraseInput}
-                        onChange={(e) => setPassphraseInput(e.target.value)}
-                        placeholder="Enter passphrase..."
-                        className="flex-1 px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white placeholder:text-white/30 focus:outline-none focus:border-purple-500/50"
-                      />
-                      <button
-                        onClick={handleRestoreFromCloud}
-                        disabled={isRestoring}
-                        className="px-4 py-3 rounded-xl bg-white/10 text-white hover:bg-white/20 disabled:opacity-50"
-                      >
-                        {isRestoring ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
-                      </button>
-                    </div>
                   </div>
                 </div>
               )}
@@ -858,81 +470,43 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
                           <span className="text-green-400 font-semibold">Portal Open</span>
                         </div>
                         <button
-                          onClick={closePortal}
+                          onClick={handleTogglePortal}
                           className="px-3 py-1 rounded-lg bg-red-500/20 text-red-400 text-sm hover:bg-red-500/30"
                         >
                           Close
                         </button>
                       </div>
 
-                      {portalUrl && (
-                        <div className="p-3 rounded-xl bg-black/30 border border-white/10">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-white/50 text-xs">PORTAL LINK</span>
-                            <button onClick={() => handleCopy(portalUrl)} className="text-purple-400 hover:text-purple-300">
-                              {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                            </button>
-                          </div>
-                          <p className="text-white text-sm truncate">{portalUrl}</p>
+                      <div className="p-3 rounded-xl bg-black/30 border border-white/10">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-white/50 text-xs">PORTAL LINK</span>
+                          <button onClick={() => handleCopy(portalUrl)} className="text-purple-400 hover:text-purple-300">
+                            {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                          </button>
                         </div>
-                      )}
+                        <p className="text-white text-sm truncate">{portalUrl}</p>
+                      </div>
 
-                      {portalSession && (
-                        <div className="flex items-center gap-2 text-white/50 text-sm">
-                          <Users className="w-4 h-4" />
-                          <span>{portalSession.connectedPeers.length} listeners</span>
+                      {/* QR Code */}
+                      <div className="p-4 rounded-xl bg-white/5 border border-white/10 text-center">
+                        <div className="w-40 h-40 mx-auto bg-white rounded-xl overflow-hidden flex items-center justify-center p-2">
+                          <img
+                            src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(portalUrl)}&bgcolor=ffffff&color=7c3aed&format=svg`}
+                            alt="Portal QR Code"
+                            className="w-full h-full"
+                          />
                         </div>
-                      )}
+                        <p className="text-white/50 text-sm mt-2">Scan to join portal</p>
+                      </div>
                     </div>
                   ) : (
                     <button
-                      onClick={handleOpenPortal}
+                      onClick={handleTogglePortal}
                       className="w-full py-4 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white flex items-center justify-center gap-2"
                     >
                       <Globe className="w-5 h-5" />
                       Open My Portal
                     </button>
-                  )}
-
-                  {isPortalOpen && portalUrl && (
-                    <>
-                      <div className="p-4 rounded-xl bg-white/5 border border-white/10 text-center">
-                        <div className="w-40 h-40 mx-auto bg-white rounded-xl overflow-hidden flex items-center justify-center mb-3 p-2">
-                          <img
-                            src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(portalUrl)}&bgcolor=ffffff&color=7c3aed&format=svg`}
-                            alt="Portal QR Code"
-                            className="w-full h-full"
-                            onError={(e) => {
-                              // Fallback to icon if QR fails to load
-                              e.currentTarget.style.display = 'none';
-                              e.currentTarget.parentElement?.classList.add('qr-fallback');
-                            }}
-                          />
-                        </div>
-                        <p className="text-white/50 text-sm">Scan to join portal</p>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <button
-                          onClick={() => {
-                            if (navigator.share) {
-                              navigator.share({ title: 'Join my VOYO', text: 'Listen with me', url: portalUrl });
-                            }
-                          }}
-                          className="py-3 rounded-xl bg-white/5 border border-white/10 text-white/70 flex items-center justify-center gap-2 hover:bg-white/10"
-                        >
-                          <Smartphone className="w-4 h-4" />
-                          Share
-                        </button>
-                        <button
-                          onClick={() => handleCopy(portalUrl)}
-                          className="py-3 rounded-xl bg-white/5 border border-white/10 text-white/70 flex items-center justify-center gap-2 hover:bg-white/10"
-                        >
-                          <Copy className="w-4 h-4" />
-                          Copy Link
-                        </button>
-                      </div>
-                    </>
                   )}
                 </div>
               )}

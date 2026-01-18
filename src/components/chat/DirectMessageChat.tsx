@@ -11,7 +11,8 @@ import { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Send, ArrowLeft, Check, CheckCheck } from 'lucide-react';
 import { haptics } from '../../utils/haptics';
-import { directMessagesAPI, DirectMessage, isSupabaseConfigured } from '../../lib/supabase';
+import { messagesAPI, isConfigured as isSupabaseConfigured } from '../../lib/voyo-api';
+import type { DirectMessage } from '../../lib/voyo-api';
 
 // ============================================================================
 // TYPES
@@ -100,17 +101,17 @@ export const DirectMessageChat = memo(({
 
     const loadMessages = async () => {
       setIsLoading(true);
-      const msgs = await directMessagesAPI.getMessages(currentUser, otherUser);
+      const msgs = await messagesAPI.getMessages(currentUser, otherUser);
       setMessages(msgs);
       setIsLoading(false);
 
       // Mark messages from other user as read
-      await directMessagesAPI.markAsRead(otherUser, currentUser);
+      await messagesAPI.markAsRead(otherUser, currentUser);
     };
     loadMessages();
 
     // Subscribe to new messages in this conversation
-    subscriptionRef.current = directMessagesAPI.subscribeToConversation(
+    subscriptionRef.current = messagesAPI.subscribeToConversation(
       currentUser,
       otherUser,
       (newMessage) => {
@@ -120,14 +121,14 @@ export const DirectMessageChat = memo(({
         });
         // Mark as read if it's from the other user
         if (newMessage.from_user === otherUser.toLowerCase()) {
-          directMessagesAPI.markAsRead(otherUser, currentUser);
+          messagesAPI.markAsRead(otherUser, currentUser);
         }
       }
     );
 
     return () => {
       if (subscriptionRef.current) {
-        directMessagesAPI.unsubscribe(subscriptionRef.current);
+        messagesAPI.unsubscribe(subscriptionRef.current);
         subscriptionRef.current = null;
       }
     };
@@ -164,7 +165,7 @@ export const DirectMessageChat = memo(({
     setMessages((prev) => [...prev, optimisticMessage]);
 
     // Send to Supabase
-    const success = await directMessagesAPI.sendMessage(currentUser, otherUser, messageText);
+    const success = await messagesAPI.sendMessage(currentUser, otherUser, messageText);
 
     if (!success) {
       // Remove optimistic message on failure

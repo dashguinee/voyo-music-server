@@ -29,7 +29,7 @@ import { BoostSettings } from '../ui/BoostSettings';
 import { haptics, getReactionHaptic } from '../../utils/haptics';
 import { useReactionStore, ReactionCategory, initReactionSubscription } from '../../store/reactionStore';
 // TiviPlusCrossPromo moved to HomeFeed.tsx (classic homepage)
-import { useUniverseStore } from '../../store/universeStore';
+import { useAuth } from '../../hooks/useAuth';
 import { generateLyrics, getCurrentSegment, type EnrichedLyrics, type LyricsGenerationProgress } from '../../services/lyricsEngine';
 import { getVideoStreamUrl } from '../../services/piped';
 import { translateWord, type TranslationMatch } from '../../services/lexiconService';
@@ -3262,7 +3262,8 @@ const LyricsOverlay = memo(({ track, isOpen, onClose, currentTime }: LyricsOverl
   const [editOriginalText, setEditOriginalText] = useState('');
 
   // Get username from universe store
-  const username = useUniverseStore(state => state.currentUsername) || 'Anonymous';
+  const { dashId } = useAuth();
+  const username = dashId || 'Anonymous';
 
   // Handle word tap
   const handleWordTap = useCallback((word: string, position: { x: number; y: number }) => {
@@ -3586,7 +3587,7 @@ export const VoyoPortraitPlayer = ({
     recentReactions,
     fetchRecentReactions
   } = useReactionStore();
-  const { currentUsername, isLoggedIn } = useUniverseStore();
+  const { dashId, isLoggedIn } = useAuth();
 
   // Subscribe to realtime reactions on mount
   useEffect(() => {
@@ -3641,7 +3642,7 @@ export const VoyoPortraitPlayer = ({
     const trackPosition = Math.round(progress);
 
     await createReaction({
-      username: currentUsername || 'anonymous',
+      username: dashId || 'anonymous',
       trackId: currentTrack.id,
       trackTitle: currentTrack.title,
       trackArtist: currentTrack.artist,
@@ -3658,7 +3659,7 @@ export const VoyoPortraitPlayer = ({
     setSignalInputOpen(false);
     setSignalText('');
     setSignalCategory(null);
-  }, [currentTrack, signalCategory, signalText, currentUsername, createReaction]);
+  }, [currentTrack, signalCategory, signalText, dashId, createReaction]);
 
   // Get community punches for each category (short + has emoji)
   const getCommunityPunches = useCallback((category: ReactionCategory): CommunityPunch[] => {

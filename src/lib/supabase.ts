@@ -1,10 +1,14 @@
 /**
  * VOYO Supabase Client
  *
- * Smart KV with superpowers:
- * - PIN auth (no email/OAuth)
- * - Real-time portals
- * - Company analytics
+ * MIGRATION NOTE (Jan 2026):
+ * - Auth is now handled by DASH Command Center (hub.dasuperhub.com)
+ * - User identity is DASH ID, not username
+ * - DEPRECATED APIs: universeAPI, followsAPI, directMessagesAPI, activityFeedAPI
+ * - Use voyo-api.ts for new code: profileAPI, friendsAPI, messagesAPI
+ *
+ * This file is kept for data APIs that are still needed:
+ * - avatarAPI, portalChatAPI, lyricsAPI, videoIntelligenceAPI, feedContentAPI, playlistAPI
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -245,9 +249,11 @@ export const avatarAPI = {
 };
 
 // ============================================
-// UNIVERSE API
+// UNIVERSE API - DEPRECATED
+// Use DASH Command Center auth + voyo-api.ts profileAPI instead
 // ============================================
 
+/** @deprecated Use DASH Command Center auth instead */
 export const universeAPI = {
   /**
    * Check if username is available
@@ -520,9 +526,11 @@ export const universeAPI = {
 };
 
 // ============================================
-// FOLLOWS API
+// FOLLOWS API - DEPRECATED
+// Use Command Center friends via voyo-api.ts friendsAPI instead
 // ============================================
 
+/** @deprecated Use Command Center friends (voyo-api.ts friendsAPI) instead */
 export const followsAPI = {
   /**
    * Follow a user
@@ -718,9 +726,11 @@ export const portalChatAPI = {
 };
 
 // ============================================
-// DIRECT MESSAGES API - User to User DMs
+// DIRECT MESSAGES API - DEPRECATED
+// Use voyo-api.ts messagesAPI instead (uses dash_id instead of username)
 // ============================================
 
+/** @deprecated Use voyo-api.ts messagesAPI instead */
 export interface DirectMessage {
   id: string;
   from_user: string;
@@ -730,6 +740,7 @@ export interface DirectMessage {
   read_at: string | null;
 }
 
+/** @deprecated Use voyo-api.ts messagesAPI instead */
 export interface Conversation {
   username: string;
   displayName: string;
@@ -739,6 +750,7 @@ export interface Conversation {
   unreadCount: number;
 }
 
+/** @deprecated Use voyo-api.ts messagesAPI instead */
 export const directMessagesAPI = {
   /**
    * Get conversation list (people I've messaged or who messaged me)
@@ -1786,9 +1798,11 @@ export const playlistAPI = {
 };
 
 // ============================================
-// ACTIVITY FEED API - Social Activity Stream
+// ACTIVITY FEED API - DEPRECATED
+// Use voyo-api.ts activityAPI with Command Center friends instead
 // ============================================
 
+/** @deprecated Use voyo-api.ts activityAPI instead */
 export interface FriendActivity {
   username: string;
   displayName: string;
@@ -1798,6 +1812,7 @@ export interface FriendActivity {
   lastActive: string;
 }
 
+/** @deprecated Use voyo-api.ts activityAPI instead */
 export const activityFeedAPI = {
   /**
    * Get activity from people you follow (who's listening now)
