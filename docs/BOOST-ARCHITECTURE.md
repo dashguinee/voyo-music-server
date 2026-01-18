@@ -1,230 +1,434 @@
-# VOYO BOOST Architecture
+# VOYO BOOST Architecture v2
 
 ## Philosophy: Collective Intelligence Storage
 
-Every user contributes to the collective library. The more people play and boost, the richer the shared R2 cache becomes. Users benefit from each other's listening.
+Every user contributes to the collective library. The more people play and boost, the richer the shared R2 cache becomes.
 
 ---
 
-## Core Concept
+## CURRENT ARCHITECTURE (What Exists Now)
+
+### System Components
 
 ```
-BOOST = Download to Device + Upload to R2 + Audio Enhancement
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           VOYO MUSIC SYSTEM                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                   │
+│  │   SUPABASE   │    │  CLOUDFLARE  │    │    FLY.IO    │                   │
+│  │   Database   │    │   R2 + Edge  │    │   API Server │                   │
+│  │   324K tracks│    │   Worker     │    │              │                   │
+│  └──────────────┘    └──────────────┘    └──────────────┘                   │
+│         │                   │                   │                            │
+│         │ Discovery         │ Audio Stream      │ Search/Download            │
+│         ▼                   ▼                   ▼                            │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                         BROWSER CLIENT                               │    │
+│  │                                                                      │    │
+│  │   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐                 │    │
+│  │   │ AudioPlayer │  │  YouTube    │  │  IndexedDB  │                 │    │
+│  │   │ (Web Audio) │  │  Iframe     │  │  (Cache)    │                 │    │
+│  │   └─────────────┘  └─────────────┘  └─────────────┘                 │    │
+│  │         │                 │                │                         │    │
+│  │         └────────┬────────┴────────┬───────┘                         │    │
+│  │                  ▼                 ▼                                 │    │
+│  │            ┌──────────┐     ┌──────────┐                            │    │
+│  │            │ Speakers │     │  Screen  │                            │    │
+│  │            └──────────┘     └──────────┘                            │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
-User plays track → Collective grows
-User boosts track → Prioritized + Offline ready
+### Data Sources
+
+| Source | Purpose | Size | URL |
+|--------|---------|------|-----|
+| **Supabase** | Track metadata, discovery | 324K tracks | `anmgyxhnyhbyxzpjhxgx.supabase.co` |
+| **R2 Edge Worker** | Audio streaming, thumbnails | ~41K cached | `voyo-edge.dash-webtv.workers.dev` |
+| **Fly.io API** | Search, download proxy | N/A | `voyo-music-api.fly.dev` |
+| **YouTube** | Fallback video/audio | Unlimited | `youtube.com/embed` |
+| **IndexedDB** | Local cache (boosted) | User device | Browser local |
+
+### Current Playback Flow (AudioPlayer.tsx)
+
+```
+User plays track
+       │
+       ▼
+┌─────────────────────────────┐
+│ 1. Check IndexedDB cache    │ ← audioEngine.getBestAudioUrl()
+│    (user's boosted tracks)  │
+└─────────────────────────────┘
+       │
+       ├── HIT → Play from cache + Apply EQ enhancement
+       │         playbackSource = 'cached'
+       │
+       └── MISS ↓
+              │
+              ▼
+┌─────────────────────────────┐
+│ 2. Play via YouTube Iframe  │ ← No R2 check currently!
+│    playbackSource = 'iframe'│
+└─────────────────────────────┘
+       │
+       └── Background: Start cacheTrack() download
+```
+
+**ISSUE:** Current flow doesn't check R2 before falling back to iframe!
+
+### Current R2 Check (api.ts - NOT USED in main flow)
+
+```typescript
+// This exists but isn't called in main playback!
+async function getAudioStream(videoId: string): Promise<string> {
+  // 1. Check R2 via Edge Worker
+  const r2Result = await checkR2Cache(youtubeId);
+
+  if (r2Result.exists && r2Result.url) {
+    return r2Result.url;  // R2 stream
+  }
+
+  return `iframe:${youtubeId}`;  // Fallback
+}
+```
+
+### Current Boost Flow (downloadStore.ts)
+
+```
+User clicks Boost button
+       │
+       ▼
+┌─────────────────────────────┐
+│ boostTrack()                │
+│ - Download from Fly.io API  │
+│ - Save to IndexedDB         │
+│ - Track as 'boosted' quality│
+└─────────────────────────────┘
+       │
+       ▼
+Track available offline + enhanced EQ
+```
+
+**ISSUE:** Doesn't upload to R2 (collective storage missing!)
+
+### Current Auto-Boost (downloadStore.ts)
+
+```typescript
+// Settings
+autoBoostEnabled: boolean     // User toggle
+manualBoostCount: number      // Tracks how many manual boosts
+showAutoBoostPrompt: boolean  // Show after 3 manual boosts
+
+// Trigger: When track finishes playing (100%)
+// Action: Queue for background download
+```
+
+**ISSUE:** Triggers at 100% (should be 50%)
+
+### Audio Enhancement Chain (AudioPlayer.tsx)
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    WEB AUDIO API ENHANCEMENT                         │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  Audio Source (IndexedDB blob OR R2 stream)                         │
+│       │                                                              │
+│       ▼                                                              │
+│  createMediaElementSource(audioRef)                                 │
+│       │                                                              │
+│       ▼                                                              │
+│  ┌─────────┐   ┌─────────┐   ┌─────────┐   ┌─────────┐             │
+│  │SubBass  │──▶│ Bass    │──▶│ Warmth  │──▶│Harmonic │             │
+│  │lowshelf │   │lowshelf │   │peaking  │   │shaper   │             │
+│  └─────────┘   └─────────┘   └─────────┘   └─────────┘             │
+│       │                                                              │
+│       ▼                                                              │
+│  ┌─────────┐   ┌─────────┐   ┌─────────┐   ┌──────────┐            │
+│  │Presence │──▶│  Air    │──▶│  Gain   │──▶│Compressor│──▶ Output  │
+│  │peaking  │   │highshelf│   │         │   │          │            │
+│  └─────────┘   └─────────┘   └─────────┘   └──────────┘            │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Works on:** Any audio through `<audio>` element (R2, IndexedDB, direct URL)
+**Does NOT work on:** YouTube iframe (sandboxed)
+
+### Current Presets (4 presets)
+
+| Preset | Character | Available |
+|--------|-----------|-----------|
+| Warm (boosted) | Bass boost | Always |
+| Calm | Relaxed | Always |
+| VOYEX | Full experience | Always |
+| Xtreme | Max bass | Always |
+
+### YouTube Iframe Component (YouTubeIframe.tsx)
+
+```
+Single iframe - NEVER unmounts
+       │
+       ├── playbackSource === 'iframe' → UNMUTED (handles audio)
+       │
+       └── playbackSource === 'cached' → MUTED (video only visual)
+
+Video display modes:
+- hidden: offscreen (audio only streaming)
+- portrait: 208x208 overlay on BigCenterCard
+- landscape: fullscreen
 ```
 
 ---
 
-## Playback Decision Flow
+## TARGET ARCHITECTURE (What We Want)
+
+### New Playback Flow
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     USER PLAYS TRACK                         │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-                    ┌─────────────────┐
-                    │ Check R2 Cache  │
-                    │ (metadata API)  │
-                    └─────────────────┘
-                              │
-              ┌───────────────┼───────────────┐
-              ▼               ▼               ▼
-         ┌────────┐     ┌──────────┐    ┌──────────┐
-         │ EXISTS │     │ EXISTS   │    │ NOT ON   │
-         │ ≥128kb │     │ <128kbps │    │ R2       │
-         └────────┘     └──────────┘    └──────────┘
-              │               │               │
-              ▼               ▼               ▼
-         ┌────────┐     ┌──────────┐    ┌──────────┐
-         │Play R2 │     │Play YouTube│   │Play YouTube│
-         │(better)│     │+ Re-download│  │+ Download │
-         └────────┘     │to R2 (BG)  │   │to R2 (BG) │
-                        └──────────┘    └──────────┘
+User plays track
+       │
+       ▼
+┌─────────────────────────────┐
+│ 1. Check IndexedDB cache    │
+│    (user's local boost)     │
+└─────────────────────────────┘
+       │
+       ├── HIT → Play from cache + EQ
+       │         playbackSource = 'cached'
+       │
+       └── MISS ↓
+              │
+              ▼
+┌─────────────────────────────┐
+│ 2. Check R2 Edge Worker     │ ← NEW! Check collective cache
+│    GET /exists/{trackId}    │
+└─────────────────────────────┘
+       │
+       ├── HIT + quality ≥ 128kbps
+       │   │
+       │   └── Play R2 stream + EQ
+       │       playbackSource = 'r2'
+       │
+       ├── HIT + quality < 128kbps (old 64kbps)
+       │   │
+       │   └── Play YouTube iframe
+       │       + Background: Re-download to R2 (upgrade)
+       │
+       └── MISS ↓
+              │
+              ▼
+┌─────────────────────────────┐
+│ 3. Play YouTube Iframe      │
+│    + Background: Download   │
+│      to IndexedDB + R2      │
+└─────────────────────────────┘
 ```
 
-**Quality Threshold:** 128kbps (YouTube iframe typical quality)
-- R2 ≥ 128kbps → Use R2 (superior)
-- R2 < 128kbps → Use YouTube + upgrade R2 in background
+### Collective Storage Flow
 
----
+```
+User plays track (any source)
+       │
+       ▼
+┌─────────────────────────────┐
+│ Track plays ≥ 50%           │ ← Changed from 100%
+│ (genuine interest)          │
+└─────────────────────────────┘
+       │
+       ▼
+┌─────────────────────────────┐
+│ Auto-Boost triggers:        │
+│ 1. Download to IndexedDB    │ ← User's device
+│ 2. Upload to R2             │ ← Collective (NEW!)
+└─────────────────────────────┘
+       │
+       ▼
+Next user gets instant R2 stream
+```
 
-## Auto-Boost Feature
-
-**Trigger:** User plays ≥50% of track (shows genuine interest)
-
-**Action:**
-1. Background download to user's device (IndexedDB)
-2. If not on R2 or low quality → trigger R2 upload job
-3. Track ready for instant replay next time
-
-**Settings:**
-- `autoBoostEnabled: true/false`
-- `autoBoostThreshold: 0.5` (50% of track)
-- `downloadSetting: 'always' | 'wifi-only' | 'never'`
-
----
-
-## Manual Boost Button
+### Manual Boost Button Behavior
 
 | Current State | Click Action | Result |
 |---------------|--------------|--------|
-| Not boosted | Tap | Start download (device + R2 queue) |
+| Not boosted | Tap | Download to IndexedDB + queue R2 upload |
 | Downloading | Tap | Show progress |
-| Boosted | Quick tap | DJ Rewind - play from start |
-| Boosted | Long press | Options menu |
+| Boosted | Quick tap | **DJ Rewind** - play from 0:00 |
+| Boosted | Long press | Options (delete, info) |
 
-**DJ Rewind:** Fast tap on boosted track = instant restart from 0:00
-(Like a DJ quick-cueing a track)
-
----
-
-## Video Mode Behavior
+### Video Mode Logic
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     VIDEO MODE ACTIVE                        │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                     VIDEO MODE ACTIVE                            │
+└─────────────────────────────────────────────────────────────────┘
                               │
-              ┌───────────────┴───────────────┐
-              ▼                               ▼
-      ┌──────────────┐               ┌──────────────┐
-      │ Track BOOSTED │               │ Track NOT    │
-      │ (on device)   │               │ BOOSTED      │
-      └──────────────┘               └──────────────┘
-              │                               │
-              ▼                               ▼
-      ┌──────────────┐               ┌──────────────┐
-      │ Play R2 audio│               │ Play YouTube │
-      │ + Show video │               │ iframe       │
-      │ (muted)      │               │ (audio+video)│
-      └──────────────┘               └──────────────┘
+              ┌───────────────┼───────────────┐
+              ▼               ▼               ▼
+      ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+      │ IndexedDB    │ │ R2 cached    │ │ Not cached   │
+      │ boosted      │ │ (collective) │ │              │
+      └──────────────┘ └──────────────┘ └──────────────┘
+              │               │               │
+              ▼               ▼               ▼
+      ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+      │ Cache audio  │ │ R2 audio     │ │ YouTube      │
+      │ + muted video│ │ + muted video│ │ iframe       │
+      │ (enhanced)   │ │ (enhanced)   │ │ (no enhance) │
+      └──────────────┘ └──────────────┘ └──────────────┘
 ```
 
-**Why mute video when boosted?**
-- R2 audio is higher quality
-- Sync issues between R2 audio and YouTube video avoided
-- Video becomes visual-only accompaniment
+### Target Presets (3 presets)
 
----
-
-## Audio Enhancement Presets
-
-**3 Presets (remove Xtreme):**
-
-| Preset | Character | When Available |
-|--------|-----------|----------------|
+| Preset | Character | Available |
+|--------|-----------|-----------|
 | **Warm** | Bass boost, smooth | Always |
 | **Calm** | Relaxed, reduced bass | Always |
-| **VOYEX** | Full experience, premium | Boosted tracks only |
+| **VOYEX** | Full experience, premium | **Boosted tracks only** |
 
-**VOYEX Restriction:**
-- Only available when track is boosted (high quality source)
-- Grayed out / locked icon for non-boosted tracks
-- Tooltip: "Boost this track to unlock VOYEX"
-
-**Enhancement Chain:**
-```
-Audio Source → SubBass → Bass → Warmth → Harmonic → Presence → Air → Gain → Compressor → Output
-```
-
----
-
-## R2 Quality Metadata
-
-Each track on R2 should store:
+### R2 Quality Metadata (NEW)
 
 ```typescript
-interface R2TrackMetadata {
-  trackId: string;
-  bitrate: number;        // e.g., 128, 192, 256, 320
-  format: string;         // 'mp3' | 'opus' | 'aac'
-  duration: number;       // seconds
-  uploadedAt: string;     // ISO date
-  uploadedBy?: string;    // anonymous user hash
-  playCount: number;      // for priority
+// Edge Worker should return this on /exists/:trackId
+interface R2TrackInfo {
+  exists: boolean;
+  bitrate: number;      // 64, 128, 192, 256, 320
+  format: string;       // mp3, opus, aac
+  duration: number;
+  uploadedAt: string;
+}
+
+// Quality threshold
+const QUALITY_THRESHOLD = 128; // kbps
+
+// Decision
+if (r2Info.bitrate >= QUALITY_THRESHOLD) {
+  // Use R2 - it's good quality
+} else {
+  // Use YouTube + trigger background upgrade
 }
 ```
 
 ---
 
-## Background Download Priority Queue
+## IMPLEMENTATION GAPS
 
-```
-Priority Score = playCount × recencyBoost × qualityNeed
+### Gap 1: R2 Check Missing in Main Flow
 
-Where:
-- playCount: How often this track is played globally
-- recencyBoost: Recent plays weighted higher
-- qualityNeed: 2x if replacing <128kbps, 1x if new
-```
+**Current:** AudioPlayer checks IndexedDB → falls back to iframe
+**Target:** AudioPlayer checks IndexedDB → R2 → iframe
 
-**Queue Processing:**
-- Process during idle time
-- Respect rate limits
-- WiFi-only option for users
+**File:** `src/components/AudioPlayer.tsx` line ~280
+**Fix:** Call `getAudioStream()` from `api.ts` before iframe fallback
+
+### Gap 2: No R2 Upload on Boost
+
+**Current:** Boost only saves to IndexedDB
+**Target:** Boost saves to IndexedDB + uploads to R2
+
+**File:** `src/store/downloadStore.ts`
+**Fix:** Add R2 upload call after successful IndexedDB save
+
+### Gap 3: Auto-Boost at 100%
+
+**Current:** Triggers when track finishes
+**Target:** Trigger at 50% progress
+
+**File:** `src/store/downloadStore.ts` or `AudioPlayer.tsx`
+**Fix:** Add progress listener, trigger at 0.5
+
+### Gap 4: No Quality Detection
+
+**Current:** No bitrate info from R2
+**Target:** Edge Worker returns bitrate, client decides
+
+**File:** Edge Worker + `src/services/api.ts`
+**Fix:** Update `/exists` endpoint, update `checkR2Cache()`
+
+### Gap 5: VOYEX Available Always
+
+**Current:** All 4 presets always available
+**Target:** VOYEX locked to boosted tracks, remove Xtreme
+
+**File:** `src/components/ui/BoostSettings.tsx`
+**Fix:** Conditional rendering based on track boost status
+
+### Gap 6: Lottie Animations Missing
+
+**Current:** Lucide icons only
+**Target:** Lottie for Calm (Sunrise), etc.
+
+**Files:**
+- `src/components/ui/BoostSettings.tsx`
+- `public/lottie/` (add sunrise.json)
 
 ---
 
-## Implementation Checklist
+## FILE REFERENCE
 
-### Phase 1: Playback Flow
-- [ ] R2 metadata API endpoint (check if track exists + quality)
-- [ ] Quality-based playback decision in AudioPlayer
-- [ ] Background download trigger at 50% play
+| File | Purpose | Key Functions |
+|------|---------|---------------|
+| `AudioPlayer.tsx` | Main playback, EQ | `loadTrack()`, `setupAudioEnhancement()` |
+| `YouTubeIframe.tsx` | Video/fallback audio | Single iframe, never unmounts |
+| `downloadStore.ts` | Boost state, IndexedDB | `boostTrack()`, `autoBoostEnabled` |
+| `downloadManager.ts` | IndexedDB operations | `downloadTrack()`, `isTrackCached()` |
+| `mediaCache.ts` | Temp memory cache | `precacheAhead()`, `cacheTrack()` |
+| `api.ts` | R2/API calls | `checkR2Cache()`, `getAudioStream()` |
+| `databaseDiscovery.ts` | Supabase 324K tracks | `getHotTracks()`, `searchTracks()` |
+| `BoostSettings.tsx` | Settings UI | Presets, auto-boost toggle |
+| `BoostButton.tsx` | Boost button UI | Click handlers, progress |
 
-### Phase 2: Boost Button
-- [ ] Remove Xtreme preset (keep Warm, Calm, VOYEX)
-- [ ] VOYEX locked for non-boosted tracks
+---
+
+## URLS & ENDPOINTS
+
+| Service | URL | Purpose |
+|---------|-----|---------|
+| R2 Edge Worker | `voyo-edge.dash-webtv.workers.dev` | Audio streaming, existence check |
+| Fly.io API | `voyo-music-api.fly.dev` | Search, download proxy |
+| Supabase | `anmgyxhnyhbyxzpjhxgx.supabase.co` | 324K track database |
+
+### Edge Worker Endpoints
+
+```
+GET  /exists/{trackId}     → { exists, url, bitrate? }
+GET  /audio/{trackId}?q=   → Audio stream
+GET  /thumb/{trackId}?q=   → Thumbnail
+POST /upload/{trackId}     → Upload to R2 (NEW - needed)
+```
+
+---
+
+## IMPLEMENTATION PHASES
+
+### Phase 1: Fix Playback Flow (Priority)
+- [ ] AudioPlayer: Check R2 before iframe fallback
+- [ ] Add `playbackSource = 'r2'` state
+- [ ] Apply EQ enhancement to R2 streams
+
+### Phase 2: Auto-Boost at 50%
+- [ ] Progress listener in AudioPlayer
+- [ ] Trigger download at 0.5 threshold
+- [ ] Respect `autoBoostEnabled` and `downloadSetting`
+
+### Phase 3: Presets & UI
+- [ ] Remove Xtreme preset
+- [ ] VOYEX locked to boosted tracks
+- [ ] Add Lottie animations (Sunrise for Calm)
 - [ ] DJ Rewind on boosted track tap
-- [ ] Progress indicator during download
 
-### Phase 3: Video Mode
-- [ ] Detect boosted state in video mode
-- [ ] R2 audio + muted video for boosted tracks
-- [ ] Seamless audio source switching
+### Phase 4: Collective Storage
+- [ ] Edge Worker: POST /upload endpoint
+- [ ] downloadStore: Upload after IndexedDB save
+- [ ] Quality metadata in R2
 
-### Phase 4: Collective Growth
-- [ ] R2 upload job queue (backend)
-- [ ] Quality upgrade detection (replace 64kbps)
-- [ ] Priority queue based on play count
-- [ ] Cleanup old low-quality uploads
-
-### Phase 5: Settings UI
-- [ ] Auto-boost toggle (50% threshold)
-- [ ] Download setting: Always / WiFi-only / Never
-- [ ] Clear cache option
-- [ ] Storage usage display
-- [ ] Add Lottie animations (Sunrise for Calm, etc.)
+### Phase 5: Quality Upgrade
+- [ ] Edge Worker: Return bitrate in /exists
+- [ ] Client: Compare bitrate to threshold
+- [ ] Background upgrade for low-quality R2 tracks
 
 ---
 
-## Current State vs Target
-
-| Feature | Current | Target |
-|---------|---------|--------|
-| Auto-boost trigger | 100% play? | 50% play |
-| Presets | 4 (Warm, Calm, VOYEX, Xtreme) | 3 (remove Xtreme) |
-| VOYEX availability | Always | Boosted only |
-| Quality detection | None | Check R2 bitrate |
-| Background upgrade | None | Replace <128kbps |
-| Video mode | ? | R2 audio + muted video |
-| Lottie animations | None in settings | Add for presets |
-
----
-
-## Files to Modify
-
-1. `src/components/AudioPlayer.tsx` - Playback decision flow
-2. `src/components/ui/BoostSettings.tsx` - Remove Xtreme, add Lotties
-3. `src/components/ui/BoostButton.tsx` - DJ Rewind, VOYEX lock
-4. `src/store/downloadStore.ts` - Auto-boost threshold
-5. `src/services/mediaCache.ts` - Quality detection
-6. Backend: R2 metadata API + upload queue
-
----
-
-*Document created: 2026-01-18*
-*Status: Architecture ready for implementation*
+*Document updated: 2026-01-18*
+*Status: Current vs Target architecture documented*
