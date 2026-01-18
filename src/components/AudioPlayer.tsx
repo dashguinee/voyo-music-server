@@ -38,26 +38,26 @@ const BOOST_PRESETS = {
   boosted: {
     gain: 1.15, bassFreq: 80, bassGain: 5, presenceFreq: 3000, presenceGain: 2,
     subBassFreq: 40, subBassGain: 2, warmthFreq: 250, warmthGain: 1,
-    airFreq: 10000, airGain: 1, harmonicAmount: 0,
+    airFreq: 10000, airGain: 1, harmonicAmount: 0, stereoWidth: 0,
     compressor: { threshold: -12, knee: 10, ratio: 4, attack: 0.003, release: 0.25 }
   },
   calm: {
     gain: 1.05, bassFreq: 80, bassGain: 3, presenceFreq: 3000, presenceGain: 1,
     subBassFreq: 50, subBassGain: 1, warmthFreq: 250, warmthGain: 2,
-    airFreq: 8000, airGain: 2, harmonicAmount: 0,
+    airFreq: 8000, airGain: 2, harmonicAmount: 0, stereoWidth: 0,
     compressor: { threshold: -15, knee: 15, ratio: 3, attack: 0.005, release: 0.3 }
   },
   voyex: {
-    // FULL JUICE NO LIMITS - Maximum boost, zero compression
-    gain: 1.4, bassFreq: 80, bassGain: 9, presenceFreq: 3000, presenceGain: 4,
-    subBassFreq: 40, subBassGain: 8, warmthFreq: 250, warmthGain: 2,
-    airFreq: 12000, airGain: 4, harmonicAmount: 20,
-    compressor: { threshold: 0, knee: 40, ratio: 1, attack: 1, release: 1 } // Bypassed
+    // MIND-BLOWING: Stereo width + deep bass + crystal highs + punch
+    gain: 1.6, bassFreq: 85, bassGain: 10, presenceFreq: 3000, presenceGain: 5,
+    subBassFreq: 45, subBassGain: 8, warmthFreq: 350, warmthGain: -3, // CUT mud hard
+    airFreq: 11000, airGain: 6, harmonicAmount: 15, stereoWidth: 0.025, // 25ms stereo delay
+    compressor: { threshold: -8, knee: 4, ratio: 5, attack: 0.002, release: 0.1 } // Aggressive punch
   },
   xtreme: {
     gain: 1.35, bassFreq: 80, bassGain: 10, presenceFreq: 3000, presenceGain: 4,
     subBassFreq: 40, subBassGain: 7, warmthFreq: 250, warmthGain: 1,
-    airFreq: 10000, airGain: 2, harmonicAmount: 20,
+    airFreq: 10000, airGain: 2, harmonicAmount: 20, stereoWidth: 0,
     compressor: { threshold: -4, knee: 0, ratio: 20, attack: 0.001, release: 0.1 }
   }
 };
@@ -77,6 +77,9 @@ export const AudioPlayer = () => {
   const airFilterRef = useRef<BiquadFilterNode | null>(null);
   const harmonicExciterRef = useRef<WaveShaperNode | null>(null);
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const stereoDelayRef = useRef<DelayNode | null>(null);
+  const stereoSplitterRef = useRef<ChannelSplitterNode | null>(null);
+  const stereoMergerRef = useRef<ChannelMergerNode | null>(null);
   const audioEnhancedRef = useRef<boolean>(false);
   const currentProfileRef = useRef<BoostPreset>('boosted');
 
@@ -259,7 +262,7 @@ export const AudioPlayer = () => {
       comp.release.value = settings.compressor.release;
       compressorRef.current = comp;
 
-      // Connect chain
+      // Connect EQ chain
       source.connect(subBass);
       subBass.connect(bass);
       bass.connect(warmth);
@@ -267,8 +270,34 @@ export const AudioPlayer = () => {
       harmonic.connect(presence);
       presence.connect(air);
       air.connect(gain);
-      gain.connect(comp);
-      comp.connect(ctx.destination);
+
+      // Stereo widening (Haas effect) - only for VOYEX
+      if (settings.stereoWidth > 0) {
+        const splitter = ctx.createChannelSplitter(2);
+        const merger = ctx.createChannelMerger(2);
+        const delayL = ctx.createDelay(0.1);
+        const delayR = ctx.createDelay(0.1);
+
+        delayL.delayTime.value = 0; // Left channel: no delay
+        delayR.delayTime.value = settings.stereoWidth; // Right channel: slight delay
+
+        stereoSplitterRef.current = splitter;
+        stereoMergerRef.current = merger;
+        stereoDelayRef.current = delayR;
+
+        // gain → splitter → delays → merger → comp → destination
+        gain.connect(splitter);
+        splitter.connect(delayL, 0); // Left channel
+        splitter.connect(delayR, 1); // Right channel
+        delayL.connect(merger, 0, 0); // Left to left
+        delayR.connect(merger, 0, 1); // Right to right
+        merger.connect(comp);
+        comp.connect(ctx.destination);
+      } else {
+        // Standard chain without stereo widening
+        gain.connect(comp);
+        comp.connect(ctx.destination);
+      }
 
       audioEnhancedRef.current = true;
       console.log(`🎵 [VOYO] Boost EQ active: ${preset.toUpperCase()}`);
