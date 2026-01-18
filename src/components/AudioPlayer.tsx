@@ -36,26 +36,31 @@ export type BoostPreset = 'boosted' | 'calm' | 'voyex' | 'xtreme';
 // Audio boost presets
 const BOOST_PRESETS = {
   boosted: {
-    gain: 1.15, bassFreq: 80, bassGain: 5, presenceFreq: 3000, presenceGain: 2,
+    gain: 1.15, highPassFreq: 0, bassFreq: 80, bassGain: 5, presenceFreq: 3000, presenceGain: 2,
     subBassFreq: 40, subBassGain: 2, warmthFreq: 250, warmthGain: 1,
     airFreq: 10000, airGain: 1, harmonicAmount: 0, stereoWidth: 0,
     compressor: { threshold: -12, knee: 10, ratio: 4, attack: 0.003, release: 0.25 }
   },
   calm: {
-    gain: 1.05, bassFreq: 80, bassGain: 3, presenceFreq: 3000, presenceGain: 1,
+    gain: 1.05, highPassFreq: 0, bassFreq: 80, bassGain: 3, presenceFreq: 3000, presenceGain: 1,
     subBassFreq: 50, subBassGain: 1, warmthFreq: 250, warmthGain: 2,
     airFreq: 8000, airGain: 2, harmonicAmount: 0, stereoWidth: 0,
     compressor: { threshold: -15, knee: 15, ratio: 3, attack: 0.005, release: 0.3 }
   },
   voyex: {
-    // MIND-BLOWING: Stereo width + deep bass + crystal highs + punch
-    gain: 1.6, bassFreq: 85, bassGain: 10, presenceFreq: 3000, presenceGain: 5,
-    subBassFreq: 45, subBassGain: 8, warmthFreq: 350, warmthGain: -3, // CUT mud hard
-    airFreq: 11000, airGain: 6, harmonicAmount: 15, stereoWidth: 0.025, // 25ms stereo delay
-    compressor: { threshold: -8, knee: 4, ratio: 5, attack: 0.002, release: 0.1 } // Aggressive punch
+    // AUDIOPHILE: Clean, dynamic, surgical precision
+    gain: 1.35, highPassFreq: 28, // Cut rumble below 28Hz
+    bassFreq: 80, bassGain: 6, // Tight punch, not boom
+    presenceFreq: 3200, presenceGain: 3, // Vocal clarity
+    subBassFreq: 55, subBassGain: 4, // Controlled sub, not mud
+    warmthFreq: 280, warmthGain: -4, // CUT the mud hard
+    airFreq: 12000, airGain: 4, // Sparkle
+    harmonicAmount: 5, // Subtle warmth only
+    stereoWidth: 0.012, // 12ms - subtle width, no phase issues
+    compressor: { threshold: -6, knee: 12, ratio: 2, attack: 0.01, release: 0.2 } // Transparent
   },
   xtreme: {
-    gain: 1.35, bassFreq: 80, bassGain: 10, presenceFreq: 3000, presenceGain: 4,
+    gain: 1.35, highPassFreq: 0, bassFreq: 80, bassGain: 10, presenceFreq: 3000, presenceGain: 4,
     subBassFreq: 40, subBassGain: 7, warmthFreq: 250, warmthGain: 1,
     airFreq: 10000, airGain: 2, harmonicAmount: 20, stereoWidth: 0,
     compressor: { threshold: -4, knee: 0, ratio: 20, attack: 0.001, release: 0.1 }
@@ -80,6 +85,7 @@ export const AudioPlayer = () => {
   const stereoDelayRef = useRef<DelayNode | null>(null);
   const stereoSplitterRef = useRef<ChannelSplitterNode | null>(null);
   const stereoMergerRef = useRef<ChannelMergerNode | null>(null);
+  const highPassFilterRef = useRef<BiquadFilterNode | null>(null);
   const audioEnhancedRef = useRef<boolean>(false);
   const currentProfileRef = useRef<BoostPreset>('boosted');
 
@@ -222,6 +228,13 @@ export const AudioPlayer = () => {
       const source = ctx.createMediaElementSource(audioRef.current);
       sourceNodeRef.current = source;
 
+      // High-pass filter to cut rumble (audiophile clean bass)
+      const highPass = ctx.createBiquadFilter();
+      highPass.type = 'highpass';
+      highPass.frequency.value = settings.highPassFreq || 20; // Default 20Hz (inaudible), VOYEX uses 28Hz
+      highPass.Q.value = 0.7; // Butterworth response - clean, no resonance
+      highPassFilterRef.current = highPass;
+
       // EQ Chain
       const subBass = ctx.createBiquadFilter();
       subBass.type = 'lowshelf'; subBass.frequency.value = settings.subBassFreq; subBass.gain.value = settings.subBassGain;
@@ -262,8 +275,9 @@ export const AudioPlayer = () => {
       comp.release.value = settings.compressor.release;
       compressorRef.current = comp;
 
-      // Connect EQ chain
-      source.connect(subBass);
+      // Connect EQ chain: source → highPass → subBass → bass → ...
+      source.connect(highPass);
+      highPass.connect(subBass);
       subBass.connect(bass);
       bass.connect(warmth);
       warmth.connect(harmonic);
