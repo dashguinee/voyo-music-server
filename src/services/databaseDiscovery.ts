@@ -57,25 +57,35 @@ export interface DiscoveryResult {
 // ============================================
 
 const NON_MUSIC_KEYWORDS = [
-  'news', 'live:', 'breaking', 'trump', 'president', 'election',
+  // News & Politics
+  'news', 'live:', 'breaking', 'trump', 'biden', 'president', 'election',
+  'politics', 'political', 'congress', 'senate', 'white house', 'capitol',
+  'maga', 'democrat', 'republican', 'cnn', 'fox news', 'msnbc',
+  // Non-music content
   'warning', 'alert', 'podcast', 'interview', 'speech', 'conference',
   'urgent', 'update:', 'reaction', 'drama', 'beef', 'diss',
-  'full movie', 'documentary', 'lecture', 'sermon', 'preaching'
+  'full movie', 'documentary', 'lecture', 'sermon', 'preaching',
+  'asmr', 'meditation guide', 'sleep sounds', 'white noise',
+  // Clickbait
+  'you wont believe', 'shocking', 'exposed', 'leaked', 'scandal',
 ];
 
 /**
  * Check if a track is likely non-music content
+ * Checks BOTH title and artist for better coverage
  */
-function isNonMusic(title: string): boolean {
+function isNonMusic(title: string, artist?: string): boolean {
   const lowerTitle = title.toLowerCase();
-  return NON_MUSIC_KEYWORDS.some(keyword => lowerTitle.includes(keyword));
+  const lowerArtist = (artist || '').toLowerCase();
+  const combined = `${lowerTitle} ${lowerArtist}`;
+  return NON_MUSIC_KEYWORDS.some(keyword => combined.includes(keyword));
 }
 
 /**
  * Filter out non-music content from track list
  */
-function filterMusicOnly<T extends { title: string }>(tracks: T[]): T[] {
-  return tracks.filter(track => !isNonMusic(track.title));
+function filterMusicOnly<T extends { title: string; artist?: string }>(tracks: T[]): T[] {
+  return tracks.filter(track => !isNonMusic(track.title, (track as any).artist));
 }
 
 /**

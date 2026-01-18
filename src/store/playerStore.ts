@@ -1021,15 +1021,30 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         if (dbHot.length > 0 || dbDiscover.length > 0) {
           const currentState = get();
 
-          // MERGE HOT: Existing + New, dedupe, cap at MAX
-          const existingHotIds = new Set(currentState.hotTracks.map(t => t.id));
-          const newHot = dbHot.filter(t => !existingHotIds.has(t.id) && !excludeIds.has(t.id));
-          const mergedHot = [...currentState.hotTracks, ...newHot].slice(0, MAX_HOT_POOL);
+          // CONTENT FILTER: Block non-music (news, politics, etc.)
+          const NON_MUSIC_KEYWORDS = [
+            'news', 'live:', 'breaking', 'trump', 'biden', 'president', 'election',
+            'politics', 'political', 'congress', 'senate', 'maga', 'cnn', 'fox news',
+            'podcast', 'interview', 'speech', 'documentary', 'lecture', 'sermon',
+          ];
+          const isMusic = (t: Track) => {
+            const combined = `${t.title} ${t.artist || ''}`.toLowerCase();
+            return !NON_MUSIC_KEYWORDS.some(kw => combined.includes(kw));
+          };
 
-          // MERGE DISCOVER: Existing + New, dedupe, cap at MAX
-          const existingDiscoverIds = new Set(currentState.discoverTracks.map(t => t.id));
+          // Filter existing tracks too (clean up any bad content)
+          const cleanExistingHot = currentState.hotTracks.filter(isMusic);
+          const cleanExistingDiscover = currentState.discoverTracks.filter(isMusic);
+
+          // MERGE HOT: Existing (cleaned) + New, dedupe, cap at MAX
+          const existingHotIds = new Set(cleanExistingHot.map(t => t.id));
+          const newHot = dbHot.filter(t => !existingHotIds.has(t.id) && !excludeIds.has(t.id));
+          const mergedHot = [...cleanExistingHot, ...newHot].slice(0, MAX_HOT_POOL);
+
+          // MERGE DISCOVER: Existing (cleaned) + New, dedupe, cap at MAX
+          const existingDiscoverIds = new Set(cleanExistingDiscover.map(t => t.id));
           const newDiscover = dbDiscover.filter(t => !existingDiscoverIds.has(t.id) && !excludeIds.has(t.id));
-          const mergedDiscover = [...currentState.discoverTracks, ...newDiscover].slice(0, MAX_DISCOVER_POOL);
+          const mergedDiscover = [...cleanExistingDiscover, ...newDiscover].slice(0, MAX_DISCOVER_POOL);
 
           // AI picks from top of discover pool
           const aiPicks = mergedDiscover.slice(0, 5);

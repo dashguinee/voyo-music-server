@@ -195,14 +195,22 @@ export const useTrackPoolStore = create<TrackPoolStore>()(
       // =====================================
 
       addToPool: (track, source) => {
-        // CONTENT FILTER: Block non-music content (news, podcasts, etc.)
+        // CONTENT FILTER: Block non-music content (news, podcasts, politics, etc.)
         const NON_MUSIC_KEYWORDS = [
-          'news', 'live:', 'breaking', 'trump', 'president', 'election',
+          // News & Politics
+          'news', 'live:', 'breaking', 'trump', 'biden', 'president', 'election',
+          'politics', 'political', 'congress', 'senate', 'white house', 'capitol',
+          'maga', 'democrat', 'republican', 'cnn', 'fox news', 'msnbc',
+          // Non-music content
           'warning', 'alert', 'podcast', 'interview', 'speech', 'conference',
-          'urgent', 'update:', 'full movie', 'documentary', 'lecture', 'sermon'
+          'urgent', 'update:', 'reaction', 'drama', 'beef', 'diss',
+          'full movie', 'documentary', 'lecture', 'sermon', 'preaching',
+          'asmr', 'meditation guide', 'sleep sounds', 'white noise',
+          // Clickbait
+          'you wont believe', 'shocking', 'exposed', 'leaked', 'scandal',
         ];
-        const lowerTitle = track.title.toLowerCase();
-        if (NON_MUSIC_KEYWORDS.some(kw => lowerTitle.includes(kw))) {
+        const combined = `${track.title} ${track.artist || ''}`.toLowerCase();
+        if (NON_MUSIC_KEYWORDS.some(kw => combined.includes(kw))) {
           console.log(`[Pool] Blocked non-music: ${track.title}`);
           return; // Don't add non-music to pool
         }

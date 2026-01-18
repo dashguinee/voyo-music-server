@@ -15,7 +15,8 @@ import { getThumb } from '../../utils/thumbnail';
 import { SmartImage } from '../ui/SmartImage';
 import { VIBES, Vibe } from '../../data/tracks';
 import { LottieIcon } from '../ui/LottieIcon';
-import { getUserTopTracks, getPoolAwareHotTracks } from '../../services/personalization';
+import { getUserTopTracks, getPoolAwareHotTracks, getPoolAwareDiscoveryTracks, calculateBehaviorScore } from '../../services/personalization';
+import { usePreferenceStore } from '../../store/preferenceStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { useTrackPoolStore } from '../../store/trackPoolStore';
 import { useReactionStore } from '../../store/reactionStore';
@@ -966,27 +967,108 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
   const artistsYouLove = useMemo(() => getArtistsYouLove(history, hotPool, 8), [history, hotPool]);
   const vibes = VIBES;
 
-  // Pool-fed sections (DJ/Curator fills pool → refreshRecommendations → these update)
-  const madeForYou = hotTracks.length > 0 ? hotTracks : getPoolAwareHotTracks(15);
-  const discoverMoreTracks = discoverTracks.length > 0 ? discoverTracks : getPoolAwareHotTracks(15);
-  const newReleases = useMemo(() => getNewReleases(hotPool, 15), [hotPool]);
+  // Get user preferences for personalized scoring
+  const trackPreferences = usePreferenceStore((state) => state.trackPreferences);
+  const currentTrack = usePlayerStore((state) => state.currentTrack);
 
-  // Section-aware shelves (use curator tags, fallback to generic pool)
-  const westAfricanTracks = useMemo(() => {
-    const curated = getWestAfricanTracks(hotPool, 15);
-    return curated.length >= 5 ? curated : getPoolAwareHotTracks(15);
-  }, [hotPool]);
-  const africanVibes = westAfricanTracks; // Alias for backward compatibility
+  // PERSONALIZED SECTIONS - Uses behavior (40%) + intent (60%) scoring
+  // Made For You: YOUR top tracks based on listens, completions, reactions
+  const madeForYou = useMemo(() => {
+    // Always use personalized scoring - DJ tracks are the pool, scoring is personal
+    const personalizedHot = getPoolAwareHotTracks(15);
+    // If we have DJ-curated tracks, score and sort them by user behavior
+    if (hotTracks.length > 0) {
+      const scored = hotTracks.map(track => ({
+        track,
+        score: calculateBehaviorScore(track, trackPreferences) + (track.oyeScore || 0) * 0.0001
+      }));
+      scored.sort((a, b) => b.score - a.score);
+      return scored.map(s => s.track).slice(0, 15);
+    }
+    return personalizedHot;
+  }, [hotTracks, trackPreferences]);
+
+  // Discover More: Personalized discovery based on current track context
+  const discoverMoreTracks = useMemo(() => {
+    // Use discovery engine with user context
+    if (currentTrack) {
+      const excludeIds = [...madeForYou.map(t => t.id), currentTrack.id];
+      return getPoolAwareDiscoveryTracks(currentTrack, 15, excludeIds);
+    }
+    // Fallback: Use discovery pool scored by behavior, offset from madeForYou
+    if (discoverTracks.length > 0) {
+      const madeForYouIds = new Set(madeForYou.map(t => t.id));
+      const unique = discoverTracks.filter(t => !madeForYouIds.has(t.id));
+      const scored = unique.map(track => ({
+        track,
+        score: calculateBehaviorScore(track, trackPreferences)
+      }));
+      scored.sort((a, b) => b.score - a.score);
+      return scored.map(s => s.track).slice(0, 15);
+    }
+    // Last resort: different slice from pool
+    const allHot = getPoolAwareHotTracks(30);
+    return allHot.slice(15, 30);
+  }, [discoverTracks, currentTrack, madeForYou, trackPreferences]);
+
+  // New Releases: Date-sorted, excluding what's already shown
+  const newReleases = useMemo(() => {
+    const usedIds = new Set([
+      ...madeForYou.map(t => t.id),
+      ...discoverMoreTracks.map(t => t.id),
+    ]);
+    const allNew = getNewReleases(hotPool, 30);
+    const unique = allNew.filter(t => !usedIds.has(t.id));
+    return unique.slice(0, 15);
+  }, [hotPool, madeForYou, discoverMoreTracks]);
+
+  // African Vibes: West African tags + user's afro-heat preference weighting
+  const africanVibes = useMemo(() => {
+    const curated = getWestAfricanTracks(hotPool, 20); // Get more to score
+    if (curated.length >= 5) {
+      // Score by user's engagement with these tracks
+      const scored = curated.map(track => ({
+        track,
+        score: calculateBehaviorScore(track, trackPreferences) + Math.random() * 5 // Small jitter for variety
+      }));
+      scored.sort((a, b) => b.score - a.score);
+      return scored.map(s => s.track).slice(0, 15);
+    }
+    // Fallback: Get tracks user has engaged with that have afro vibes
+    const afroPool = hotPool.filter((t: any) =>
+      t.detectedMode === 'afro-heat' || t.tags?.some((tag: string) =>
+        ['afrobeats', 'afro', 'african', 'lagos', 'naija'].includes(tag.toLowerCase())
+      )
+    );
+    if (afroPool.length >= 5) {
+      return afroPool.slice(0, 15) as Track[];
+    }
+    return getPoolAwareHotTracks(15);
+  }, [hotPool, trackPreferences]);
+
+  // REMOVED: westAfricanTracks alias - africanVibes is now distinct
 
   const classicsTracks = useMemo(() => {
     const curated = getClassicsTracks(hotPool, 15);
     return curated.length >= 5 ? curated : [];
   }, [hotPool]);
 
+  // Top 10 on VOYO: Trending tracks, excluding what's in personalized sections
   const trending = useMemo(() => {
-    const curated = getCuratedTrendingTracks(hotPool, 15);
-    return curated.length >= 5 ? curated : getTrendingTracks(hotPool, 15);
-  }, [hotPool]);
+    const usedIds = new Set([
+      ...madeForYou.map(t => t.id),
+      ...discoverMoreTracks.map(t => t.id),
+      ...africanVibes.map(t => t.id),
+    ]);
+    const curated = getCuratedTrendingTracks(hotPool, 25);
+    const available = curated.filter(t => !usedIds.has(t.id));
+    if (available.length >= 5) {
+      return available.slice(0, 10);
+    }
+    // Fallback to poolScore sorted, excluding used
+    const fallback = getTrendingTracks(hotPool, 25).filter(t => !usedIds.has(t.id));
+    return fallback.slice(0, 10);
+  }, [hotPool, madeForYou, discoverMoreTracks, africanVibes]);
 
   const greeting = getGreeting();
 
