@@ -4503,7 +4503,7 @@ export const VoyoPortraitPlayer = ({
         )}
       </AnimatePresence>
 
-      {/* --- TOP SECTION (History/Queue) - FIX 4: Safe area insets --- */}
+      {/* --- TOP SECTION (History/Queue) --- */}
       <div className="px-6 flex justify-between items-start z-20 h-[18%]" style={{ paddingTop: 'max(2rem, env(safe-area-inset-top))' }}>
 
         {/* Left: History (scrollable) */}
@@ -4577,11 +4577,9 @@ export const VoyoPortraitPlayer = ({
 
       {/* --- CENTER SECTION (Hero + Engine) --- */}
       {/* TAP: Quick controls | HOLD/DOUBLE TAP: Full DJ Mode */}
-      {/* Disappear mode: no flex-1, size to content so Mix Board fills OYE space */}
-      {/* Fade mode: flex-1 to accommodate OYE bar */}
       <div
         className={`flex flex-col items-center relative z-10 -mt-2 ${
-          oyeBarBehavior === 'fade' || isReactionsRevealed ? 'flex-1' : ''
+          isReactionsRevealed ? 'flex-1' : ''
         }`}
         onPointerDown={handleCanvasPointerDown}
         onPointerUp={handleCanvasPointerUp}
@@ -4784,7 +4782,7 @@ export const VoyoPortraitPlayer = ({
       {/* Fade mode: min-h for scroll | Disappear mode: auto-fit (State 0) */}
       <div
         className={`flex-shrink-0 w-full bg-[#08080a]/95 backdrop-blur-2xl rounded-t-[2.5rem] border-t border-white/5 relative z-40 flex flex-col pt-5 pb-6 shadow-[0_-20px_60px_-10px_rgba(0,0,0,1)] ${
-          oyeBarBehavior === 'fade' ? 'min-h-[350px]' : ''
+          oyeBarBehavior === 'fade' ? 'min-h-[325px]' : ''
         }`}
       >
 
