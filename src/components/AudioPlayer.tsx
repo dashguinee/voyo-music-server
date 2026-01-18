@@ -857,8 +857,12 @@ export const AudioPlayer = () => {
         if (playbackSource !== 'cached' && playbackSource !== 'r2') return;
         const { isPlaying: shouldPlay } = usePlayerStore.getState();
         const audio = audioRef.current;
-        // Removed 100ms delay - play immediately if should be playing
-        if (shouldPlay && audio?.src && audio.readyState >= 1) {
+        if (!audio) return;
+        // Don't resume if track ended (prevents brief replay before next track)
+        const hasEnded = audio.duration > 0 && audio.currentTime >= audio.duration - 0.5;
+        if (hasEnded) return;
+        // Resume if should be playing (handles interruptions)
+        if (shouldPlay && audio.src && audio.readyState >= 1) {
           audio.play().catch(() => {});
         }
       }}
