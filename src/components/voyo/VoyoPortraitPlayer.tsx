@@ -4405,7 +4405,9 @@ export const VoyoPortraitPlayer = ({
 
   return (
     <div
-      className="relative w-full h-full bg-[#020203] text-white font-sans overflow-y-auto flex flex-col"
+      className={`relative w-full h-full bg-[#020203] text-white font-sans flex flex-col ${
+        oyeBarBehavior === 'fade' ? 'overflow-y-auto' : 'overflow-hidden'
+      }`}
     >
 
       {/* FULLSCREEN BACKGROUND - Album art with dark overlay for floating effect */}
@@ -4578,8 +4580,8 @@ export const VoyoPortraitPlayer = ({
       {/* --- CENTER SECTION (Hero + Engine) --- */}
       {/* TAP: Quick controls | HOLD/DOUBLE TAP: Full DJ Mode */}
       <div
-        className={`flex flex-col items-center relative z-10 -mt-2 ${
-          isReactionsRevealed ? 'flex-1' : ''
+        className={`flex flex-col items-center justify-end relative z-10 flex-1 ${
+          oyeBarBehavior === 'fade' ? 'pt-7' : 'pt-5'
         }`}
         onPointerDown={handleCanvasPointerDown}
         onPointerUp={handleCanvasPointerUp}
@@ -4711,7 +4713,7 @@ export const VoyoPortraitPlayer = ({
         {/* MINIMAL PROGRESS - Fades when idle, only current time + red dot */}
         {/* Uses isolated components to prevent full re-renders */}
         <motion.div
-          className="w-full max-w-[180px] mt-2 mb-1 px-2 z-30"
+          className="w-full max-w-[180px] mt-2 mb-4 px-2 z-30"
           animate={{ opacity: isScrubbing ? 1 : 0.25 }}
           whileHover={{ opacity: 0.8 }}
           transition={{ duration: 0.5 }}
@@ -4741,7 +4743,7 @@ export const VoyoPortraitPlayer = ({
         {/* 3. OYÉ REACTIONS - Only takes space when visible */}
         {/* Disappear mode + not revealed = no wrapper, no space (State 0) */}
         {(oyeBarBehavior === 'fade' || isControlsRevealed || isReactionsRevealed) && (
-          <div className="mt-6 min-h-[60px] flex items-center justify-center">
+          <div className="mt-3 min-h-[60px] flex items-center justify-center">
             <ReactionBar
             onReaction={handleReaction}
             isRevealed={isControlsRevealed || isReactionsRevealed}
@@ -4781,7 +4783,7 @@ export const VoyoPortraitPlayer = ({
       {/* --- BOTTOM SECTION: DASHBOARD / MIX BOARD --- */}
       {/* Fade mode: min-h for scroll | Disappear mode: auto-fit (State 0) */}
       <div
-        className={`flex-shrink-0 w-full bg-[#08080a]/95 backdrop-blur-2xl rounded-t-[2.5rem] border-t border-white/5 relative z-40 flex flex-col pt-5 pb-6 shadow-[0_-20px_60px_-10px_rgba(0,0,0,1)] ${
+        className={`flex-shrink-0 w-full bg-[#08080a]/95 backdrop-blur-2xl rounded-t-[2.5rem] border-t border-white/5 relative z-40 flex flex-col pt-2 pb-6 shadow-[0_-20px_60px_-10px_rgba(0,0,0,1)] ${
           oyeBarBehavior === 'fade' ? 'min-h-[325px]' : ''
         }`}
       >
