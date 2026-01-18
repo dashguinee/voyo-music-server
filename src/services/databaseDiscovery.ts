@@ -163,8 +163,9 @@ export async function getHotTracks(limit: number = 30): Promise<Track[]> {
     }
 
     // Filter out non-music content (news, podcasts, etc.)
-    const musicOnly = filterMusicOnly(data || []);
-    console.log(`[Discovery] HOT: ${musicOnly.length} tracks from 324K database (filtered ${(data?.length || 0) - musicOnly.length} non-music)`);
+    const tracks = (data || []) as DiscoveryTrack[];
+    const musicOnly = filterMusicOnly(tracks);
+    console.log(`[Discovery] HOT: ${musicOnly.length} tracks from 324K database (filtered ${tracks.length - musicOnly.length} non-music)`);
     return musicOnly.map(toTrack);
   } catch (err) {
     console.error('[Discovery] Hot tracks exception:', err);
@@ -209,8 +210,9 @@ export async function getDiscoveryTracks(limit: number = 30): Promise<Track[]> {
     }
 
     // Filter out non-music content (news, podcasts, etc.)
-    const musicOnly = filterMusicOnly(data || []);
-    console.log(`[Discovery] DISCOVERY: ${musicOnly.length} tracks (filtered ${(data?.length || 0) - musicOnly.length} non-music)`);
+    const tracks = (data || []) as DiscoveryTrack[];
+    const musicOnly = filterMusicOnly(tracks);
+    console.log(`[Discovery] DISCOVERY: ${musicOnly.length} tracks (filtered ${tracks.length - musicOnly.length} non-music)`);
     return musicOnly.map(toTrack);
   } catch (err) {
     console.error('[Discovery] Discovery tracks exception:', err);
