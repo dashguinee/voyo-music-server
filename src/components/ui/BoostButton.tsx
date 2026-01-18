@@ -70,7 +70,8 @@ const PRESET_COLORS = {
 type BoostPreset = 'boosted' | 'calm' | 'voyex' | 'xtreme';
 
 // Clean Lightning Bolt SVG Icon - Color changes based on preset
-const LightningIcon = ({ isGlowing, isCharging, size = 14, preset = 'boosted' }: { isGlowing: boolean; isCharging: boolean; size?: number; preset?: BoostPreset }) => {
+// NEW: outlineOnly mode = yellow stroke, no fill (for R2 server-boosted)
+const LightningIcon = ({ isGlowing, isCharging, size = 14, preset = 'boosted', outlineOnly = false }: { isGlowing: boolean; isCharging: boolean; size?: number; preset?: BoostPreset; outlineOnly?: boolean }) => {
   const colors = PRESET_COLORS[preset];
   const gradientId = `lightningGradient-${preset}`;
   const glowId = `lightningGlow-${preset}`;
@@ -84,8 +85,8 @@ const LightningIcon = ({ isGlowing, isCharging, size = 14, preset = 'boosted' }:
       xmlns="http://www.w3.org/2000/svg"
       className="relative"
     >
-      {/* Outer glow when boosted */}
-      {isGlowing && (
+      {/* Outer glow when boosted (not for outline mode) */}
+      {isGlowing && !outlineOnly && (
         <motion.path
           d="M13 2L4 14h7l-2 8 11-12h-7l2-8z"
           fill={`url(#${glowId})`}
@@ -99,14 +100,16 @@ const LightningIcon = ({ isGlowing, isCharging, size = 14, preset = 'boosted' }:
       {/* Main lightning bolt */}
       <motion.path
         d="M13 2L4 14h7l-2 8 11-12h-7l2-8z"
-        fill={isGlowing ? `url(#${gradientId})` : "#6b6b7a"}
-        stroke={isGlowing ? colors.primary : "transparent"}
-        strokeWidth="0.5"
+        fill={outlineOnly ? "none" : (isGlowing ? `url(#${gradientId})` : "#6b6b7a")}
+        stroke={outlineOnly ? colors.primary : (isGlowing ? colors.primary : "transparent")}
+        strokeWidth={outlineOnly ? "2" : "0.5"}
         animate={isCharging ? {
           opacity: [1, 0.6, 1],
           scale: [1, 1.1, 1]
+        } : outlineOnly ? {
+          opacity: [0.7, 1, 0.7]
         } : {}}
-        transition={{ duration: 0.4, repeat: isCharging ? Infinity : 0 }}
+        transition={{ duration: outlineOnly ? 1.5 : 0.4, repeat: (isCharging || outlineOnly) ? Infinity : 0 }}
       />
 
       {/* Gradients - dynamic based on preset */}
@@ -447,29 +450,25 @@ export const BoostButton = ({ variant = 'toolbar', className = '' }: BoostButton
           />
         )}
 
-        {/* Server boost indicator (R2 collective) - small cloud badge */}
-        {isServerBoosted && !isLocalBoosted && (
-          <motion.div
-            className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shadow-lg z-10"
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            title="Streaming from R2 Collective"
-          >
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="white">
-              <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/>
-            </svg>
-          </motion.div>
-        )}
-
         {/* Completion burst when boost finishes */}
         {showBurst && <CompletionBurst onComplete={() => setShowBurst(false)} preset={boostProfile} />}
 
         {/* Progress ring - fills around the button edge */}
         {(isDownloading || isQueued) && <ProgressRing progress={progress} isStarting={isDownloading || isQueued} size={44} preset={boostProfile} />}
 
-        {/* Lightning icon - color based on preset, dimmed when toggled */}
+        {/* Lightning icon - 3 states:
+            1. Gray filled = not boosted (iframe)
+            2. Yellow OUTLINE = server boosted (R2 collective) - pulsing stroke
+            3. Yellow FILLED = locally boosted (IndexedDB cache)
+        */}
         <div className={isToggled ? 'opacity-50' : ''}>
-          <LightningIcon isGlowing={isActive || isToggled} isCharging={isDownloading || isQueued} size={16} preset={boostProfile} />
+          <LightningIcon
+            isGlowing={isActive || isToggled}
+            isCharging={isDownloading || isQueued}
+            size={16}
+            preset={boostProfile}
+            outlineOnly={isServerBoosted && !isLocalBoosted}
+          />
         </div>
         {showSparks && <BoostSparks preset={boostProfile} />}
       </motion.button>
