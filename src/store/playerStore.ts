@@ -1030,9 +1030,23 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       console.warn('[VOYO] Database failed and no fallback - keeping current state');
     });
 
-    // DATABASE IS SOURCE OF TRUTH - Don't set pool tracks here
-    // Pool tracks only used as fallback inside the .then() when database fails
-    // This prevents race condition where pool overwrites database results
+    // No immediate fallback - let database load (prevents showing static seeds)
+    // State starts empty, database populates it within 100ms
+
+    // Only update if we have pool tracks from user activity (no static seeds)
+    const poolHot = getPoolAwareHotTracks(5);
+    if (poolHot.length > 0) {
+      const poolDiscover = state.currentTrack
+        ? getPoolAwareDiscoveryTracks(state.currentTrack, 5, excludeIds)
+        : [];
+
+      set({
+        hotTracks: poolHot,
+        aiPicks: [],
+        discoverTracks: poolDiscover,
+      });
+    }
+    // If no pool tracks, keep state empty - database will populate soon
   },
 
   toggleAiMode: () => set((state) => ({ isAiMode: !state.isAiMode })),
