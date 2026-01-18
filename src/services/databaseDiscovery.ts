@@ -240,67 +240,88 @@ export async function getFamiliarTracks(limit: number = 10): Promise<Track[]> {
 // ============================================
 
 /**
- * Search tracks: Database first (324K), YouTube fallback for new content
- * STREAMLINED: No delays, instant results
+ * Search tracks: Database + YouTube in parallel, merged results
+ * DYNAMIC: Best of both worlds - 324K curated + fresh YouTube content
  */
 export async function searchTracks(query: string, limit: number = 20): Promise<Track[]> {
   if (!query.trim()) return [];
 
   const essence = getVibeEssence();
-  let dbResults: Track[] = [];
 
-  // STEP 1: Try database (324K tracks - should have most content)
-  if (supabaseConfigured) {
-    try {
-      const { data, error } = await getSupabase().rpc('search_tracks_by_vibe', {
-        p_query: query,
-        p_afro_heat: essence.afro_heat,
-        p_chill: essence.chill,
-        p_party: essence.party,
-        p_workout: essence.workout,
-        p_late_night: essence.late_night,
-        p_limit: limit,
-      });
-
-      if (!error && data && data.length > 0) {
-        dbResults = data.map(toTrack);
-        console.log(`[Discovery] Search: ${dbResults.length} from database`);
-        return dbResults;
+  // Run both searches in parallel for speed
+  const [dbResults, ytResults] = await Promise.all([
+    // Database search (324K curated tracks)
+    supabaseConfigured ? (async () => {
+      try {
+        const { data, error } = await getSupabase().rpc('search_tracks_by_vibe', {
+          p_query: query,
+          p_afro_heat: essence.afro_heat,
+          p_chill: essence.chill,
+          p_party: essence.party,
+          p_workout: essence.workout,
+          p_late_night: essence.late_night,
+          p_limit: limit,
+        });
+        if (!error && data && data.length > 0) {
+          console.log(`[Discovery] DB: ${data.length} results for "${query}"`);
+          return data.map(toTrack);
+        }
+        return [];
+      } catch (err) {
+        console.warn('[Discovery] DB search error:', err);
+        return [];
       }
-    } catch (err) {
-      console.warn('[Discovery] Database search error:', err);
+    })() : Promise.resolve([]),
+
+    // YouTube search (fresh content, new releases)
+    (async () => {
+      try {
+        const results = await searchYouTube(query, Math.ceil(limit / 2));
+        if (results.length > 0) {
+          console.log(`[Discovery] YT: ${results.length} results for "${query}"`);
+          return results.map(r => ({
+            id: r.voyoId,
+            trackId: r.voyoId,
+            title: r.title,
+            artist: r.artist,
+            coverUrl: r.thumbnail,
+            duration: r.duration,
+            tags: ['youtube'],
+            oyeScore: 0,
+            createdAt: new Date().toISOString(),
+          } as Track));
+        }
+        return [];
+      } catch (err) {
+        console.warn('[Discovery] YT search error:', err);
+        return [];
+      }
+    })(),
+  ]);
+
+  // Merge: DB first (curated), then YouTube (fresh), deduplicate
+  const seen = new Set<string>();
+  const merged: Track[] = [];
+
+  // Add DB results first (higher quality, curated)
+  for (const track of dbResults) {
+    if (!seen.has(track.id)) {
+      seen.add(track.id);
+      merged.push(track);
     }
   }
 
-  // STEP 2: YouTube fallback when database fails or empty
-  console.log(`[Discovery] Database miss for "${query}", trying YouTube...`);
-  try {
-    const ytResults = await searchYouTube(query, limit);
-    if (ytResults.length > 0) {
-      const tracks: Track[] = ytResults.map(r => ({
-        id: r.voyoId,
-        trackId: r.voyoId,
-        title: r.title,
-        artist: r.artist,
-        album: 'YouTube',
-        coverUrl: r.thumbnail,
-        duration: r.duration,
-        tags: ['search', 'youtube'],
-        mood: 'afro',
-        region: 'NG',
-        oyeScore: r.views || 0,
-        createdAt: new Date().toISOString(),
-      }));
-      console.log(`[Discovery] YouTube fallback: ${tracks.length} results`);
-      return tracks;
+  // Add YouTube results (fresh content not in DB)
+  for (const track of ytResults) {
+    if (!seen.has(track.id)) {
+      seen.add(track.id);
+      merged.push(track);
     }
-  } catch (err) {
-    console.warn('[Discovery] YouTube search error:', err);
   }
 
-  // STEP 3: Both failed
-  console.log(`[Discovery] No results for "${query}"`);
-  return [];
+  console.log(`[Discovery] Merged: ${merged.length} total (${dbResults.length} DB + ${ytResults.length - (merged.length - dbResults.length)} new from YT)`);
+
+  return merged.slice(0, limit);
 }
 
 // ============================================
