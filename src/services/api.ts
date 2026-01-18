@@ -138,9 +138,12 @@ export interface StreamResult {
  * Check if track exists in R2 cache (342K+ pre-downloaded tracks)
  * Uses Cloudflare Edge Worker for speed (300+ locations)
  */
-export async function checkR2Cache(videoId: string, quality: 'high' | 'low' = 'high'): Promise<{
+export async function checkR2Cache(videoId: string, preferQuality: 'high' | 'low' = 'high'): Promise<{
   exists: boolean;
   url: string | null;
+  hasHigh: boolean;
+  hasLow: boolean;
+  quality: 'high' | 'low' | null;
 }> {
   const youtubeId = decodeVoyoId(videoId);
 
@@ -150,23 +153,66 @@ export async function checkR2Cache(videoId: string, quality: 'high' | 'low' = 'h
     });
 
     if (!response.ok) {
-      return { exists: false, url: null };
+      return { exists: false, url: null, hasHigh: false, hasLow: false, quality: null };
     }
 
     const data = await response.json();
 
     if (data.exists) {
-      // Return direct audio URL from edge worker
-      const q = quality === 'low' ? 'low' : 'high';
+      // Determine best available quality
+      const useHigh = data.high && (preferQuality === 'high' || !data.low);
+      const actualQuality = useHigh ? 'high' : 'low';
+
       return {
         exists: true,
-        url: `${EDGE_WORKER_URL}/audio/${youtubeId}?q=${q}`
+        url: `${EDGE_WORKER_URL}/audio/${youtubeId}?q=${actualQuality}`,
+        hasHigh: !!data.high,
+        hasLow: !!data.low,
+        quality: actualQuality
       };
     }
 
-    return { exists: false, url: null };
+    return { exists: false, url: null, hasHigh: false, hasLow: false, quality: null };
   } catch {
-    return { exists: false, url: null };
+    return { exists: false, url: null, hasHigh: false, hasLow: false, quality: null };
+  }
+}
+
+/**
+ * Upload audio to R2 collective cache (Phase 4 - Collective Intelligence)
+ * Called after successful boost to share with all VOYO users
+ */
+export async function uploadToR2(
+  videoId: string,
+  audioBlob: Blob,
+  quality: 'high' | 'low' = 'high'
+): Promise<{ success: boolean; status?: string; error?: string }> {
+  const youtubeId = decodeVoyoId(videoId);
+
+  try {
+    const response = await fetch(
+      `${EDGE_WORKER_URL}/upload/${youtubeId}?q=${quality}`,
+      {
+        method: 'POST',
+        body: audioBlob,
+        headers: {
+          'Content-Type': 'audio/opus',
+        },
+        signal: AbortSignal.timeout(30000) // 30s for upload
+      }
+    );
+
+    const data = await response.json();
+
+    if (response.ok && data.success) {
+      console.log(`🌐 [R2] Uploaded ${youtubeId} to collective (${data.status})`);
+      return { success: true, status: data.status };
+    }
+
+    return { success: false, error: data.error || 'Upload failed' };
+  } catch (err: any) {
+    console.warn(`🌐 [R2] Upload failed for ${youtubeId}:`, err.message);
+    return { success: false, error: err.message };
   }
 }
 

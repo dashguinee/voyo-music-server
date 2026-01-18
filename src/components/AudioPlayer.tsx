@@ -135,10 +135,10 @@ export const AudioPlayer = () => {
   }, [initDownloads]);
 
   // 50% AUTO-BOOST: Trigger caching when user shows genuine interest
-  // Only for iframe playback (not cached/r2), respects network preference
+  // Works for: iframe (new content) + r2 low quality (upgrade to high)
   useEffect(() => {
-    // Only trigger at 50% for iframe playback
-    if (playbackSource !== 'iframe') return;
+    // Only trigger at 50% for iframe OR r2 (for quality upgrade)
+    if (playbackSource !== 'iframe' && playbackSource !== 'r2') return;
     if (hasTriggered50PercentCacheRef.current) return;
     if (progress < 50) return;
     if (!currentTrack?.trackId) return;
@@ -165,7 +165,8 @@ export const AudioPlayer = () => {
     hasTriggered50PercentCacheRef.current = true;
 
     const API_BASE = 'https://voyo-music-api.fly.dev';
-    console.log('🎵 [VOYO] 50% reached! Starting background cache (genuine interest)');
+    const isUpgrade = playbackSource === 'r2';
+    console.log(`🎵 [VOYO] 50% reached! ${isUpgrade ? 'Upgrading to HIGH quality' : 'Starting background cache'} (genuine interest)`);
 
     // Start background cache
     backgroundBoostingRef.current = currentTrack.trackId;
@@ -570,8 +571,15 @@ export const AudioPlayer = () => {
 
         if (r2Result.exists && r2Result.url) {
           // 🚀 R2 HIT - Play from collective cache with EQ
-          console.log('🎵 [VOYO] R2 HIT! Playing from collective cache');
+          const qualityInfo = r2Result.hasHigh ? 'HIGH' : 'LOW';
+          console.log(`🎵 [VOYO] R2 HIT! Playing from collective cache (${qualityInfo} quality)`);
           setPlaybackSource('r2');
+
+          // PHASE 5: Track if low quality - will upgrade at 50%
+          if (!r2Result.hasHigh && r2Result.hasLow) {
+            console.log('🎵 [VOYO] Low quality R2 - will upgrade at 50% interest');
+            hasTriggered50PercentCacheRef.current = false; // Allow upgrade trigger
+          }
 
           const { boostProfile: profile } = usePlayerStore.getState();
           setupAudioEnhancement(profile);

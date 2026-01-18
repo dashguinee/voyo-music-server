@@ -8,6 +8,8 @@
  * - High quality "Boosted" versions
  */
 
+import { uploadToR2 } from './api';
+
 const DB_NAME = 'voyo-music-cache';
 const DB_VERSION = 1;
 const STORE_NAME = 'audio-files';
@@ -263,6 +265,16 @@ export async function downloadTrack(
 
     return new Promise((resolve) => {
       transaction.oncomplete = () => {
+        // PHASE 4: Upload to R2 collective (async, don't block)
+        // Every user who boosts contributes to the shared library
+        uploadToR2(trackId, blob, quality === 'boosted' ? 'high' : 'low')
+          .then(result => {
+            if (result.success) {
+              console.log(`🌐 [COLLECTIVE] Contributed ${trackId} to shared library`);
+            }
+          })
+          .catch(() => {}); // Silent fail - local cache is primary
+
         resolve(true);
       };
       transaction.onerror = () => {

@@ -433,6 +433,79 @@ export default {
       }
     }
 
-    return new Response('VOYO Edge Worker v2 - Multi-client extraction', { headers: corsHeaders });
+    // ========================================
+    // R2 COLLECTIVE UPLOAD - Phase 4
+    // Users contribute to shared cache on boost
+    // ========================================
+    if (url.pathname.startsWith('/upload/') && request.method === 'POST') {
+      const videoId = url.pathname.split('/')[2];
+      const quality = url.searchParams.get('q') || 'high'; // high = 128kbps folder
+
+      if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+        return new Response(JSON.stringify({ error: 'Invalid video ID' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      try {
+        // Check if already exists (don't overwrite)
+        const qualityFolder = quality === 'low' ? '64' : '128';
+        const existingCheck = await env.VOYO_AUDIO.head(`${qualityFolder}/${videoId}.opus`);
+
+        if (existingCheck) {
+          return new Response(JSON.stringify({
+            success: true,
+            status: 'already_exists',
+            videoId,
+            quality: qualityFolder
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+
+        // Get audio data from request body
+        const audioData = await request.arrayBuffer();
+
+        if (!audioData || audioData.byteLength < 1000) {
+          return new Response(JSON.stringify({ error: 'Invalid audio data' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+
+        // Upload to R2
+        await env.VOYO_AUDIO.put(`${qualityFolder}/${videoId}.opus`, audioData, {
+          httpMetadata: {
+            contentType: 'audio/opus',
+          },
+          customMetadata: {
+            uploadedAt: new Date().toISOString(),
+            source: 'user-boost',
+          }
+        });
+
+        console.log(`[R2] Uploaded ${videoId} to ${qualityFolder}/ (${audioData.byteLength} bytes)`);
+
+        return new Response(JSON.stringify({
+          success: true,
+          status: 'uploaded',
+          videoId,
+          quality: qualityFolder,
+          size: audioData.byteLength
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+
+      } catch (err) {
+        console.error(`[R2] Upload error for ${videoId}:`, err);
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
+    return new Response('VOYO Edge Worker v3 - Multiband + Collective', { headers: corsHeaders });
   }
 };
