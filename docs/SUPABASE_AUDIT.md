@@ -1,62 +1,148 @@
-# VOYO Music - Supabase & Canonization Audit
-**Generated**: January 17, 2026
+# VOYO Music - Supabase Status
+**Updated**: January 19, 2026
 
-## CRITICAL BLOCKERS
+## STATUS: OPERATIONAL
 
-### 1. Migration 002 NOT APPLIED
-**File**: `supabase/migrations/002_enrichment_schema.sql`
-**Status**: Exists but NOT run in Supabase
+All critical systems are now working.
 
-**Missing columns in video_intelligence:**
-- `artist_tier` - A/B/C/D classification
-- `era` - pre-1990, 1990s, 2000s, 2010s, 2020s
-- `primary_genre` - Genre classification
-- `cultural_tags` - Array of cultural tags
-- `aesthetic_tags` - Array of aesthetic tags
-- `vibe_scores` - JSONB with party/chill/workout scores
-- `enrichment_source`, `enrichment_confidence`, `enriched_at`
+## Database Stats
 
-**Impact**: vibeEngine queries these columns → queries FAIL
+| Metric | Value |
+|--------|-------|
+| Total Tracks | 324,876 |
+| With artist_tier | 324,876 (100%) |
+| With vibe_scores | 324,728 (99.95%) |
+| With cultural_tags | 70,376 (22%) |
+| With thumbnail_url | 123,053 (38%) |
 
-### 2. Canonized Data NOT Loaded
-**File**: `data/canonized_v4.json` (117MB, 4.7M lines)
-**Contains**: 122,402 tracks with full enrichment data
-**Status**: Sits on disk, NEVER loaded to database
+## Working RPCs
 
-**What exists:**
+### get_hot_tracks
+Returns trending tracks weighted by user's vibe essence.
+```sql
+SELECT * FROM get_hot_tracks(
+  p_afro_heat := 0.3,
+  p_chill := 0.2,
+  p_party := 0.2,
+  p_workout := 0.2,
+  p_late_night := 0.1,
+  p_limit := 30,
+  p_exclude_ids := '{}'
+);
 ```
-data/canonized_v4.json         117MB  ← REAL DATA (122K tracks)
-data/canonized_v4_test.json    198KB  ← Test data
-data/canonized_v2.json         26MB   ← EMPTY
-data/canonized_v3.json         23MB   ← EMPTY
+
+### get_discovery_tracks
+Returns mix of A-tier artists + fresh finds with discovery reasons.
+```sql
+SELECT * FROM get_discovery_tracks(
+  p_afro_heat := 0.3,
+  p_chill := 0.2,
+  p_party := 0.2,
+  p_workout := 0.2,
+  p_late_night := 0.1,
+  p_dominant_vibe := 'afro_heat',
+  p_limit := 30,
+  p_exclude_ids := '{}',
+  p_played_ids := '{}'
+);
 ```
 
-### 3. videoIntelligenceAPI Missing Enrichment
-**File**: `src/lib/supabase.ts`
-**Issue**: `sync()` method doesn't send enrichment fields
+### search_tracks_by_vibe
+ILIKE search on title/artist with tier ranking.
+```sql
+SELECT * FROM search_tracks_by_vibe(
+  p_query := 'burna boy',
+  p_afro_heat := 0.3,
+  p_chill := 0.2,
+  p_party := 0.2,
+  p_workout := 0.2,
+  p_late_night := 0.1,
+  p_limit := 20
+);
+```
 
-## TABLES STATUS
+### get_familiar_tracks
+Returns previously played tracks for 70/30 fresh/familiar ratio.
+```sql
+SELECT * FROM get_familiar_tracks(
+  p_played_ids := ARRAY['abc123', 'def456'],
+  p_limit := 10
+);
+```
 
-| Table | Status | Issue |
-|-------|--------|-------|
-| `universes` | ✅ Working | None |
-| `video_intelligence` | ⚠️ Partial | Missing enrichment columns |
-| `voyo_tracks` | ❌ Orphaned | Defined but no API |
-| `voyo_signals` | ❌ Orphaned | Defined but no API |
-| `voyo_vibes` | ❌ Orphaned | Defined but no API |
-| `vibe_feedback` | ❌ Not created | Migration 002 not applied |
+## Architecture
 
-## FIX SEQUENCE
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        VOYO APP                              │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│   HOT Feed ──────► get_hot_tracks RPC ──────► Supabase      │
+│                                                (324K)        │
+│   DISCOVERY ─────► get_discovery_tracks RPC ──►    ↓        │
+│                                                              │
+│   SEARCH ────────► search_tracks_by_vibe RPC                │
+│        │                    ↓                                │
+│        └──────► YouTube fallback (if RPC fails)             │
+│                                                              │
+│   VIBES (72) ────► vibeEngine.ts ──► Direct Supabase query  │
+│                    (Lagos Nights, Conakry Nights, etc.)     │
+│                                                              │
+│   PLAY ──────────► R2 check ──► YouTube iframe fallback     │
+│        │                                                     │
+│        └──────────► videoIntelligenceAPI.sync() ──► Supabase│
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
 
-1. **Apply migration 002** (5 min)
-   - Open Supabase SQL Editor
-   - Paste 002_enrichment_schema.sql
-   - Run
+## Two Discovery Systems
 
-2. **Create data loader script** (30 min)
-   - Read canonized_v4.json
-   - Batch upsert to video_intelligence
-   - 122K tracks @ 1000/batch
+### 1. EssenceEngine (RPCs)
+- File: `src/services/essenceEngine.ts`
+- Extracts user's vibe fingerprint from MixBoard + reactions + behavior
+- Outputs: `{ afro_heat, chill, party, workout, late_night }` weights
+- Powers: HOT feed, DISCOVERY feed, Search ranking
 
-3. **Update sync API** (15 min)
-   - Add enrichment fields to videoIntelligenceAPI.sync()
+### 2. VibeEngine (Direct Queries)
+- File: `src/lib/vibeEngine.ts`
+- 72 curated vibes with query rules
+- Categories: regional, mood, activity, era, cultural
+- Examples: `lagos-nights`, `conakry-nights`, `golden-era`, `chill-vibes`
+- Powers: VibesSection in search overlay
+
+## Columns in video_intelligence
+
+| Column | Type | Description |
+|--------|------|-------------|
+| youtube_id | TEXT | Primary key |
+| title | TEXT | Track title |
+| artist | TEXT | Artist name |
+| thumbnail_url | TEXT | YouTube thumbnail |
+| artist_tier | TEXT | A/B/C/D classification |
+| vibe_scores | JSONB | `{afro_heat, chill, party, workout, late_night}` |
+| cultural_tags | TEXT[] | Cultural classification |
+| era | TEXT | 1970s, 1980s, 1990s, 2000s, 2010s, 2020s |
+| primary_genre | TEXT | Genre classification |
+| play_count | INTEGER | VOYO play count |
+| queue_count | INTEGER | Times added to queue |
+| matched_artist | TEXT | Canonical artist match |
+| first_seen | TIMESTAMP | When discovered |
+| last_played | TIMESTAMP | Last play time |
+
+## Fix Applied
+
+File: `supabase/FIX_SUPABASE_DISCOVERY.sql`
+
+Run in Supabase SQL Editor to:
+1. Add missing columns (if not present)
+2. Create all RPC functions
+3. Create performance indexes
+
+## Tables Status
+
+| Table | Status |
+|-------|--------|
+| `video_intelligence` | ✅ Working (324K tracks) |
+| `universes` | ✅ Working (user profiles) |
+| `reactions` | ✅ Working (OYE reactions) |
+| `track_stats` | ✅ Working (aggregated stats) |
