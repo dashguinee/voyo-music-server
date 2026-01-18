@@ -640,6 +640,7 @@ export const AudioPlayer = () => {
   return (
     <audio
       ref={audioRef}
+      crossOrigin="anonymous"
       preload="auto"
       playsInline
       onTimeUpdate={handleTimeUpdate}
