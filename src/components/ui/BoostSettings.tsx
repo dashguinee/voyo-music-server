@@ -232,13 +232,13 @@ export const BoostSettings = ({ isOpen, onClose }: BoostSettingsProps) => {
                       value: 'fade',
                       label: 'Fade',
                       icon: Eye,
-                      desc: 'Always visible',
+                      desc: 'Scroll for Mix Board',
                     },
                     {
                       value: 'disappear',
                       label: 'Disappear',
                       icon: EyeOff,
-                      desc: 'Hides after tap',
+                      desc: 'Full Mix Board',
                     },
                   ].map(({ value, label, icon: Icon, desc }) => (
                     <button
@@ -257,8 +257,8 @@ export const BoostSettings = ({ isOpen, onClose }: BoostSettingsProps) => {
                   ))}
                 </div>
                 <div className="text-[10px] text-gray-500 mt-3 text-center">
-                  {oyeBarBehavior === 'fade' && '✨ OYÉ bar stays visible (signature)'}
-                  {oyeBarBehavior === 'disappear' && '👻 OYÉ bar hides for clean look'}
+                  {oyeBarBehavior === 'fade' && '✨ Reactions visible, scroll for Mix Board'}
+                  {oyeBarBehavior === 'disappear' && '🎛️ Full Mix Board, double-tap for reactions'}
                 </div>
               </div>
 

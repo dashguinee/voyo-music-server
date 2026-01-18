@@ -2597,6 +2597,12 @@ const ReactionBar = memo(({
   // Check if button is currently flashing (sleep mode tap feedback)
   const isFlashing = (type: string) => flashingButton === type || (type === 'wazzguan' && wazzguanPrimed);
 
+  // DISAPPEAR MODE: Return nothing when not revealed - State 0 (big card, no bar)
+  // Double-tap reveals it, then auto-hides back to State 0
+  if (oyeBarBehavior === 'disappear' && !isRevealed) {
+    return null;
+  }
+
   return (
     <div className="relative z-30 flex flex-col items-center mb-4">
       {/* Main reaction row - buttons spread when chat opens */}
@@ -4140,6 +4146,20 @@ export const VoyoPortraitPlayer = ({
     };
   }, [isControlsRevealed, isReactionsRevealed]);
 
+  // AUTO-HIDE reactions after timeout - returns to correct state based on OYE setting
+  // Disappear mode: returns to State 0 (clean, no bar)
+  // Fade mode: returns to ghosted bar (not fully bright)
+  useEffect(() => {
+    if (isReactionsRevealed) {
+      const reactionsTimer = setTimeout(() => {
+        setIsReactionsRevealed(false);
+        setIsControlsRevealed(false);
+        setShowOyoIsland(false);
+      }, 4000); // 4 seconds then return to default state
+      return () => clearTimeout(reactionsTimer);
+    }
+  }, [isReactionsRevealed]);
+
   // PORTAL SCROLL CONTROLS - tap red/blue portal to scroll outward (reverse direction)
   const [hotScrollTrigger, setHotScrollTrigger] = useState(0);
   const [discoveryScrollTrigger, setDiscoveryScrollTrigger] = useState(0);
@@ -4385,8 +4405,7 @@ export const VoyoPortraitPlayer = ({
 
   return (
     <div
-      className="relative w-full bg-[#020203] text-white font-sans overflow-y-auto flex flex-col"
-      style={{ minHeight: 'calc(100vh - env(safe-area-inset-bottom))' }}
+      className="relative w-full h-full bg-[#020203] text-white font-sans overflow-y-auto flex flex-col"
     >
 
       {/* FULLSCREEN BACKGROUND - Album art with dark overlay for floating effect */}
@@ -4558,8 +4577,12 @@ export const VoyoPortraitPlayer = ({
 
       {/* --- CENTER SECTION (Hero + Engine) --- */}
       {/* TAP: Quick controls | HOLD/DOUBLE TAP: Full DJ Mode */}
+      {/* Disappear mode: no flex-1, size to content so Mix Board fills OYE space */}
+      {/* Fade mode: flex-1 to accommodate OYE bar */}
       <div
-        className="flex-1 flex flex-col items-center relative z-10 -mt-2"
+        className={`flex flex-col items-center relative z-10 -mt-2 ${
+          oyeBarBehavior === 'fade' || isReactionsRevealed ? 'flex-1' : ''
+        }`}
         onPointerDown={handleCanvasPointerDown}
         onPointerUp={handleCanvasPointerUp}
         onPointerLeave={handleCanvasPointerUp}
@@ -4717,16 +4740,19 @@ export const VoyoPortraitPlayer = ({
           skeepLevel={skeepLevel}
         />
 
-        {/* 3. OYÉ REACTIONS - ALWAYS visible (ghosted in fade mode), lights up on tap */}
-        <div className="mt-6 min-h-[60px] flex items-center justify-center">
-          <ReactionBar
+        {/* 3. OYÉ REACTIONS - Only takes space when visible */}
+        {/* Disappear mode + not revealed = no wrapper, no space (State 0) */}
+        {(oyeBarBehavior === 'fade' || isControlsRevealed || isReactionsRevealed) && (
+          <div className="mt-6 min-h-[60px] flex items-center justify-center">
+            <ReactionBar
             onReaction={handleReaction}
             isRevealed={isControlsRevealed || isReactionsRevealed}
             onRevealChange={setIsReactionsRevealed}
             oyeBarBehavior={oyeBarBehavior}
             activateChatTrigger={activateChatTrigger}
           />
-        </div>
+          </div>
+        )}
 
         {/* DJ Wake Toast - "Now Peace ✌🏾" */}
         <AnimatePresence>
@@ -4754,10 +4780,12 @@ export const VoyoPortraitPlayer = ({
 
       </div>
 
-      {/* --- BOTTOM SECTION: DASHBOARD - FIX 4: Safe area insets --- */}
+      {/* --- BOTTOM SECTION: DASHBOARD / MIX BOARD --- */}
+      {/* Fade mode: min-h for scroll | Disappear mode: auto-fit (State 0) */}
       <div
-        className="h-[40%] w-full bg-[#08080a]/95 backdrop-blur-2xl rounded-t-[2.5rem] border-t border-white/5 relative z-40 flex flex-col pt-5 shadow-[0_-20px_60px_-10px_rgba(0,0,0,1)]"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        className={`flex-shrink-0 w-full bg-[#08080a]/95 backdrop-blur-2xl rounded-t-[2.5rem] border-t border-white/5 relative z-40 flex flex-col pt-5 pb-6 shadow-[0_-20px_60px_-10px_rgba(0,0,0,1)] ${
+          oyeBarBehavior === 'fade' ? 'min-h-[350px]' : ''
+        }`}
       >
 
         {/* Stream Labels - Enhanced Neon Style with Glow */}

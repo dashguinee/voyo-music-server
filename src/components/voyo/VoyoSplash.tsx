@@ -14,7 +14,6 @@ import { useDownloadStore } from '../../store/downloadStore';
 import { usePreferenceStore } from '../../store/preferenceStore';
 import { TRACKS } from '../../data/tracks';
 import { mediaCache } from '../../services/mediaCache';
-import { searchMusic } from '../../services/api';
 
 interface VoyoSplashProps {
   onComplete: () => void;
@@ -58,14 +57,9 @@ export const VoyoSplash = ({ onComplete, minDuration = 2800 }: VoyoSplashProps) 
         ]);
         console.log('🎵 SPLASH: ✅ First 5 thumbnails cached!');
 
-        // 3. Pre-fetch trending search results (warm up API cache)
-        const trendingQueries = ['afrobeats', 'amapiano', 'burna boy'];
-        const searchPromises = trendingQueries.map(query =>
-          searchMusic(query).catch(() => [])
-        );
-        Promise.all(searchPromises).then(() => {
-          console.log('🎵 SPLASH: ✅ Trending searches warmed up!');
-        });
+        // 3. Skipping Fly.io search warmup - database is source of truth
+        // refreshRecommendations() in App.tsx loads from 324K Supabase tracks
+        console.log('🎵 SPLASH: ✅ Database is source of truth (no Fly.io warmup)');
 
         // 4. Touch preference store to ensure it's initialized
         console.log('🎵 SPLASH: ✅ Preferences loaded!', Object.keys(preferenceStore.trackPreferences).length, 'tracks');

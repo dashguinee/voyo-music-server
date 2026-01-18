@@ -980,21 +980,19 @@ function App() {
   }, []);
 
   // SCOUTS: Start hungry knowledge discovery agents
-  useEffect(() => {
-    console.log('[Scouts] Starting Hungry Scouts for African music discovery...');
-
-    // Start periodic scouting (every 30 minutes)
-    startScoutPatrol(30);
-
-    // Expose scout/knowledge stats for debugging
-    (window as any).scoutStats = getScoutStats;
-    (window as any).knowledgeStats = getKnowledgeStats;
-
-    return () => {
-      console.log('[Scouts] Stopping scout patrol');
-      stopScoutPatrol();
-    };
-  }, []);
+  // DISABLED: HungryScouts make 64+ YouTube API calls per session
+  // With 324K tracks in Supabase, we don't need real-time scouting
+  // Re-enable when YouTube API key is configured and rate limiting is implemented
+  // useEffect(() => {
+  //   console.log('[Scouts] Starting Hungry Scouts for African music discovery...');
+  //   startScoutPatrol(30);
+  //   (window as any).scoutStats = getScoutStats;
+  //   (window as any).knowledgeStats = getKnowledgeStats;
+  //   return () => {
+  //     console.log('[Scouts] Stopping scout patrol');
+  //     stopScoutPatrol();
+  //   };
+  // }, []);
 
   // TRACK POOL MAINTENANCE: Start automatic pool management (rescoring every 5 mins)
   useEffect(() => {
@@ -1016,23 +1014,11 @@ function App() {
       }
     });
 
-    // BOOTSTRAP: Ensure pool has fresh tracks from our backend search
-    // This replaces Gemini/Piped with verified VOYO IDs
-    bootstrapPool().then(count => {
-      if (count > 0) {
-        console.log(`[VOYO] Pool bootstrapped with ${count} fresh tracks`);
-      }
-
-      // SELF-HEAL: After bootstrap, verify all thumbnails are valid
-      // This ensures no user ever sees a placeholder
-      runStartupHeal();
-
-      // CURATE SECTIONS: Populate pool with organized content for HomeFeed shelves
-      // Fetches west-african, classics, trending tracks
-      curateAllSections().then(() => {
-        console.log('[VOYO] All sections curated (West African, Classics, Trending)');
-      });
-    });
+    // DISABLED: bootstrapPool, runStartupHeal, curateAllSections
+    // These made 60+ API calls to Fly.io on every load
+    // With 324K tracks in Supabase, refreshRecommendations() is sufficient
+    // Re-enable as server-side jobs, not client-side startup
+    console.log('[VOYO] Skipping bootstrap/heal/curate - database is source of truth');
 
     // VIBES FIRST: Load from 324K database IMMEDIATELY
     usePlayerStore.getState().refreshRecommendations();

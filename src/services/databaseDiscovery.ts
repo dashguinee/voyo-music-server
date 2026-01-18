@@ -13,7 +13,7 @@
 
 import { supabase, isSupabaseConfigured as supabaseConfigured } from '../lib/supabase';
 import { getVibeEssence, getEssenceForQuery, type VibeEssence } from './essenceEngine';
-import { searchMusic } from './api';
+import { TRACKS } from '../data/tracks';
 import type { Track } from '../types';
 
 // Helper to get supabase client with null check (TypeScript guard)
@@ -271,28 +271,15 @@ export async function searchTracks(query: string, limit: number = 20): Promise<T
     }
   }
 
-  // STEP 2: If database found enough results, return immediately
-  if (dbResults.length >= 5) {
+  // STEP 2: Return database results (324K tracks should cover any query)
+  // No Fly.io fallback - prevents rate limiting at scale
+  if (dbResults.length > 0) {
     return dbResults;
   }
 
-  // STEP 3: Database sparse - supplement with YouTube (for new releases)
-  try {
-    const results = await searchMusic(query, limit - dbResults.length);
-    youtubeResults = results.map(searchResultToTrack);
-    if (youtubeResults.length > 0) {
-      console.log(`[Discovery] Search: +${youtubeResults.length} from YouTube`);
-    }
-  } catch (err) {
-    // YouTube failed - that's OK, we might have database results
-    console.warn('[Discovery] YouTube search unavailable');
-  }
-
-  // STEP 4: Merge results (database first, then YouTube)
-  const dbIds = new Set(dbResults.map(t => t.trackId || t.id));
-  const uniqueYoutube = youtubeResults.filter(t => !dbIds.has(t.trackId || t.id));
-
-  return [...dbResults, ...uniqueYoutube];
+  // STEP 3: Database empty - return empty (scouts add content server-side)
+  console.log(`[Discovery] No results for "${query}" in 324K database`);
+  return [];
 }
 
 // ============================================
@@ -395,20 +382,11 @@ async function getFamiliarTracksRaw(limit: number): Promise<DiscoveryTrack[]> {
 // FALLBACK (when Supabase unavailable)
 // ============================================
 
-async function getFallbackTracks(type: 'hot' | 'discovery', limit: number): Promise<Track[]> {
-  // Use search with trending queries as fallback
-  const queries = type === 'hot'
-    ? ['afrobeats 2024 hits', 'amapiano trending', 'burna boy latest']
-    : ['african music', 'afro soul', 'highlife music'];
-
-  const query = queries[Math.floor(Math.random() * queries.length)];
-
-  try {
-    const results = await searchMusic(query, limit);
-    return results.map(searchResultToTrack);
-  } catch {
-    return [];
-  }
+function getFallbackTracks(type: 'hot' | 'discovery', limit: number): Track[] {
+  // Use static seed tracks as fallback (no API calls)
+  // Shuffle and return subset for variety
+  const shuffled = [...TRACKS].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, limit);
 }
 
 // ============================================

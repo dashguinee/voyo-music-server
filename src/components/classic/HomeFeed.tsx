@@ -517,8 +517,7 @@ const WideTrackCard = ({ track, onPlay }: TrackCardProps) => {
   const [oyeActive, setOyeActive] = useState(false);
   const { createReaction } = useReactionStore();
   const { boostTrack } = useDownloadStore();
-  const youtubeId = useMemo(() => decodeVoyoId(track.trackId), [track.trackId]);
-  const thumbnailUrl = `https://img.youtube.com/vi/${youtubeId}/mqdefault.jpg`;
+  const thumbnailUrl = getThumb(track.trackId, 'high');
 
   const handleOye = (e: React.MouseEvent) => {
     e.stopPropagation();
