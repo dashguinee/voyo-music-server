@@ -358,22 +358,25 @@ if (r2Info.bitrate >= QUALITY_THRESHOLD) {
 **File:** Edge Worker + `src/services/api.ts`
 **Fix:** Update `/exists` endpoint, update `checkR2Cache()`
 
-### Gap 5: VOYEX Available Always
+### Gap 5: VOYEX Available Always ✅ FIXED
 
-**Current:** All 4 presets always available
-**Target:** VOYEX locked to boosted tracks, remove Xtreme
+**Before:** All 4 presets always available
+**After:** VOYEX locked to boosted tracks, Xtreme removed
 
 **File:** `src/components/ui/BoostSettings.tsx`
-**Fix:** Conditional rendering based on track boost status
+**Fix:** VOYEX button disabled with lock icon when current track not boosted
+**Commit:** Phase 3 implementation complete
 
-### Gap 6: Lottie Animations Missing
+### Gap 6: Lottie Animations Missing ✅ FIXED
 
-**Current:** Lucide icons only
-**Target:** Lottie for Calm (Sunrise), etc.
+**Before:** Lucide icons only
+**After:** Lottie for Warm (Fire), Calm (Sunrise)
 
 **Files:**
-- `src/components/ui/BoostSettings.tsx`
-- `public/lottie/` (add sunrise.json)
+- `src/components/ui/BoostSettings.tsx` - Uses LottieIcon component
+- `public/lottie/sunrise.json` - Added for Calm preset
+- `public/lottie/fire.json` - Used for Warm preset
+**Commit:** Phase 3 implementation complete
 
 ---
 
@@ -426,11 +429,11 @@ POST /upload/{trackId}     → Upload to R2 (NEW - needed)
 - [x] Respect `downloadSetting` (always | wifi-only | ask | never)
 - [x] Network type detection (wifi vs cellular)
 
-### Phase 3: Presets & UI
-- [ ] Remove Xtreme preset
-- [ ] VOYEX locked to boosted tracks
-- [ ] Add Lottie animations (Sunrise for Calm)
-- [ ] DJ Rewind on boosted track tap
+### Phase 3: Presets & UI ✅ COMPLETE
+- [x] Remove Xtreme preset (3 presets: Warm, Calm, VOYEX)
+- [x] VOYEX locked to boosted tracks (shows lock icon when not boosted)
+- [x] Add Lottie animations (Fire for Warm, Sunrise for Calm)
+- [x] DJ Rewind on boosted track tap (seekTo(0))
 
 ### Phase 4: Collective Storage
 - [ ] Edge Worker: POST /upload endpoint
@@ -445,4 +448,4 @@ POST /upload/{trackId}     → Upload to R2 (NEW - needed)
 ---
 
 *Document updated: 2026-01-18*
-*Status: Phase 1 & 2 COMPLETE - R2 check + 50% auto-boost trigger*
+*Status: Phase 1, 2 & 3 COMPLETE - R2 check + 50% auto-boost + UI/Presets*

@@ -10,9 +10,10 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Zap, Wifi, WifiOff, Trash2, X, HardDrive, Download, Settings, Flame, Crown, Eye, EyeOff } from 'lucide-react';
+import { Zap, Wifi, WifiOff, Trash2, X, HardDrive, Download, Settings, Crown, Eye, EyeOff, Lock } from 'lucide-react';
 import { useDownloadStore } from '../../store/downloadStore';
 import { usePlayerStore } from '../../store/playerStore';
+import { LottieIcon } from './LottieIcon';
 
 interface BoostSettingsProps {
   isOpen: boolean;
@@ -32,7 +33,10 @@ export const BoostSettings = ({ isOpen, onClose }: BoostSettingsProps) => {
     manualBoostCount,
   } = useDownloadStore();
 
-  const { boostProfile, setBoostProfile, oyeBarBehavior, setOyeBarBehavior } = usePlayerStore();
+  const { boostProfile, setBoostProfile, oyeBarBehavior, setOyeBarBehavior, playbackSource } = usePlayerStore();
+
+  // VOYEX is only available for boosted tracks (local cache)
+  const isCurrentTrackBoosted = playbackSource === 'cached';
 
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
@@ -101,68 +105,77 @@ export const BoostSettings = ({ isOpen, onClose }: BoostSettingsProps) => {
               {/* Audio Enhancement Preset */}
               <div className="bg-white/5 rounded-2xl p-4">
                 <div className="text-sm font-medium text-white mb-3">Audio Enhancement</div>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {[
-                    {
-                      value: 'boosted',
-                      label: 'Warm',
-                      icon: Zap,
-                      desc: 'Bass Boost',
-                      gradient: 'from-yellow-500/20 to-orange-500/20',
-                      border: 'border-yellow-500/30',
-                      text: 'text-yellow-300'
-                    },
-                    {
-                      value: 'calm',
-                      label: 'Calm',
-                      icon: Zap,
-                      desc: 'Relaxed',
-                      gradient: 'from-blue-500/20 to-cyan-500/20',
-                      border: 'border-blue-500/30',
-                      text: 'text-blue-300',
-                      iconStyle: 'rotate-180 opacity-60' // Inverted & faded lightning
-                    },
-                    {
-                      value: 'voyex',
-                      label: 'VOYEX',
-                      icon: Crown,
-                      desc: 'Full Exp',
-                      gradient: 'from-purple-500/20 to-pink-500/20',
-                      border: 'border-purple-500/30',
-                      text: 'text-purple-300'
-                    },
-                    {
-                      value: 'xtreme',
-                      label: 'Xtreme',
-                      icon: Flame,
-                      desc: 'Max Bass',
-                      gradient: 'from-red-500/20 to-orange-500/20',
-                      border: 'border-red-500/30',
-                      text: 'text-red-300'
-                    },
-                  ].map(({ value, label, icon: Icon, desc, gradient, border, text, iconStyle }) => (
-                    <motion.button
-                      key={value}
-                      onClick={() => setBoostProfile(value as any)}
-                      className={`flex flex-col items-center gap-1 p-2.5 rounded-xl border transition-all ${
-                        boostProfile === value
-                          ? `bg-gradient-to-br ${gradient} ${border} ${text}`
-                          : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'
-                      }`}
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                    >
-                      <Icon size={18} className={`${boostProfile === value ? text : ''} ${iconStyle || ''}`} />
-                      <span className="text-[10px] font-bold">{label}</span>
-                      <span className="text-[8px] opacity-70">{desc}</span>
-                    </motion.button>
-                  ))}
+                <div className="grid grid-cols-3 gap-2">
+                  {/* Warm Preset */}
+                  <motion.button
+                    onClick={() => setBoostProfile('boosted')}
+                    className={`flex flex-col items-center gap-1 p-3 rounded-xl border transition-all ${
+                      boostProfile === 'boosted'
+                        ? 'bg-gradient-to-br from-yellow-500/20 to-orange-500/20 border-yellow-500/30 text-yellow-300'
+                        : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'
+                    }`}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <LottieIcon
+                      lottieUrl="/lottie/fire.json"
+                      fallbackEmoji="🔥"
+                      size={22}
+                    />
+                    <span className="text-[11px] font-bold">Warm</span>
+                    <span className="text-[9px] opacity-70">Bass Boost</span>
+                  </motion.button>
+
+                  {/* Calm Preset */}
+                  <motion.button
+                    onClick={() => setBoostProfile('calm')}
+                    className={`flex flex-col items-center gap-1 p-3 rounded-xl border transition-all ${
+                      boostProfile === 'calm'
+                        ? 'bg-gradient-to-br from-blue-500/20 to-cyan-500/20 border-blue-500/30 text-blue-300'
+                        : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'
+                    }`}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <LottieIcon
+                      lottieUrl="/lottie/sunrise.json"
+                      fallbackEmoji="🌅"
+                      size={22}
+                      speed={0.5}
+                    />
+                    <span className="text-[11px] font-bold">Calm</span>
+                    <span className="text-[9px] opacity-70">Relaxed</span>
+                  </motion.button>
+
+                  {/* VOYEX Preset - Locked to boosted tracks */}
+                  <motion.button
+                    onClick={() => isCurrentTrackBoosted && setBoostProfile('voyex')}
+                    disabled={!isCurrentTrackBoosted}
+                    className={`flex flex-col items-center gap-1 p-3 rounded-xl border transition-all relative ${
+                      boostProfile === 'voyex' && isCurrentTrackBoosted
+                        ? 'bg-gradient-to-br from-purple-500/20 to-pink-500/20 border-purple-500/30 text-purple-300'
+                        : isCurrentTrackBoosted
+                          ? 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'
+                          : 'bg-white/5 border-white/10 text-gray-600 opacity-50 cursor-not-allowed'
+                    }`}
+                    whileHover={isCurrentTrackBoosted ? { scale: 1.02 } : {}}
+                    whileTap={isCurrentTrackBoosted ? { scale: 0.98 } : {}}
+                  >
+                    {!isCurrentTrackBoosted && (
+                      <div className="absolute top-1 right-1">
+                        <Lock size={10} className="text-gray-500" />
+                      </div>
+                    )}
+                    <Crown size={22} className={boostProfile === 'voyex' && isCurrentTrackBoosted ? 'text-purple-300' : ''} />
+                    <span className="text-[11px] font-bold">VOYEX</span>
+                    <span className="text-[9px] opacity-70">{isCurrentTrackBoosted ? 'Full Exp' : 'Boost to unlock'}</span>
+                  </motion.button>
                 </div>
                 <div className="text-[10px] text-gray-500 mt-3 text-center">
                   {boostProfile === 'boosted' && '🔊 Warm bass boost with speaker protection'}
-                  {boostProfile === 'calm' && '🎵 Relaxed, balanced listening'}
-                  {boostProfile === 'voyex' && '✨ Full spectrum: Sub-bass, warmth, air & harmonics'}
-                  {boostProfile === 'xtreme' && '🔥 Maximum bass power with brick-wall limiter'}
+                  {boostProfile === 'calm' && '🌅 Relaxed, balanced listening - breathe in, breathe out'}
+                  {boostProfile === 'voyex' && isCurrentTrackBoosted && '✨ Full spectrum: Sub-bass, warmth, air & harmonics'}
+                  {boostProfile === 'voyex' && !isCurrentTrackBoosted && '🔒 VOYEX unlocks when playing boosted tracks'}
                 </div>
               </div>
 

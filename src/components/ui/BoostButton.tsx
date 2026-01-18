@@ -299,6 +299,7 @@ export const BoostButton = ({ variant = 'toolbar', className = '' }: BoostButton
   const currentTrack = usePlayerStore((state) => state.currentTrack);
   const playbackSource = usePlayerStore((state) => state.playbackSource);
   const setPlaybackSource = usePlayerStore((state) => state.setPlaybackSource);
+  const seekTo = usePlayerStore((state) => state.seekTo);
   const boostProfile = usePlayerStore((state) => state.boostProfile) as BoostPreset;
   const colors = PRESET_COLORS[boostProfile];
 
@@ -386,9 +387,10 @@ export const BoostButton = ({ variant = 'toolbar', className = '' }: BoostButton
   const handleBoost = async () => {
     if (isDownloading || isQueued) return;
 
-    // If already boosted, nothing to do (iframe mode removed)
+    // If already boosted, DJ Rewind - play from beginning
     if (isBoosted) {
-      console.log('🎵 BOOST: Track already boosted');
+      console.log('🎵 DJ REWIND: Boosted track tap → play from start');
+      seekTo(0);
       return;
     }
 
