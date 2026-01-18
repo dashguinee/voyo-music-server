@@ -8,9 +8,9 @@
  * - Mobile-first, touch-friendly design
  */
 
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Bell, Play, RefreshCw, Zap } from 'lucide-react';
+import { Search, Bell, Play, RefreshCw, Zap, Flame, Moon, PartyPopper, TrendingUp } from 'lucide-react';
 import { getThumb } from '../../utils/thumbnail';
 import { SmartImage } from '../ui/SmartImage';
 import { VIBES, Vibe } from '../../data/tracks';
@@ -22,6 +22,13 @@ import { useReactionStore } from '../../store/reactionStore';
 import { useDownloadStore } from '../../store/downloadStore';
 import { Track } from '../../types';
 import { TiviPlusCrossPromo } from '../voyo/TiviPlusCrossPromo';
+import {
+  getAfroHeatTracks,
+  getChillTracks,
+  getPartyTracks,
+  getLateNightTracks,
+  getTrendingByPlays,
+} from '../../services/databaseDiscovery';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -70,33 +77,15 @@ const getArtistsYouLove = (history: any[], pool: Track[], limit: number = 8): { 
     .slice(0, limit);
 };
 
-const getTrendingTracks = (hotPool: any[], limit: number = 15): Track[] => {
+// Pool-based trending (fallback when database unavailable)
+const getPoolTrendingTracks = (hotPool: any[], limit: number = 15): Track[] => {
   return [...hotPool]
     .sort((a, b) => b.poolScore - a.poolScore)
     .slice(0, limit) as Track[];
 };
 
-// Section-filtered helpers (use curator tags from poolCurator)
-const getWestAfricanTracks = (hotPool: any[], limit: number = 15): Track[] => {
-  return [...hotPool]
-    .filter((t: any) => t.tags?.includes('west-african'))
-    .sort((a, b) => (b.poolScore || 0) - (a.poolScore || 0))
-    .slice(0, limit) as Track[];
-};
-
-const getClassicsTracks = (hotPool: any[], limit: number = 15): Track[] => {
-  return [...hotPool]
-    .filter((t: any) => t.tags?.includes('classic'))
-    .sort((a, b) => (b.poolScore || 0) - (a.poolScore || 0))
-    .slice(0, limit) as Track[];
-};
-
-const getCuratedTrendingTracks = (hotPool: any[], limit: number = 15): Track[] => {
-  return [...hotPool]
-    .filter((t: any) => t.tags?.includes('trending'))
-    .sort((a, b) => (b.poolScore || 0) - (a.poolScore || 0))
-    .slice(0, limit) as Track[];
-};
+// NOTE: Vibe-specific sections now use real database queries from databaseDiscovery.ts
+// getAfroHeatTracks, getChillTracks, getPartyTracks, getLateNightTracks, getTrendingByPlays
 
 const getRecentlyPlayed = (history: any[], limit: number = 10): Track[] => {
   const seen = new Set<string>();
@@ -440,15 +429,15 @@ const TrackCard = ({ track, onPlay }: TrackCardProps) => {
 
   return (
     <motion.button
-      className="flex-shrink-0 w-32 relative"
+      className="flex-shrink-0 w-36 relative"
       onClick={onPlay}
       onHoverStart={() => setIsHovered(true)}
       onHoverEnd={() => setIsHovered(false)}
-      whileHover={{ scale: 1.05 }}
-      whileTap={{ scale: 0.95 }}
+      whileHover={{ scale: 1.03 }}
+      whileTap={{ scale: 0.97 }}
       style={{ scrollSnapAlign: 'start' }}
     >
-      <div className="relative w-32 h-32 rounded-xl overflow-hidden mb-2 bg-white/5">
+      <div className="relative w-36 h-36 rounded-xl overflow-hidden mb-2 bg-white/5">
         <SmartImage
           src={getThumb(track.trackId)}
           alt={track.title}
@@ -925,6 +914,14 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showNotificationHint, setShowNotificationHint] = useState(false);
 
+  // Vibe-specific sections from database (truly unique content)
+  const [afroHeatSection, setAfroHeatSection] = useState<Track[]>([]);
+  const [chillSection, setChillSection] = useState<Track[]>([]);
+  const [partySection, setPartySection] = useState<Track[]>([]);
+  const [lateNightSection, setLateNightSection] = useState<Track[]>([]);
+  const [trendingSection, setTrendingSection] = useState<Track[]>([]);
+  const [sectionsLoaded, setSectionsLoaded] = useState(false);
+
   // Ref for TIVI+ immersive section (nav hides when in view)
   const tiviBreakRef = useRef<HTMLDivElement>(null);
 
@@ -949,6 +946,37 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
     refreshRecommendations();
   }, [hotPool.length, refreshRecommendations]);
 
+  // Load vibe-specific sections from database (unique content per section)
+  useEffect(() => {
+    if (sectionsLoaded) return;
+
+    const loadVibeSections = async () => {
+      try {
+        // Load all vibe sections in parallel
+        const [afro, chill, party, lateNight, trending] = await Promise.all([
+          getAfroHeatTracks(20),
+          getChillTracks(20),
+          getPartyTracks(20),
+          getLateNightTracks(20),
+          getTrendingByPlays(20),
+        ]);
+
+        setAfroHeatSection(afro);
+        setChillSection(chill);
+        setPartySection(party);
+        setLateNightSection(lateNight);
+        setTrendingSection(trending);
+        setSectionsLoaded(true);
+
+        console.log(`[HomeFeed] Loaded vibe sections: Afro ${afro.length}, Chill ${chill.length}, Party ${party.length}, Late ${lateNight.length}, Trending ${trending.length}`);
+      } catch (err) {
+        console.error('[HomeFeed] Failed to load vibe sections:', err);
+      }
+    };
+
+    loadVibeSections();
+  }, [sectionsLoaded]);
+
   const handleRefresh = () => {
     setIsRefreshing(true);
     refreshRecommendations();
@@ -966,27 +994,15 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
   const artistsYouLove = useMemo(() => getArtistsYouLove(history, hotPool, 8), [history, hotPool]);
   const vibes = VIBES;
 
-  // Pool-fed sections (DJ/Curator fills pool → refreshRecommendations → these update)
-  const madeForYou = hotTracks.length > 0 ? hotTracks : getPoolAwareHotTracks(15);
-  const discoverMoreTracks = discoverTracks.length > 0 ? discoverTracks : getPoolAwareHotTracks(15);
+  // Brain-powered sections (personalized from discovery accumulator)
+  const madeForYou = hotTracks.length > 0 ? hotTracks : getPoolAwareHotTracks(20);
+  const discoverMoreTracks = discoverTracks.length > 0 ? discoverTracks : [];
   const newReleases = useMemo(() => getNewReleases(hotPool, 15), [hotPool]);
 
-  // Section-aware shelves (use curator tags, fallback to generic pool)
-  const westAfricanTracks = useMemo(() => {
-    const curated = getWestAfricanTracks(hotPool, 15);
-    return curated.length >= 5 ? curated : getPoolAwareHotTracks(15);
-  }, [hotPool]);
-  const africanVibes = westAfricanTracks; // Alias for backward compatibility
-
-  const classicsTracks = useMemo(() => {
-    const curated = getClassicsTracks(hotPool, 15);
-    return curated.length >= 5 ? curated : [];
-  }, [hotPool]);
-
-  const trending = useMemo(() => {
-    const curated = getCuratedTrendingTracks(hotPool, 15);
-    return curated.length >= 5 ? curated : getTrendingTracks(hotPool, 15);
-  }, [hotPool]);
+  // Vibe sections from database state (loaded via useEffect above)
+  // Each section has UNIQUE content from 324K database, filtered by vibe score
+  const africanVibes = afroHeatSection; // Real Afro Heat tracks from DB
+  const trending = trendingSection.length > 0 ? trendingSection : getPoolTrendingTracks(hotPool, 15);
 
   const greeting = getGreeting();
 
@@ -1011,6 +1027,10 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
   const hasArtists = artistsYouLove.length > 0;
   const hasTrending = trending.length > 0;
   const hasDiscoverMore = discoverMoreTracks.length > 0;
+  const hasAfroHeat = afroHeatSection.length > 0;
+  const hasChill = chillSection.length > 0;
+  const hasParty = partySection.length > 0;
+  const hasLateNight = lateNightSection.length > 0;
 
   return (
     <div className="flex flex-col h-full overflow-y-auto pb-52 scrollbar-hide">
@@ -1222,26 +1242,48 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
         </ShelfWithRefresh>
       )}
 
-      {/* Classics - Timeless African music (from poolCurator) → COMMUNAL */}
-      {classicsTracks.length > 0 && (
-        <div className="mb-8 py-6" style={{ background: 'linear-gradient(180deg, rgba(218,165,32,0.08) 0%, transparent 100%)' }}>
+      {/* 🌙 Chill Vibes - Relaxing African music */}
+      {hasChill && (
+        <div className="mb-8 py-6" style={{ background: 'linear-gradient(180deg, rgba(56,189,248,0.08) 0%, transparent 100%)' }}>
           <div className="px-4 mb-4 flex items-center gap-2">
-            <span className="text-xl">🎺</span>
-            <h2 className="text-white font-semibold text-base">Classics</h2>
-            <span className="text-xs text-white/40 flex-1 text-right mr-2">Timeless African sounds</span>
-            <motion.button
-              className="p-2 rounded-full bg-white/10 hover:bg-white/20"
-              onClick={handleRefresh}
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              animate={isRefreshing ? { rotate: 360 } : {}}
-              transition={{ duration: 0.5 }}
-            >
-              <RefreshCw className={`w-4 h-4 text-amber-400 ${isRefreshing ? 'animate-spin' : ''}`} />
-            </motion.button>
+            <Moon className="w-5 h-5 text-sky-400" />
+            <h2 className="text-white font-semibold text-base">Chill Vibes</h2>
+            <span className="text-xs text-white/40 flex-1 text-right mr-2">Relax & unwind</span>
           </div>
-          <div className="flex gap-4 px-4 overflow-x-auto scrollbar-hide">
-            {classicsTracks.slice(0, 12).map((track) => (
+          <div className="flex gap-3 px-4 overflow-x-auto scrollbar-hide">
+            {chillSection.slice(0, 15).map((track) => (
+              <TrackCard key={track.id} track={track} onPlay={() => onTrackPlay(track, { openFull: true })} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 🎉 Party Mode - High energy tracks */}
+      {hasParty && (
+        <div className="mb-8 py-6" style={{ background: 'linear-gradient(180deg, rgba(236,72,153,0.08) 0%, transparent 100%)' }}>
+          <div className="px-4 mb-4 flex items-center gap-2">
+            <PartyPopper className="w-5 h-5 text-pink-400" />
+            <h2 className="text-white font-semibold text-base">Party Mode</h2>
+            <span className="text-xs text-white/40 flex-1 text-right mr-2">Turn it up!</span>
+          </div>
+          <div className="flex gap-3 px-4 overflow-x-auto scrollbar-hide">
+            {partySection.slice(0, 15).map((track) => (
+              <TrackCard key={track.id} track={track} onPlay={() => onTrackPlay(track, { openFull: true })} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 🌃 Late Night - Midnight vibes */}
+      {hasLateNight && (
+        <div className="mb-8 py-6" style={{ background: 'linear-gradient(180deg, rgba(139,92,246,0.08) 0%, transparent 100%)' }}>
+          <div className="px-4 mb-4 flex items-center gap-2">
+            <span className="text-xl">🌃</span>
+            <h2 className="text-white font-semibold text-base">Late Night</h2>
+            <span className="text-xs text-white/40 flex-1 text-right mr-2">Midnight sessions</span>
+          </div>
+          <div className="flex gap-3 px-4 overflow-x-auto scrollbar-hide">
+            {lateNightSection.slice(0, 15).map((track) => (
               <TrackCard key={track.id} track={track} onPlay={() => onTrackPlay(track, { openFull: true })} />
             ))}
           </div>
