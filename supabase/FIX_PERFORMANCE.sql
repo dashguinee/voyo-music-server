@@ -6,25 +6,25 @@
 -- 1. PERFORMANCE INDEXES (prevent timeouts)
 -- ============================================
 
--- Composite index for hot tracks (artist_tier + vibe scores)
-CREATE INDEX IF NOT EXISTS idx_vi_hot_performance
-ON video_intelligence(artist_tier, (vibe_scores->>'afro_heat')::REAL DESC NULLS LAST)
+-- Index for hot tracks (artist_tier for A/B filtering)
+CREATE INDEX IF NOT EXISTS idx_vi_artist_tier
+ON video_intelligence(artist_tier)
 WHERE artist_tier IN ('A', 'B');
 
--- Index for discovery queries
-CREATE INDEX IF NOT EXISTS idx_vi_discovery_performance
-ON video_intelligence(artist_tier, primary_genre)
+-- Index for discovery queries (vibe_scores not null)
+CREATE INDEX IF NOT EXISTS idx_vi_has_vibes
+ON video_intelligence(youtube_id)
 WHERE vibe_scores IS NOT NULL;
 
--- Index for search (title/artist)
-CREATE INDEX IF NOT EXISTS idx_vi_search_title_trgm
+-- Enable trigram extension for ILIKE search
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+-- Index for search (title/artist) - trigram for fast ILIKE
+CREATE INDEX IF NOT EXISTS idx_vi_title_trgm
 ON video_intelligence USING gin(title gin_trgm_ops);
 
-CREATE INDEX IF NOT EXISTS idx_vi_search_artist_trgm
+CREATE INDEX IF NOT EXISTS idx_vi_artist_trgm
 ON video_intelligence USING gin(artist gin_trgm_ops);
-
--- Enable trigram extension if not exists
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 -- ============================================
 -- 2. MISSING RPC: increment_video_play
