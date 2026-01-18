@@ -430,11 +430,13 @@ export const BoostButton = ({ variant = 'toolbar', className = '' }: BoostButton
         onClick={handleBoost}
         disabled={isDownloading || isQueued}
         className={`w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-md shadow-lg transition-all duration-300 relative ${
-          isActive
-            ? `${colors.bg} border ${colors.border} ${colors.shadow}`
-            : isToggled
-              ? 'bg-white/10 border border-white/20 hover:bg-white/15' // Dimmed when toggled to original
-              : 'bg-black/40 border border-white/10 hover:bg-black/50 hover:border-white/20'
+          isLocalBoosted
+            ? `${colors.bg} border ${colors.border} ${colors.shadow}` // FULL: Yellow bg + yellow border (locally boosted)
+            : isServerBoosted
+              ? `bg-black/40 border-2 ${colors.border}` // CONTOUR ONLY: Dark bg + yellow border (R2 server)
+              : isToggled
+                ? 'bg-white/10 border border-white/20 hover:bg-white/15' // Dimmed when toggled to original
+                : 'bg-black/40 border border-white/10 hover:bg-black/50 hover:border-white/20' // Default: dark
         } ${className}`}
         whileHover={{ scale: 1.15, y: -2 }}
         whileTap={{ scale: 0.9 }}
@@ -458,8 +460,8 @@ export const BoostButton = ({ variant = 'toolbar', className = '' }: BoostButton
 
         {/* Lightning icon - 3 states:
             1. Gray filled = not boosted (iframe)
-            2. Yellow OUTLINE = server boosted (R2 collective) - pulsing stroke
-            3. Yellow FILLED = locally boosted (IndexedDB cache)
+            2. Yellow FILLED + yellow contour button = server boosted (R2 collective)
+            3. Yellow FILLED + yellow filled button = locally boosted (IndexedDB cache)
         */}
         <div className={isToggled ? 'opacity-50' : ''}>
           <LightningIcon
@@ -467,7 +469,6 @@ export const BoostButton = ({ variant = 'toolbar', className = '' }: BoostButton
             isCharging={isDownloading || isQueued}
             size={16}
             preset={boostProfile}
-            outlineOnly={isServerBoosted && !isLocalBoosted}
           />
         </div>
         {showSparks && <BoostSparks preset={boostProfile} />}
