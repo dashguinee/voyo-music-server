@@ -35,8 +35,8 @@ export const BoostSettings = ({ isOpen, onClose }: BoostSettingsProps) => {
 
   const { boostProfile, setBoostProfile, oyeBarBehavior, setOyeBarBehavior, playbackSource } = usePlayerStore();
 
-  // VOYEX is only available for boosted tracks (local cache)
-  const isCurrentTrackBoosted = playbackSource === 'cached';
+  // VOYEX is available for boosted tracks (local cache OR R2 server cache)
+  const isCurrentTrackBoosted = playbackSource === 'cached' || playbackSource === 'r2';
 
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
@@ -168,14 +168,14 @@ export const BoostSettings = ({ isOpen, onClose }: BoostSettingsProps) => {
                     )}
                     <Crown size={22} className={boostProfile === 'voyex' && isCurrentTrackBoosted ? 'text-purple-300' : ''} />
                     <span className="text-[11px] font-bold">VOYEX</span>
-                    <span className="text-[9px] opacity-70">{isCurrentTrackBoosted ? 'Full Exp' : 'Boost to unlock'}</span>
+                    <span className="text-[9px] opacity-70">{isCurrentTrackBoosted ? 'Full Exp' : 'HD audio only'}</span>
                   </motion.button>
                 </div>
                 <div className="text-[10px] text-gray-500 mt-3 text-center">
                   {boostProfile === 'boosted' && '🔊 Warm bass boost with speaker protection'}
                   {boostProfile === 'calm' && '🌅 Relaxed, balanced listening - breathe in, breathe out'}
                   {boostProfile === 'voyex' && isCurrentTrackBoosted && '🎛️ MASTERING: 3-band compression + stereo wide = STUDIO'}
-                  {boostProfile === 'voyex' && !isCurrentTrackBoosted && '🔒 VOYEX unlocks when playing boosted tracks'}
+                  {boostProfile === 'voyex' && !isCurrentTrackBoosted && '🔒 VOYEX requires HD audio (boost or R2 cache)'}
                 </div>
               </div>
 
