@@ -403,7 +403,7 @@ export async function handleSSOCallback(): Promise<boolean> {
  * Open Command Center for sign-in with SSO return
  */
 export function openCommandCenterForSSO(dashId?: string): void {
-  const baseUrl = 'https://hub.dasuperhub.com';
+  const baseUrl = 'https://dash-command.vercel.app';
   const params = new URLSearchParams();
   params.set('from', 'voyo');
   if (dashId) params.set('dashId', dashId);
