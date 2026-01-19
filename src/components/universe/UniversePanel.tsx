@@ -27,8 +27,8 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
   const { isLoggedIn, dashId, voyoId, displayName, signOut, signIn, isLoading: authLoading, error: authError } = useAuth();
   const { trackPreferences } = usePreferenceStore();
 
-  // Tab state - always show stats first (works locally without login)
-  const [activeTab, setActiveTab] = useState<'auth' | 'stats' | 'profile' | 'portal' | 'discover'>('stats');
+  // Tab state - show auth if not logged in, stats if logged in
+  const [activeTab, setActiveTab] = useState<'auth' | 'stats' | 'profile' | 'portal' | 'discover'>(isLoggedIn ? 'stats' : 'auth');
 
   // Sign-in form state - check URL for prefilled dashId
   const [signInDashId, setSignInDashId] = useState(() => {
