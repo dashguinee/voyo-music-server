@@ -16,6 +16,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { usePreferenceStore } from '../../store/preferenceStore';
 import { profileAPI, formatVoyoId } from '../../lib/voyo-api';
 import { UserSearch } from './UserSearch';
+import { openCommandCenterForSSO } from '../../lib/dash-auth';
 
 interface UniversePanelProps {
   isOpen: boolean;
@@ -23,13 +24,26 @@ interface UniversePanelProps {
 }
 
 export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
-  const { isLoggedIn, dashId, voyoId, displayName, signOut, openSignIn } = useAuth();
+  const { isLoggedIn, dashId, voyoId, displayName, signOut, signIn, isLoading: authLoading, error: authError } = useAuth();
   const { trackPreferences } = usePreferenceStore();
 
-  // Tab state
-  const [activeTab, setActiveTab] = useState<'auth' | 'stats' | 'profile' | 'portal' | 'discover'>(
-    isLoggedIn ? 'stats' : 'auth'
-  );
+  // Tab state - always show stats first (works locally without login)
+  const [activeTab, setActiveTab] = useState<'auth' | 'stats' | 'profile' | 'portal' | 'discover'>('stats');
+
+  // Sign-in form state - check URL for prefilled dashId
+  const [signInDashId, setSignInDashId] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const prefilled = params.get('dashId')?.toUpperCase() || '';
+    // Clean URL after reading (remove dashId param)
+    if (prefilled) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('dashId');
+      url.searchParams.delete('from');
+      window.history.replaceState({}, '', url.pathname + url.search);
+    }
+    return prefilled;
+  });
+  const [signInPin, setSignInPin] = useState('');
 
   // Profile edit state
   const [editDisplayName, setEditDisplayName] = useState('');
@@ -50,6 +64,18 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
   const [copied, setCopied] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // Handle sign-in form submit
+  const handleSignIn = async () => {
+    if (!signInDashId.trim() || !signInPin.trim()) return;
+    const success = await signIn(signInDashId.trim().toUpperCase(), signInPin.trim());
+    if (success) {
+      setSignInDashId('');
+      setSignInPin('');
+      setActiveTab('stats');
+      setMessage({ type: 'success', text: 'Signed in!' });
+    }
+  };
+
   // Calculate stats
   const stats = {
     tracksPlayed: Object.keys(trackPreferences).length,
@@ -67,6 +93,13 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
       setActiveTab('stats');
     }
   }, [isLoggedIn, activeTab]);
+
+  // If dashId prefilled from URL and not logged in, show auth tab
+  useEffect(() => {
+    if (signInDashId && !isLoggedIn && isOpen) {
+      setActiveTab('auth');
+    }
+  }, [signInDashId, isLoggedIn, isOpen]);
 
   // Load profile data when profile tab opens
   useEffect(() => {
@@ -248,20 +281,63 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
               {activeTab === 'auth' && (
                 <div className="space-y-6">
                   <div className="text-center">
-                    <h3 className="text-white text-lg font-bold mb-2">Welcome to VOYO Verse</h3>
+                    <h3 className="text-white text-lg font-bold mb-2">Sign in with DASH</h3>
                     <p className="text-white/50 text-sm">
                       Your music universe across the DASH ecosystem
                     </p>
                   </div>
 
-                  {/* Sign in with DASH ID */}
-                  <button
-                    onClick={openSignIn}
-                    className="w-full py-4 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold flex items-center justify-center gap-2"
-                  >
-                    <LogIn className="w-5 h-5" />
-                    Sign in with DASH ID
-                  </button>
+                  {/* Sign-in Form */}
+                  <div className="space-y-4">
+                    {/* DASH ID Input */}
+                    <div>
+                      <label className="block text-white/50 text-xs mb-2 uppercase tracking-wider">DASH ID</label>
+                      <input
+                        type="text"
+                        value={signInDashId}
+                        onChange={(e) => setSignInDashId(e.target.value.toUpperCase())}
+                        placeholder="e.g. 0046AAD"
+                        className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/30 font-mono text-center text-lg tracking-wider focus:outline-none focus:border-purple-500/50"
+                        disabled={authLoading}
+                      />
+                    </div>
+
+                    {/* PIN Input */}
+                    <div>
+                      <label className="block text-white/50 text-xs mb-2 uppercase tracking-wider">PIN</label>
+                      <input
+                        type="password"
+                        value={signInPin}
+                        onChange={(e) => setSignInPin(e.target.value.replace(/\D/g, ''))}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSignIn()}
+                        placeholder="••••••"
+                        maxLength={6}
+                        className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/30 text-center text-2xl tracking-[0.3em] focus:outline-none focus:border-purple-500/50"
+                        disabled={authLoading}
+                      />
+                    </div>
+
+                    {/* Error Message */}
+                    {authError && (
+                      <p className="text-red-400 text-sm text-center">{authError}</p>
+                    )}
+
+                    {/* Sign In Button */}
+                    <button
+                      onClick={handleSignIn}
+                      disabled={!signInDashId.trim() || !signInPin.trim() || authLoading}
+                      className="w-full py-4 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {authLoading ? (
+                        <RefreshCw className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <>
+                          <LogIn className="w-5 h-5" />
+                          Sign In
+                        </>
+                      )}
+                    </button>
+                  </div>
 
                   {/* Divider */}
                   <div className="flex items-center gap-3">
@@ -270,9 +346,9 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
                     <div className="flex-1 h-px bg-white/10" />
                   </div>
 
-                  {/* Claim Username - Opens Command Center */}
+                  {/* Get DASH ID - Redirect to Command Center with SSO return */}
                   <button
-                    onClick={() => window.open('https://hub.dasuperhub.com', '_blank')}
+                    onClick={() => openCommandCenterForSSO(signInDashId || undefined)}
                     className="w-full py-4 rounded-xl bg-white/5 border border-white/20 text-white font-semibold flex items-center justify-center gap-2 hover:bg-white/10 transition-colors"
                   >
                     <UserPlus className="w-5 h-5" />

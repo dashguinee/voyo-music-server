@@ -26,7 +26,7 @@ import { useAuth } from '../../hooks/useAuth';
 type ClassicTab = 'home' | 'hub' | 'library';
 
 interface ClassicModeProps {
-  onSwitchToVOYO: () => void;
+  onSwitchToVOYO: (tab?: 'music' | 'feed' | 'upload' | 'dahub') => void;
   onSearch: () => void;
 }
 
@@ -337,7 +337,10 @@ const MiniPlayer = ({ onVOYOClick, onOpenFull }: { onVOYOClick: () => void; onOp
   );
 };
 
-// Bottom Navigation - Context-aware: shows nav to OTHER pages, not current
+// Bottom Navigation - Context-aware
+// Home: DAHUB | VOYO | Library
+// DaHub: Home | VOYO Feed | Library
+// Library: Home | VOYO | Library (active)
 const BottomNav = ({
   activeTab,
   onTabChange,
@@ -347,19 +350,17 @@ const BottomNav = ({
   onTabChange: (tab: ClassicTab) => void;
   onVOYOClick: () => void;
 }) => {
-  // Left button: Home when on DAHUB/Library, DAHUB when on Home
+  // LEFT: DAHUB when on Home, otherwise Home
   const leftTab = activeTab === 'home' ? 'hub' : 'home';
   const LeftIcon = activeTab === 'home' ? Users : Home;
   const leftLabel = activeTab === 'home' ? 'DAHUB' : 'Home';
 
-  // Right button: Library when on Home/DAHUB, DAHUB when on Library
-  const rightTab = activeTab === 'library' ? 'hub' : 'library';
-  const RightIcon = activeTab === 'library' ? Users : LibraryIcon;
-  const rightLabel = activeTab === 'library' ? 'DAHUB' : 'Library';
+  // RIGHT: Always Library (highlighted when active)
+  const isLibraryActive = activeTab === 'library';
 
   return (
     <nav className="absolute bottom-0 left-0 right-0 z-30 flex items-center justify-around py-3 px-6 bg-[#0a0a0f]/95 backdrop-blur-lg border-t border-white/5">
-      {/* LEFT */}
+      {/* LEFT: DAHUB (when on Home) or Home (when elsewhere) */}
       <motion.button
         className="flex flex-col items-center gap-1 p-2 text-white/40"
         onClick={() => onTabChange(leftTab)}
@@ -370,7 +371,7 @@ const BottomNav = ({
         <span className="text-xs">{leftLabel}</span>
       </motion.button>
 
-      {/* CENTER: VOYO Player - Gentle premium glow */}
+      {/* CENTER: VOYO - Gentle premium glow */}
       <motion.button
         className="relative"
         onClick={onVOYOClick}
@@ -395,15 +396,15 @@ const BottomNav = ({
         </div>
       </motion.button>
 
-      {/* RIGHT */}
+      {/* RIGHT: Always Library (highlighted when active) */}
       <motion.button
-        className="flex flex-col items-center gap-1 p-2 text-white/40"
-        onClick={() => onTabChange(rightTab)}
+        className={`flex flex-col items-center gap-1 p-2 ${isLibraryActive ? 'text-white' : 'text-white/40'}`}
+        onClick={() => onTabChange('library')}
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.9 }}
       >
-        <RightIcon className="w-6 h-6" />
-        <span className="text-xs">{rightLabel}</span>
+        <LibraryIcon className="w-6 h-6" />
+        <span className="text-xs">Library</span>
       </motion.button>
     </nav>
   );
@@ -517,7 +518,12 @@ export const ClassicMode = ({ onSwitchToVOYO, onSearch }: ClassicModeProps) => {
             />
           )}
           {activeTab === 'hub' && (
-            <Hub />
+            <Hub
+              onSwitchToVOYO={onSwitchToVOYO}
+              onHome={() => setActiveTab('home')}
+              onVoyoFeed={() => onSwitchToVOYO('feed')}
+              onLibrary={() => setActiveTab('library')}
+            />
           )}
           {activeTab === 'library' && (
             <Library onTrackClick={handleTrackClick} />
@@ -532,9 +538,9 @@ export const ClassicMode = ({ onSwitchToVOYO, onSearch }: ClassicModeProps) => {
         )}
       </AnimatePresence>
 
-      {/* Bottom Navigation - hides during immersive sections */}
+      {/* Bottom Navigation - hides during immersive sections and when Hub is shown (Hub has its own nav) */}
       <AnimatePresence>
-        {navVisible && (
+        {navVisible && activeTab !== 'hub' && (
           <motion.div
             initial={{ y: 60, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}

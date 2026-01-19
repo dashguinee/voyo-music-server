@@ -305,13 +305,19 @@ export const PortraitVOYO = ({ onSearch, onDahub, onHome }: PortraitVOYOProps) =
           transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
           style={{ pointerEvents: voyoActiveTab === 'dahub' ? 'auto' : 'none' }}
         >
-          <Hub />
+          <Hub
+            onHome={onHome}
+            onVoyoFeed={() => setVoyoTab('feed')}
+            onLibrary={onHome} // Go to Classic Mode library
+          />
         </motion.div>
 
-        {/* LAYER 5: BOTTOM NAVIGATION (Always on Top) */}
-        <div className="absolute bottom-0 left-0 right-0 z-50">
-          <VoyoBottomNav onDahub={onDahub} onHome={onHome} />
-        </div>
+        {/* LAYER 5: BOTTOM NAVIGATION (Hidden when Hub is shown - Hub has its own nav) */}
+        {voyoActiveTab !== 'dahub' && (
+          <div className="absolute bottom-0 left-0 right-0 z-50">
+            <VoyoBottomNav onDahub={onDahub} onHome={onHome} />
+          </div>
+        )}
 
       </div>
 

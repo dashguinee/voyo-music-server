@@ -7,7 +7,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform, PanInfo } from 'framer-motion';
 import {
   Settings, Plus, X, Play, Pause, Volume2,
-  Send, Heart, ChevronRight, BadgeCheck, Music2, User, UserPlus, Search, Check, Loader2
+  Send, Heart, ChevronRight, BadgeCheck, Music2, User, UserPlus, Search, Check, Loader2,
+  Home, Library as LibraryIcon
 } from 'lucide-react';
 import { UniversePanel } from '../universe/UniversePanel';
 import { usePlayerStore } from '../../store/playerStore';
@@ -95,9 +96,7 @@ const celebrities = [
 // Each friend's nowPlaying becomes their auto-note (♪ track title)
 
 // Friends data
-// NOTE: nowPlaying is display-only. To enable playback, add trackId to each nowPlaying object
-// and wire up onClick to setCurrentTrack() in the friend cards below (lines ~790-818).
-// Current design: tapping a friend opens their story, not their track.
+// nowPlaying includes trackId for playback - tapping opens VOYO player with that track
 const friends = [
   {
     id: 'aziz',
@@ -106,7 +105,7 @@ const friends = [
     hasStory: true,
     isOnline: true,
     storyPreview: STORY_PREVIEWS.aziz,
-    nowPlaying: { title: 'Last Last', artist: 'Burna Boy', thumbnail: 'https://i.ytimg.com/vi/421w1j87fEM/hqdefault.jpg' },
+    nowPlaying: { trackId: '421w1j87fEM', title: 'Last Last', artist: 'Burna Boy', thumbnail: 'https://i.ytimg.com/vi/421w1j87fEM/hqdefault.jpg' },
   },
   {
     id: 'kenza',
@@ -115,7 +114,7 @@ const friends = [
     hasStory: true,
     isOnline: true,
     storyPreview: STORY_PREVIEWS.kenza,
-    nowPlaying: { title: 'Essence', artist: 'Wizkid', thumbnail: 'https://i.ytimg.com/vi/jipQpjUA_o8/hqdefault.jpg' },
+    nowPlaying: { trackId: 'jipQpjUA_o8', title: 'Essence', artist: 'Wizkid', thumbnail: 'https://i.ytimg.com/vi/jipQpjUA_o8/hqdefault.jpg' },
   },
   {
     id: 'omar',
@@ -133,7 +132,7 @@ const friends = [
     hasStory: true,
     isOnline: true,
     storyPreview: STORY_PREVIEWS.sarah,
-    nowPlaying: { title: 'Calm Down', artist: 'Rema', thumbnail: 'https://i.ytimg.com/vi/WcIcVapfqXw/hqdefault.jpg' },
+    nowPlaying: { trackId: 'WcIcVapfqXw', title: 'Calm Down', artist: 'Rema', thumbnail: 'https://i.ytimg.com/vi/WcIcVapfqXw/hqdefault.jpg' },
   },
   {
     id: 'youssef',
@@ -380,9 +379,14 @@ const StoryViewer = ({ friend, onClose }: StoryViewerProps) => {
 // ============================================
 interface HubProps {
   onOpenProfile?: () => void;
+  onSwitchToVOYO?: () => void;
+  // Self-contained navigation - DaHub always uses same nav regardless of parent
+  onHome?: () => void;
+  onVoyoFeed?: () => void;
+  onLibrary?: () => void;
 }
 
-export const Hub = ({ onOpenProfile }: HubProps) => {
+export const Hub = ({ onOpenProfile, onSwitchToVOYO, onHome, onVoyoFeed, onLibrary }: HubProps) => {
   const [selectedFriend, setSelectedFriend] = useState<typeof friends[0] | null>(null);
   const [myNote, setMyNote] = useState('');
   const [isEditingNote, setIsEditingNote] = useState(false);
@@ -527,9 +531,10 @@ export const Hub = ({ onOpenProfile }: HubProps) => {
         isOnline: rf.isOnline,
         storyPreview: null,
         nowPlaying: rf.nowPlaying ? {
+          trackId: (rf.nowPlaying as any).trackId || '', // Include trackId for playback
           title: rf.nowPlaying.title,
           artist: rf.nowPlaying.artist,
-          thumbnail: '' // Would need to fetch from track data
+          thumbnail: (rf.nowPlaying as any).thumbnail || '' // Would need to fetch from track data
         } : null,
       }))
     : friends;
@@ -586,24 +591,14 @@ export const Hub = ({ onOpenProfile }: HubProps) => {
       <div className="sticky top-0 z-20 bg-[#0a0a0f]/95 backdrop-blur-xl border-b border-white/[0.05]">
         <div className="flex items-center justify-between px-6 py-5">
           <h1 className="text-xl font-bold text-white tracking-tight">DAHUB</h1>
-          <div className="flex items-center gap-1">
-            {/* Add Friend Button */}
-            <motion.button
-              onClick={() => setShowAddFriend(true)}
-              className="p-2 rounded-full hover:bg-white/[0.08] active:bg-white/[0.12] transition-colors"
-              whileTap={{ scale: 0.95 }}
-            >
-              <UserPlus className="w-5 h-5 text-white/60" />
-            </motion.button>
-            {/* Settings Button */}
-            <motion.button
-              onClick={() => setIsUniverseOpen(true)}
-              className="p-2 -mr-2 rounded-full hover:bg-white/[0.08] active:bg-white/[0.12] transition-colors"
-              whileTap={{ scale: 0.95 }}
-            >
-              <Settings className="w-5 h-5 text-white/60" />
-            </motion.button>
-          </div>
+          {/* Settings Button */}
+          <motion.button
+            onClick={() => setIsUniverseOpen(true)}
+            className="p-2 -mr-2 rounded-full hover:bg-white/[0.08] active:bg-white/[0.12] transition-colors"
+            whileTap={{ scale: 0.95 }}
+          >
+            <Settings className="w-5 h-5 text-white/60" />
+          </motion.button>
         </div>
       </div>
 
@@ -665,9 +660,15 @@ export const Hub = ({ onOpenProfile }: HubProps) => {
             ) : (
               <div className="w-11 h-11 rounded-lg bg-white/5 opacity-50 ring-1 ring-white/[0.05]" />
             )}
-            {/* Account Icon */}
-            <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center ml-1">
-              <User className="w-4 h-4 text-white/60" />
+            {/* Add Friend Button */}
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowAddFriend(true);
+              }}
+              className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center ml-3 cursor-pointer active:scale-95 transition-transform"
+            >
+              <UserPlus className="w-3.5 h-3.5 text-white/60" />
             </div>
           </div>
         </motion.div>
@@ -941,13 +942,27 @@ export const Hub = ({ onOpenProfile }: HubProps) => {
           {displayFriends.map((friend) => {
             // Real data: nowPlaying from voyo_profiles becomes their note
             const friendDisplayNote = friend.nowPlaying ? `♪ ${friend.nowPlaying.title}` : null;
+            const hasPlayableTrack = friend.nowPlaying?.trackId;
 
             return (
               <motion.button
                 key={friend.id}
                 className="flex flex-col items-center flex-shrink-0"
                 onClick={() => {
-                  // Open chat with this friend
+                  // If friend has a playable track, play it and switch to VOYO
+                  if (hasPlayableTrack && friend.nowPlaying) {
+                    const track = {
+                      id: friend.nowPlaying.trackId,
+                      trackId: friend.nowPlaying.trackId,
+                      title: friend.nowPlaying.title,
+                      artist: friend.nowPlaying.artist,
+                      coverUrl: friend.nowPlaying.thumbnail || `https://i.ytimg.com/vi/${friend.nowPlaying.trackId}/hqdefault.jpg`,
+                    };
+                    usePlayerStore.getState().playTrack(track as any);
+                    onSwitchToVOYO?.();
+                    return;
+                  }
+                  // Otherwise open chat with this friend
                   setActiveChat({
                     username: friend.id,
                     displayName: friend.name,
@@ -1130,11 +1145,20 @@ export const Hub = ({ onOpenProfile }: HubProps) => {
                   <motion.button
                     key={friend.id}
                     className="w-full flex items-center gap-4 p-4 rounded-2xl bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.05] active:bg-white/[0.06] transition-colors"
-                    onClick={() => setActiveChat({
-                      username: friend.id,
-                      displayName: friend.name,
-                      avatar: friend.avatar,
-                    })}
+                    onClick={() => {
+                      // Play track and go to VOYO Player
+                      if (friend.nowPlaying?.trackId) {
+                        const track = {
+                          id: friend.nowPlaying.trackId,
+                          trackId: friend.nowPlaying.trackId,
+                          title: friend.nowPlaying.title,
+                          artist: friend.nowPlaying.artist,
+                          coverUrl: friend.nowPlaying.thumbnail || `https://i.ytimg.com/vi/${friend.nowPlaying.trackId}/hqdefault.jpg`,
+                        };
+                        usePlayerStore.getState().playTrack(track as any);
+                        onSwitchToVOYO?.();
+                      }
+                    }}
                     whileTap={{ scale: 0.98 }}
                   >
                     {/* Album art + avatar overlay */}
@@ -1210,6 +1234,52 @@ export const Hub = ({ onOpenProfile }: HubProps) => {
           </div>
         )}
       </div>
+
+      {/* Self-contained Bottom Navigation - DaHub always uses same nav */}
+      {(onHome || onVoyoFeed || onLibrary) && (
+        <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around py-3 px-6 bg-[#0a0a0f]/95 backdrop-blur-lg border-t border-white/5">
+          {/* LEFT: Home */}
+          <motion.button
+            className="flex flex-col items-center gap-1 p-2 text-white/40"
+            onClick={onHome}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+          >
+            <Home className="w-6 h-6" />
+            <span className="text-xs">Home</span>
+          </motion.button>
+
+          {/* CENTER: VOYO Feed - Matches VoyoBottomNav style */}
+          <motion.button
+            className="relative"
+            onClick={onVoyoFeed}
+            whileTap={{ scale: 0.95 }}
+          >
+            <div
+              className="relative w-16 h-16 rounded-2xl flex flex-col items-center justify-center bg-gradient-to-br from-purple-500 to-pink-500"
+              style={{
+                boxShadow: '0 0 30px rgba(168, 85, 247, 0.5), 0 8px 32px rgba(0,0,0,0.4)',
+              }}
+            >
+              <div className="flex flex-col items-center">
+                <span className="font-black text-sm text-white tracking-tight">VOYO</span>
+                <span className="text-[8px] text-white/70 uppercase tracking-widest">Feed</span>
+              </div>
+            </div>
+          </motion.button>
+
+          {/* RIGHT: Library */}
+          <motion.button
+            className="flex flex-col items-center gap-1 p-2 text-white/40"
+            onClick={onLibrary}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+          >
+            <LibraryIcon className="w-6 h-6" />
+            <span className="text-xs">Library</span>
+          </motion.button>
+        </nav>
+      )}
 
       <div className="h-24" />
     </div>

@@ -50,7 +50,7 @@ import { runStartupHeal } from './services/trackVerifier';
 import { syncSeedTracks } from './services/centralDJ';
 import { TRACKS } from './data/tracks';
 import { syncManyToDatabase } from './services/databaseSync';
-import { DashAuthBadge, useDashCitizen } from './lib/dash-auth';
+import { DashAuthBadge, useDashCitizen, handleSSOCallback } from './lib/dash-auth';
 
 // App modes
 type AppMode = 'classic' | 'voyo' | 'video';
@@ -929,6 +929,19 @@ function App() {
     setupMobileAudioUnlock();
   }, []);
 
+  // SSO: Handle redirect from Command Center with SSO token
+  useEffect(() => {
+    handleSSOCallback().then(success => {
+      if (success) {
+        console.log('[VOYO] SSO sign-in successful!');
+        // Trigger a re-render by dispatching storage event
+        window.dispatchEvent(new StorageEvent('storage', {
+          key: 'dash_citizen_storage',
+        }));
+      }
+    });
+  }, []);
+
   // VOYO:PLAYTRACK - Listen for track play events from cross-promo sections
   useEffect(() => {
     const handlePlayTrack = async (event: CustomEvent) => {
@@ -1140,7 +1153,10 @@ function App() {
   const handleVideoModeExit = () => setAppMode('voyo');
 
   // Handle mode switching
-  const handleSwitchToVOYO = () => setAppMode('voyo');
+  const handleSwitchToVOYO = (tab?: 'music' | 'feed' | 'upload' | 'dahub') => {
+    setVoyoTab(tab || 'music'); // Use specified tab or default to player view
+    setAppMode('voyo');
+  };
   const handleSwitchToClassic = () => setAppMode('classic');
 
   return (

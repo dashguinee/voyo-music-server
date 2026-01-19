@@ -296,13 +296,119 @@ export function useDashCitizen(productCode: ProductCode) {
     return () => window.removeEventListener('storage', handleStorage);
   }, [productCode]);
 
+  // Open Command Center with dashId prefilled if signed in
+  const openCommandCenter = () => {
+    const currentCitizen = getCitizen(productCode);
+    const url = currentCitizen
+      ? `https://hub.dasuperhub.com?dashId=${currentCitizen.coreId}&from=voyo`
+      : 'https://hub.dasuperhub.com';
+    window.open(url, '_blank');
+  };
+
   return {
     citizen,
     isAuthenticated: !!citizen,
     displayId: citizen?.displayId || null,
     coreId: citizen?.coreId || null,
-    openCommandCenter: () => window.open('https://hub.dasuperhub.com', '_blank'),
+    openCommandCenter,
   };
+}
+
+// =============================================
+// SSO (Single Sign-On) Functions
+// =============================================
+
+/**
+ * Exchange SSO token for user session
+ * Called when redirected from Command Center with ?sso_token=xxx
+ */
+export async function exchangeSSOToken(
+  token: string,
+  productCode: string = 'V'
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { data, error } = await commandCenter.rpc('exchange_sso_token', {
+      p_token: token
+    });
+
+    if (error) {
+      console.error('[DASH SSO] Exchange error:', error);
+      return { success: false, error: error.message };
+    }
+
+    if (!data?.success) {
+      return { success: false, error: data?.error || 'Invalid or expired token' };
+    }
+
+    const user = data.user;
+
+    // Store session in localStorage (same format as regular sign-in)
+    const storageData = {
+      state: {
+        citizen: {
+          coreId: user.core_id,
+          fullName: user.full_name,
+          phone: user.phone,
+          countryCode: user.country_code || 'GN',
+          isActivated: true,
+          role: user.role,
+        },
+        isAuthenticated: true,
+      },
+      version: 0
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(storageData));
+
+    // Trigger re-render
+    window.dispatchEvent(new StorageEvent('storage', {
+      key: STORAGE_KEY,
+    }));
+
+    console.log('[DASH SSO] Token exchanged successfully for:', user.core_id);
+    return { success: true };
+  } catch (e) {
+    console.error('[DASH SSO] Exchange failed:', e);
+    return { success: false, error: 'Failed to exchange token' };
+  }
+}
+
+/**
+ * Check URL for SSO token and auto-sign-in
+ * Call this on app startup
+ */
+export async function handleSSOCallback(): Promise<boolean> {
+  const params = new URLSearchParams(window.location.search);
+  const ssoToken = params.get('sso_token');
+
+  if (!ssoToken) return false;
+
+  // Clean URL immediately
+  const url = new URL(window.location.href);
+  url.searchParams.delete('sso_token');
+  window.history.replaceState({}, '', url.pathname + url.search);
+
+  console.log('[DASH SSO] Found token, exchanging...');
+  const result = await exchangeSSOToken(ssoToken);
+
+  if (result.success) {
+    console.log('[DASH SSO] Auto sign-in successful!');
+    return true;
+  } else {
+    console.error('[DASH SSO] Auto sign-in failed:', result.error);
+    return false;
+  }
+}
+
+/**
+ * Open Command Center for sign-in with SSO return
+ */
+export function openCommandCenterForSSO(dashId?: string): void {
+  const baseUrl = 'https://hub.dasuperhub.com';
+  const params = new URLSearchParams();
+  params.set('from', 'voyo');
+  if (dashId) params.set('dashId', dashId);
+
+  window.location.href = `${baseUrl}?${params.toString()}`;
 }
 
 /**
