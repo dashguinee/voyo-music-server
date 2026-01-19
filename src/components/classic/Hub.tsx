@@ -91,13 +91,8 @@ const celebrities = [
   },
 ];
 
-// Instagram-style Notes from friends
-const friendNotes = [
-  { id: '1', friend: 'Aziz', avatar: AVATARS.aziz, note: 'vibing to Burna rn 🔥', timestamp: '2h', hasMusic: true },
-  { id: '2', friend: 'Kenza', avatar: AVATARS.kenza, note: 'new playlist dropping tonight', timestamp: '4h', hasMusic: false },
-  { id: '3', friend: 'Sarah', avatar: AVATARS.sarah, note: '🎧', timestamp: '6h', hasMusic: true },
-  { id: '4', friend: 'Omar', avatar: AVATARS.omar, note: 'who up?', timestamp: '8h', hasMusic: false },
-];
+// Notes are now driven by real friend data from Command Center + voyo_profiles
+// Each friend's nowPlaying becomes their auto-note (♪ track title)
 
 // Friends data
 // NOTE: nowPlaying is display-only. To enable playback, add trackId to each nowPlaying object
@@ -942,29 +937,22 @@ export const Hub = ({ onOpenProfile }: HubProps) => {
             <span className="text-white/60 text-[10px] font-medium mt-2 tracking-wide">Your note</span>
           </motion.button>
 
-          {/* Friends with notes */}
+          {/* Friends - nowPlaying shows as their note */}
           {displayFriends.map((friend) => {
-            const note = friendNotes.find(n => n.friend === friend.name);
-            const autoNote = !note && friend.nowPlaying ? `♪${friend.nowPlaying.title}` : null;
-            const friendDisplayNote = note?.note || autoNote;
+            // Real data: nowPlaying from voyo_profiles becomes their note
+            const friendDisplayNote = friend.nowPlaying ? `♪ ${friend.nowPlaying.title}` : null;
 
             return (
               <motion.button
                 key={friend.id}
                 className="flex flex-col items-center flex-shrink-0"
                 onClick={() => {
-                  // For real friends, open chat. For mock friends with stories, open story viewer.
-                  if (realFriends.length > 0) {
-                    setActiveChat({
-                      username: friend.id,
-                      displayName: friend.name,
-                      avatar: friend.avatar,
-                    });
-                  } else if (friend.hasStory && friend.storyPreview) {
-                    // Only mock friends have stories - cast to the expected type
-                    const mockFriend = friends.find(f => f.id === friend.id);
-                    if (mockFriend) setSelectedFriend(mockFriend);
-                  }
+                  // Open chat with this friend
+                  setActiveChat({
+                    username: friend.id,
+                    displayName: friend.name,
+                    avatar: friend.avatar,
+                  });
                 }}
                 whileTap={{ scale: 0.92 }}
                 transition={{ duration: 0.15 }}
@@ -982,19 +970,20 @@ export const Hub = ({ onOpenProfile }: HubProps) => {
                 </div>
                 {/* Avatar */}
                 <div className="relative">
-                  {friend.hasStory && (
-                    <div className="absolute -inset-[2.5px] rounded-full bg-gradient-to-br from-purple-500 via-fuchsia-500 to-pink-500" />
+                  {/* Green ring if listening (has nowPlaying) */}
+                  {friend.nowPlaying && (
+                    <div className="absolute -inset-[2.5px] rounded-full bg-gradient-to-br from-green-400 to-emerald-500" />
                   )}
                   <img
                     src={friend.avatar}
                     alt=""
-                    className={`relative w-[60px] h-[60px] rounded-full object-cover ring-[3px] ring-[#0a0a0f] ${!friend.hasStory && !friendDisplayNote ? 'opacity-40' : ''}`}
+                    className={`relative w-[60px] h-[60px] rounded-full object-cover ring-[3px] ring-[#0a0a0f] ${!friend.nowPlaying && !friend.isOnline ? 'opacity-40' : ''}`}
                   />
                   {friend.isOnline && (
                     <div className="absolute bottom-0.5 right-0.5 w-[14px] h-[14px] rounded-full bg-green-500 border-[3px] border-[#0a0a0f] shadow-sm" />
                   )}
                 </div>
-                <span className={`text-[10px] font-medium mt-2 tracking-wide ${friend.hasStory || friendDisplayNote ? 'text-white/70' : 'text-white/40'}`}>{friend.name}</span>
+                <span className={`text-[10px] font-medium mt-2 tracking-wide ${friend.nowPlaying || friend.isOnline ? 'text-white/70' : 'text-white/40'}`}>{friend.name}</span>
               </motion.button>
             );
           })}
