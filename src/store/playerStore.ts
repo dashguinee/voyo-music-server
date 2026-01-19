@@ -402,8 +402,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     currentTrackAbortController = new AbortController();
     const signal = currentTrackAbortController.signal;
 
-    // Add current track to history before switching (only if played > 5 seconds)
-    if (state.currentTrack && state.currentTime > 5) {
+    // Add current track to history before switching (save ALL tracks, even brief plays)
+    // User requested: "make sure all songs played show in library history even if played 5s"
+    if (state.currentTrack && state.currentTime > 0) {
       get().addToHistory(state.currentTrack, state.currentTime);
 
       // POOL ENGAGEMENT: Record completion if played significantly
@@ -500,6 +501,24 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
     // Then immediately set isPlaying = true (no delay needed)
     set({ isPlaying: true });
+
+    // IMMEDIATE HISTORY SAVE: Save track info RIGHT NOW so refresh doesn't lose it
+    // This creates an entry with 0 duration that gets updated when track ends/switches
+    const current = loadPersistedState();
+    const newHistoryItem = {
+      trackId: track.trackId || track.id,
+      title: track.title,
+      artist: track.artist,
+      coverUrl: track.coverUrl,
+      playedAt: new Date().toISOString(),
+      duration: 0, // Will be updated when track ends
+      oyeReactions: 0,
+    };
+    savePersistedState({
+      ...current,
+      history: [...(current.history || []).slice(-49), newHistoryItem],
+    });
+    console.log('[VOYO] Track started, saved immediately:', track.title);
 
     // Update Media Session
     if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
