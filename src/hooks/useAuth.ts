@@ -9,9 +9,11 @@
  *   if (!isLoggedIn) return <SignInPrompt />;
  *   // dashId = "0046AAD"
  *   // displayName = "Dash"
+ *
+ * For profile data, use useAuthContext() from providers/AuthProvider.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback, useContext } from 'react';
 import { useDashCitizen, signInWithDashId, signOutDash, getDashSession } from '../lib/dash-auth';
 
 export interface AuthState {

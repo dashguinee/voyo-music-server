@@ -29,6 +29,7 @@ import { VoyoSplash } from './components/voyo/VoyoSplash';
 import { UniversePanel } from './components/universe/UniversePanel';
 import { useReactionStore } from './store/reactionStore';
 import { useAuth } from './hooks/useAuth';
+import { AuthProvider } from './providers/AuthProvider';
 
 // DEBUG: Load intent engine verification tools (available in browser console)
 import './utils/debugIntent';
@@ -1143,6 +1144,7 @@ function App() {
   const handleSwitchToClassic = () => setAppMode('classic');
 
   return (
+    <AuthProvider>
     <div className="relative h-full w-full bg-[#0a0a0f] overflow-hidden">
       {/* VOYO Splash Screen - Premium water drop animation */}
       {showSplash && (
@@ -1312,6 +1314,7 @@ function App() {
       {/* Offline Indicator - Shows when network is lost */}
       <OfflineIndicator />
     </div>
+    </AuthProvider>
   );
 }
 
