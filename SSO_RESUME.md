@@ -12,6 +12,7 @@ Bidirectional SSO between VOYO and Command Center:
 - `src/lib/dash-auth.tsx` - Added `exchangeSSOToken()`, `handleSSOCallback()`, `openCommandCenterForSSO()`
 - `src/App.tsx` - Calls `handleSSOCallback()` on startup to handle SSO redirect
 - `src/components/universe/UniversePanel.tsx` - Simplified to single "Sign In with DASH" button
+- `src/components/profile/ProfilePage.tsx` - Updated to use `openCommandCenterForSSO()`
 
 ### Command Center (dash-command)
 - `src/lib/supabase.ts` - Added `generateSSOToken()`, `buildSSORedirectUrl()`
