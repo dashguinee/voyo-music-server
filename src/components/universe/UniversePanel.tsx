@@ -277,7 +277,7 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
                 )}
               </AnimatePresence>
 
-              {/* AUTH TAB */}
+              {/* AUTH TAB - Single SSO path */}
               {activeTab === 'auth' && (
                 <div className="space-y-6">
                   <div className="text-center">
@@ -287,72 +287,13 @@ export const UniversePanel = ({ isOpen, onClose }: UniversePanelProps) => {
                     </p>
                   </div>
 
-                  {/* Sign-in Form */}
-                  <div className="space-y-4">
-                    {/* DASH ID Input */}
-                    <div>
-                      <label className="block text-white/50 text-xs mb-2 uppercase tracking-wider">DASH ID</label>
-                      <input
-                        type="text"
-                        value={signInDashId}
-                        onChange={(e) => setSignInDashId(e.target.value.toUpperCase())}
-                        placeholder="e.g. 0046AAD"
-                        className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/30 font-mono text-center text-lg tracking-wider focus:outline-none focus:border-purple-500/50"
-                        disabled={authLoading}
-                      />
-                    </div>
-
-                    {/* PIN Input */}
-                    <div>
-                      <label className="block text-white/50 text-xs mb-2 uppercase tracking-wider">PIN</label>
-                      <input
-                        type="password"
-                        value={signInPin}
-                        onChange={(e) => setSignInPin(e.target.value.replace(/\D/g, ''))}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSignIn()}
-                        placeholder="••••••"
-                        maxLength={6}
-                        className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/30 text-center text-2xl tracking-[0.3em] focus:outline-none focus:border-purple-500/50"
-                        disabled={authLoading}
-                      />
-                    </div>
-
-                    {/* Error Message */}
-                    {authError && (
-                      <p className="text-red-400 text-sm text-center">{authError}</p>
-                    )}
-
-                    {/* Sign In Button */}
-                    <button
-                      onClick={handleSignIn}
-                      disabled={!signInDashId.trim() || !signInPin.trim() || authLoading}
-                      className="w-full py-4 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {authLoading ? (
-                        <RefreshCw className="w-5 h-5 animate-spin" />
-                      ) : (
-                        <>
-                          <LogIn className="w-5 h-5" />
-                          Sign In
-                        </>
-                      )}
-                    </button>
-                  </div>
-
-                  {/* Divider */}
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 h-px bg-white/10" />
-                    <span className="text-white/30 text-xs">new to DASH?</span>
-                    <div className="flex-1 h-px bg-white/10" />
-                  </div>
-
-                  {/* Get DASH ID - Redirect to Command Center with SSO return */}
+                  {/* Single Sign-In Button - redirects to Command Center */}
                   <button
-                    onClick={() => openCommandCenterForSSO(signInDashId || undefined)}
-                    className="w-full py-4 rounded-xl bg-white/5 border border-white/20 text-white font-semibold flex items-center justify-center gap-2 hover:bg-white/10 transition-colors"
+                    onClick={() => openCommandCenterForSSO()}
+                    className="w-full py-4 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
                   >
-                    <UserPlus className="w-5 h-5" />
-                    Get Your DASH ID
+                    <LogIn className="w-5 h-5" />
+                    Sign In with DASH
                   </button>
 
                   <p className="text-center text-white/30 text-xs">
