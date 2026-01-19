@@ -222,11 +222,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // Listen for storage changes (cross-tab or same-tab)
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY || e.key === null) {
-        const newSession = getDashSession('V');
-        const wasLoggedIn = Boolean(session);
-        const isNowLoggedIn = Boolean(newSession);
+        try {
+          const newSession = getDashSession('V');
+          const currentSession = getDashSession('V'); // Get fresh current state
+          const wasLoggedIn = Boolean(currentSession);
+          const isNowLoggedIn = Boolean(newSession);
 
-        setSession(newSession);
+          setSession(newSession);
 
         // User just logged in
         if (!wasLoggedIn && isNowLoggedIn && newSession?.user.core_id) {
@@ -239,19 +241,30 @@ export function AuthProvider({ children }: AuthProviderProps) {
           console.log('[VOYO Auth] User logged out');
           setProfile(null);
         }
+        } catch (err) {
+          console.error('[VOYO Auth] Storage change error:', err);
+        }
       }
     };
 
     // Listen for window focus (check if user logged in on another tab)
     const handleFocus = () => {
-      const newSession = getDashSession('V');
-      if (newSession?.user.core_id !== session?.user.core_id) {
-        setSession(newSession);
-        if (newSession?.user.core_id) {
-          loadOrCreateProfile(newSession.user.core_id);
-        } else {
-          setProfile(null);
-        }
+      try {
+        const newSession = getDashSession('V');
+        // Use functional update to avoid stale closure
+        setSession(prev => {
+          if (newSession?.user.core_id !== prev?.user.core_id) {
+            if (newSession?.user.core_id) {
+              loadOrCreateProfile(newSession.user.core_id);
+            } else {
+              setProfile(null);
+            }
+            return newSession;
+          }
+          return prev;
+        });
+      } catch (err) {
+        console.error('[VOYO Auth] Focus handler error:', err);
       }
     };
 
@@ -262,7 +275,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [session, loadOrCreateProfile]);
+  }, [loadOrCreateProfile]); // Removed session to avoid stale closure issues
 
   // ========================================
   // EFFECT: Presence updates every 30s

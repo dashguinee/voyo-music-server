@@ -55,12 +55,23 @@ let currentTrackAbortController: AbortController | null = null;
 // ============================================
 const STORAGE_KEY = 'voyo-player-state';
 
+// FIXED: Store FULL track info so you never lose a song
+interface PersistedHistoryItem {
+  trackId: string;
+  title: string;
+  artist: string;
+  coverUrl: string;
+  playedAt: string;
+  duration: number;
+  oyeReactions: number;
+}
+
 interface PersistedState {
   currentTrackId?: string;
   currentTime?: number;
   voyoActiveTab?: VoyoTab;
   queue?: Array<{ trackId: string; addedAt: string; source: 'manual' | 'auto' | 'roulette' | 'ai' }>;
-  history?: Array<{ trackId: string; playedAt: string; duration: number; oyeReactions: number }>;
+  history?: PersistedHistoryItem[];
 }
 
 function loadPersistedState(): PersistedState {
@@ -78,6 +89,25 @@ function savePersistedState(state: PersistedState): void {
   } catch {
     // Ignore storage errors
   }
+}
+
+// HELPER: Get recent history with FULL track info (for console access)
+export function getRecentHistory(limit = 10): PersistedHistoryItem[] {
+  const { history } = loadPersistedState();
+  return (history || []).slice(-limit).reverse();
+}
+
+// Expose globally for easy console access
+if (typeof window !== 'undefined') {
+  (window as any).voyoHistory = () => {
+    const history = getRecentHistory(20);
+    console.log('🎵 VOYO Recent History:');
+    history.forEach((h, i) => {
+      console.log(`${i + 1}. ${h.title} - ${h.artist} (${new Date(h.playedAt).toLocaleTimeString()})`);
+    });
+    return history;
+  };
+  console.log('[VOYO] Type voyoHistory() in console to see recent tracks');
 }
 
 function getPersistedTrack(): Track | null {
@@ -963,19 +993,24 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       ],
     }));
 
-    // FIX 3: Persist history to localStorage (keep last 50 items)
+    // FIXED: Persist FULL track info to localStorage (keep last 50 items)
+    // So you NEVER lose a song again
     setTimeout(() => {
       const state = get();
       const current = loadPersistedState();
       savePersistedState({
         ...current,
         history: state.history.slice(-50).map(h => ({
-          trackId: h.track.id,
+          trackId: h.track.trackId || h.track.id,
+          title: h.track.title,
+          artist: h.track.artist,
+          coverUrl: h.track.coverUrl,
           playedAt: h.playedAt,
           duration: h.duration,
           oyeReactions: h.oyeReactions,
         })),
       });
+      console.log('[VOYO] History saved:', state.history.slice(-1)[0]?.track?.title);
     }, 100);
 
     // CLOUD SYNC: Sync history to cloud (debounced)
