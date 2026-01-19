@@ -23,6 +23,25 @@ import { usePlayerStore } from '../store/playerStore';
 import { getThumb } from '../utils/thumbnail';
 import { Track } from '../types';
 
+/**
+ * Decode VOYO ID (vyo_...) to raw YouTube ID
+ */
+function decodeVoyoId(voyoId: string): string {
+  if (!voyoId.startsWith('vyo_')) {
+    return voyoId;
+  }
+  const encoded = voyoId.substring(4);
+  let base64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+  while (base64.length % 4 !== 0) {
+    base64 += '=';
+  }
+  try {
+    return atob(base64);
+  } catch {
+    return voyoId;
+  }
+}
+
 // Flag to prevent multiple batch heals
 let hasRunStartupHeal = false;
 
@@ -385,9 +404,12 @@ async function verifyContentMatch(
   expectedArtist: string,
   expectedTitle: string
 ): Promise<{ valid: boolean; actualTitle?: string }> {
+  // CRITICAL: Decode VOYO ID to YouTube ID for oembed API
+  const ytId = decodeVoyoId(trackId);
+
   try {
     const response = await fetch(
-      `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${trackId}&format=json`
+      `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${ytId}&format=json`
     );
 
     if (!response.ok) {

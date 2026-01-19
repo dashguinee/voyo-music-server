@@ -47,7 +47,11 @@ interface ListeningFriend {
   track: { title: string; thumbnail: string };
 }
 
-export const VoyoLiveCard = () => {
+interface VoyoLiveCardProps {
+  onSwitchToVOYO?: () => void;
+}
+
+export const VoyoLiveCard = ({ onSwitchToVOYO }: VoyoLiveCardProps = {}) => {
   const { setShouldOpenNowPlaying, currentTrack } = usePlayerStore();
   const { dashId, isLoggedIn } = useAuth();
 
@@ -197,7 +201,14 @@ export const VoyoLiveCard = () => {
       <div className="px-4">
         <motion.div
           className="relative overflow-hidden rounded-2xl cursor-pointer"
-          onClick={() => currentTrack && setShouldOpenNowPlaying(true)}
+          onClick={() => {
+            // Switch to VOYO Player if callback provided, otherwise open NowPlaying panel
+            if (onSwitchToVOYO) {
+              onSwitchToVOYO();
+            } else if (currentTrack) {
+              setShouldOpenNowPlaying(true);
+            }
+          }}
           whileTap={{ scale: 0.98 }}
         >
           {/* Background gradient - previous */}
@@ -334,3 +345,4 @@ export const VoyoLiveCard = () => {
 
 export const SignInPrompt = VoyoLiveCard;
 export default VoyoLiveCard;
+export type { VoyoLiveCardProps };

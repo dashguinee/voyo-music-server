@@ -23,6 +23,7 @@ import {
   TRACKS,
   getRandomTracks,
 } from '../data/tracks';
+import { getThumb } from '../utils/thumbnail';
 import {
   getPersonalizedHotTracks,
   getPersonalizedDiscoveryTracks,
@@ -122,7 +123,7 @@ function getPersistedTrack(): Track | null {
       trackId: currentTrackId,
       title: 'Loading...',
       artist: '',
-      coverUrl: `https://i.ytimg.com/vi/${currentTrackId}/hqdefault.jpg`,
+      coverUrl: getThumb(currentTrackId), // Decodes VOYO IDs automatically
       duration: 0,
       tags: [],
       oyeScore: 0,
@@ -150,7 +151,7 @@ function getPersistedQueue(): QueueItem[] {
           trackId: item.trackId,
           title: 'Loading...',
           artist: '',
-          coverUrl: `https://i.ytimg.com/vi/${item.trackId}/hqdefault.jpg`,
+          coverUrl: getThumb(item.trackId), // Decodes VOYO IDs automatically
           duration: 0,
           tags: [],
           oyeScore: 0,
@@ -180,7 +181,7 @@ function getPersistedHistory(): HistoryItem[] {
           trackId: item.trackId,
           title: 'Loading...',
           artist: '',
-          coverUrl: `https://i.ytimg.com/vi/${item.trackId}/hqdefault.jpg`,
+          coverUrl: getThumb(item.trackId), // Decodes VOYO IDs automatically
           duration: 0,
           tags: [],
           oyeScore: 0,
@@ -278,6 +279,7 @@ interface PlayerStore {
   setVolume: (volume: number) => void;
   nextTrack: () => void;
   prevTrack: () => void;
+  predictNextTrack: () => Track | null; // Predict what track will play next (for preloading)
   toggleShuffle: () => void;
   cycleRepeat: () => void;
 
@@ -445,7 +447,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
             youtube_id: trackId,
             title: track.title,
             artist: track.artist || null,
-            thumbnail_url: track.coverUrl || `https://i.ytimg.com/vi/${trackId}/hqdefault.jpg`,
+            thumbnail_url: track.coverUrl || getThumb(trackId),
             discovery_method: 'manual_play',
           });
         }
@@ -855,6 +857,58 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         isSkeeping: false,
       });
     }
+  },
+
+  // PREDICT NEXT TRACK - For preloading (doesn't change state, just returns prediction)
+  predictNextTrack: () => {
+    const state = get();
+
+    // If queue has items, that's definitive
+    if (state.queue.length > 0) {
+      return state.queue[0].track;
+    }
+
+    // Otherwise, predict using same logic as nextTrack
+    const currentTrackId = state.currentTrack?.id || state.currentTrack?.trackId;
+    const recentHistoryIds = new Set<string>();
+
+    // Add last 20 played tracks to exclusion
+    state.history.slice(-20).forEach(h => {
+      if (h.track.id) recentHistoryIds.add(h.track.id);
+      if (h.track.trackId) recentHistoryIds.add(h.track.trackId);
+    });
+
+    // Exclude current track
+    if (currentTrackId) recentHistoryIds.add(currentTrackId);
+    if (state.currentTrack?.trackId) recentHistoryIds.add(state.currentTrack.trackId);
+
+    // Get available tracks (same priority as nextTrack)
+    const allAvailable = state.discoverTracks.length > 0
+      ? state.discoverTracks
+      : state.hotTracks.length > 0
+      ? state.hotTracks
+      : TRACKS;
+
+    // Filter out recently played
+    let availableTracks = allAvailable.filter(t =>
+      !recentHistoryIds.has(t.id) && !recentHistoryIds.has(t.trackId)
+    );
+
+    if (availableTracks.length === 0) {
+      availableTracks = allAvailable.filter(t => {
+        const tid = t.id || t.trackId;
+        return tid !== currentTrackId;
+      });
+    }
+
+    if (availableTracks.length === 0) {
+      return null;
+    }
+
+    // Return first available (predictable for preloading)
+    // Note: actual nextTrack uses random, but for preloading we pick first
+    // to ensure consistency between predict and actual
+    return availableTracks[0];
   },
 
   // View Mode Actions

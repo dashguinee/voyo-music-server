@@ -30,6 +30,13 @@ import { recordPlay as djRecordPlay } from '../services/intelligentDJ';
 import { onTrackPlay as oyoOnTrackPlay, onTrackComplete as oyoOnTrackComplete } from '../services/oyoDJ';
 import { registerTrackPlay as viRegisterPlay } from '../services/videoIntelligence';
 import { useMiniPiP } from '../hooks/useMiniPiP';
+import {
+  preloadNextTrack,
+  getPreloadedTrack,
+  consumePreloadedAudio,
+  cleanupPreloaded,
+  cancelPreload,
+} from '../services/preloadManager';
 
 export type BoostPreset = 'boosted' | 'calm' | 'voyex' | 'xtreme';
 
@@ -114,13 +121,15 @@ export const AudioPlayer = () => {
   const backgroundBoostingRef = useRef<string | null>(null);
   const hotSwapAbortRef = useRef<AbortController | null>(null);
   const hasTriggered50PercentCacheRef = useRef<boolean>(false); // 50% auto-boost trigger
+  const hasTriggeredPreloadRef = useRef<boolean>(false); // 70% next-track preload trigger
+  const shouldAutoResumeRef = useRef<boolean>(false); // Resume playback on refresh if position was saved
 
   // Store state
   const {
     currentTrack, isPlaying, volume, seekPosition, playbackRate, boostProfile,
-    currentTime: savedCurrentTime, playbackSource, progress,
+    currentTime: savedCurrentTime, playbackSource, progress, queue,
     setCurrentTime, setDuration, setProgress, clearSeekPosition, togglePlay,
-    nextTrack, setBufferHealth, setPlaybackSource,
+    nextTrack, predictNextTrack, setBufferHealth, setPlaybackSource,
   } = usePlayerStore();
 
   const { startListenSession, endListenSession } = usePreferenceStore();
@@ -180,6 +189,68 @@ export const AudioPlayer = () => {
       backgroundBoostingRef.current = null;
     });
   }, [progress, playbackSource, currentTrack, cacheTrack, downloadSetting]);
+
+  // PRELOAD: Start preloading next track IMMEDIATELY when track starts (like Spotify)
+  // Major platforms don't wait - they start buffering the next track right away
+  useEffect(() => {
+    if (!currentTrack?.trackId) {
+      return;
+    }
+    if (hasTriggeredPreloadRef.current) {
+      // Already triggered for this track, skip
+      return;
+    }
+
+    // Determine next track: check queue first, then use prediction
+    let nextTrackToPreload: Track | null | undefined = queue[0]?.track;
+
+    if (!nextTrackToPreload?.trackId) {
+      // Queue empty - use predictNextTrack to determine what will play next
+      nextTrackToPreload = predictNextTrack();
+      if (!nextTrackToPreload?.trackId) {
+        console.log(`🔮 [Preload] No next track available (queue empty, prediction empty)`);
+        return;
+      }
+      console.log(`🔮 [Preload] Queue empty, using prediction: ${nextTrackToPreload.title}`);
+    }
+
+    // Start preload immediately - like Spotify/YouTube Music
+    // Small delay (500ms) just to let current track establish playback first
+    const timeoutId = setTimeout(() => {
+      // Double-check we haven't triggered yet (race condition protection)
+      if (hasTriggeredPreloadRef.current) return;
+
+      // Verify track hasn't changed
+      const currentState = usePlayerStore.getState();
+      if (currentState.currentTrack?.trackId !== currentTrack.trackId) return;
+
+      // Re-get next track in case queue changed
+      let trackToPreload = currentState.queue[0]?.track || currentState.predictNextTrack();
+      if (!trackToPreload?.trackId) return;
+
+      hasTriggeredPreloadRef.current = true;
+
+      console.log(`🔮 [VOYO] Preloading next track: ${trackToPreload.title}`);
+
+      // Start preloading (async, non-blocking) - this buffers the audio data
+      preloadNextTrack(trackToPreload.trackId, checkCache).then((result) => {
+        if (result) {
+          console.log(`🔮 [VOYO] ✅ Preload ready: ${trackToPreload!.title} (source: ${result.source})`);
+        }
+      }).catch((err) => {
+        console.warn('🔮 [VOYO] Preload failed:', err);
+      });
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [currentTrack?.trackId, queue, checkCache, predictNextTrack]);
+
+  // PRELOAD CLEANUP: Cancel preload when track changes (user skipped to different track)
+  useEffect(() => {
+    return () => {
+      cancelPreload();
+    };
+  }, [currentTrack?.trackId]);
 
   // Background playback protection
   useEffect(() => {
@@ -513,16 +584,70 @@ export const AudioPlayer = () => {
         audioRef.current.src = '';
       }
 
+      // RESUME FIX: On initial load, if we have a saved position > 5s, auto-resume playback
+      // This fixes the bug where track seeks correctly on refresh but audio doesn't play
+      if (isInitialLoadRef.current && savedCurrentTime > 5) {
+        shouldAutoResumeRef.current = true;
+        console.log(`🔄 [VOYO] Session resume detected (position: ${savedCurrentTime.toFixed(1)}s) - will auto-play`);
+      }
+
       lastTrackIdRef.current = trackId;
       hasRecordedPlayRef.current = false;
       trackProgressRef.current = 0;
       hasTriggered50PercentCacheRef.current = false; // Reset 50% trigger for new track
+      hasTriggeredPreloadRef.current = false; // Reset preload trigger for new track
 
       // End previous session
       endListenSession(audioRef.current?.currentTime || 0, 0);
       startListenSession(currentTrack.id, currentTrack.duration || 0);
 
-      // Check cache first
+      // PRELOAD CHECK: Use preloaded audio if available (instant playback!)
+      const preloaded = getPreloadedTrack(trackId);
+      if (preloaded && preloaded.audioElement && (preloaded.source === 'cached' || preloaded.source === 'r2')) {
+        console.log(`🔮 [VOYO] Using PRELOADED audio (source: ${preloaded.source})`);
+
+        // Consume the preloaded audio element
+        const preloadedAudio = consumePreloadedAudio(trackId);
+        if (preloadedAudio) {
+          setPlaybackSource(preloaded.source);
+
+          const { boostProfile: profile } = usePlayerStore.getState();
+          setupAudioEnhancement(profile);
+
+          // Replace our audio ref with preloaded one? No - we need to use our own ref
+          // Instead, copy the src from preloaded element
+          if (cachedUrlRef.current) URL.revokeObjectURL(cachedUrlRef.current);
+          cachedUrlRef.current = preloaded.url;
+
+          if (audioRef.current && preloaded.url) {
+            audioRef.current.volume = 0;
+            audioRef.current.src = preloaded.url;
+            audioRef.current.load();
+
+            // Since we preloaded, audio should be ready almost instantly
+            audioRef.current.oncanplaythrough = () => {
+              if (!audioRef.current) return;
+
+              const { isPlaying: shouldPlay } = usePlayerStore.getState();
+              if (shouldPlay && audioRef.current.paused) {
+                audioContextRef.current?.state === 'suspended' && audioContextRef.current.resume();
+                audioRef.current.play().then(() => {
+                  audioRef.current!.volume = 1.0;
+                  recordPlayEvent();
+                  console.log('🔮 [VOYO] Preloaded playback started!');
+                }).catch(() => {});
+              }
+            };
+          }
+
+          // Cleanup the preloaded element
+          preloadedAudio.pause();
+          preloadedAudio.src = '';
+          return; // Skip normal loading flow
+        }
+      }
+
+      // Normal loading flow: Check cache first
       const API_BASE = 'https://voyo-music-api.fly.dev';
       const { url: bestUrl, cached: fromCache } = audioEngine.getBestAudioUrl(trackId, API_BASE);
       const cachedUrl = fromCache ? bestUrl : await checkCache(trackId);
@@ -546,6 +671,7 @@ export const AudioPlayer = () => {
           audioRef.current.oncanplaythrough = () => {
             if (!audioRef.current) return;
 
+            // Restore position on initial load
             if (isInitialLoadRef.current && savedCurrentTime > 5) {
               audioRef.current.currentTime = savedCurrentTime;
               isInitialLoadRef.current = false;
@@ -554,11 +680,23 @@ export const AudioPlayer = () => {
             // FIX: Get fresh state to avoid stale closure bug
             // The isPlaying from closure might be outdated when callback fires
             const { isPlaying: shouldPlay } = usePlayerStore.getState();
-            if (shouldPlay && audioRef.current.paused) {
+
+            // RESUME FIX: Also auto-play if we detected a session resume (even if isPlaying is false)
+            const shouldAutoResume = shouldAutoResumeRef.current;
+            if (shouldAutoResume) {
+              shouldAutoResumeRef.current = false; // Only auto-resume once
+            }
+
+            if ((shouldPlay || shouldAutoResume) && audioRef.current.paused) {
               audioContextRef.current?.state === 'suspended' && audioContextRef.current.resume();
               audioRef.current.play().then(() => {
                 audioRef.current!.volume = 1.0;
                 recordPlayEvent();
+                // Update store to reflect playing state if we auto-resumed
+                if (shouldAutoResume && !shouldPlay) {
+                  usePlayerStore.getState().togglePlay();
+                }
+                console.log('🎵 [VOYO] Playback started (cached)');
               }).catch(() => {});
             }
           };
@@ -592,17 +730,30 @@ export const AudioPlayer = () => {
             audioRef.current.oncanplaythrough = () => {
               if (!audioRef.current) return;
 
+              // Restore position on initial load
               if (isInitialLoadRef.current && savedCurrentTime > 5) {
                 audioRef.current.currentTime = savedCurrentTime;
                 isInitialLoadRef.current = false;
               }
 
               const { isPlaying: shouldPlay } = usePlayerStore.getState();
-              if (shouldPlay && audioRef.current.paused) {
+
+              // RESUME FIX: Also auto-play if we detected a session resume (even if isPlaying is false)
+              const shouldAutoResume = shouldAutoResumeRef.current;
+              if (shouldAutoResume) {
+                shouldAutoResumeRef.current = false; // Only auto-resume once
+              }
+
+              if ((shouldPlay || shouldAutoResume) && audioRef.current.paused) {
                 audioContextRef.current?.state === 'suspended' && audioContextRef.current.resume();
                 audioRef.current.play().then(() => {
                   audioRef.current!.volume = 1.0;
                   recordPlayEvent();
+                  // Update store to reflect playing state if we auto-resumed
+                  if (shouldAutoResume && !shouldPlay) {
+                    usePlayerStore.getState().togglePlay();
+                  }
+                  console.log('🎵 [VOYO] Playback started (R2)');
                 }).catch(() => {});
               }
             };
@@ -690,8 +841,8 @@ export const AudioPlayer = () => {
       // Get current position from store (iframe was tracking it)
       const currentPos = usePlayerStore.getState().currentTime;
 
-      // Switch to cached mode
-      setPlaybackSource('cached');
+      // IMPORTANT: Don't switch playbackSource yet - iframe keeps playing until audio is ready
+      // This prevents the "stop" bug when boost completes fast
 
       if (cachedUrlRef.current) URL.revokeObjectURL(cachedUrlRef.current);
       cachedUrlRef.current = cachedUrl;
@@ -716,12 +867,27 @@ export const AudioPlayer = () => {
           audioRef.current.currentTime = currentPos;
         }
 
-        if (isPlaying && audioRef.current.paused) {
+        // FIX: Get fresh state to avoid stale closure bug
+        // The isPlaying from the outer closure could be outdated when this callback fires
+        const { isPlaying: shouldPlayNow } = usePlayerStore.getState();
+
+        // FIXED: Only switch playbackSource AFTER audio element is ready
+        // This ensures iframe keeps playing until cached audio can take over seamlessly
+        if (shouldPlayNow && audioRef.current.paused) {
           audioContextRef.current?.state === 'suspended' && audioContextRef.current.resume();
           audioRef.current.play().then(() => {
+            // NOW switch to cached mode - audio is playing, safe to mute iframe
+            setPlaybackSource('cached');
             audioRef.current!.volume = 1.0;
             console.log('🔄 [VOYO] Hot-swap complete! Now playing boosted audio');
-          }).catch(() => {});
+          }).catch((err) => {
+            // Play failed - don't switch source, keep iframe playing
+            console.log('[VOYO] Hot-swap play failed, keeping iframe:', err);
+          });
+        } else if (!shouldPlayNow) {
+          // Paused state - switch source but don't play
+          setPlaybackSource('cached');
+          console.log('🔄 [VOYO] Hot-swap ready (paused state)');
         }
       };
     };
@@ -841,6 +1007,35 @@ export const AudioPlayer = () => {
     setBufferHealth(health.percentage, health.status);
   }, [playbackSource, setBufferHealth]);
 
+  // ERROR HANDLER: Handle audio element errors gracefully
+  const handleAudioError = useCallback((e: React.SyntheticEvent<HTMLAudioElement, Event>) => {
+    if (playbackSource !== 'cached' && playbackSource !== 'r2') return;
+
+    const audio = e.currentTarget;
+    const error = audio.error;
+    const errorCodes: Record<number, string> = {
+      1: 'MEDIA_ERR_ABORTED',
+      2: 'MEDIA_ERR_NETWORK',
+      3: 'MEDIA_ERR_DECODE',
+      4: 'MEDIA_ERR_SRC_NOT_SUPPORTED',
+    };
+
+    const errorName = error ? (errorCodes[error.code] || `Unknown(${error.code})`) : 'Unknown';
+    console.error(`🚨 [VOYO] Audio error: ${errorName}`, error?.message);
+
+    // On error, fall back to iframe streaming if available
+    if (currentTrack?.trackId && error) {
+      console.log('🚨 [VOYO] Falling back to iframe streaming due to audio error');
+      setPlaybackSource('iframe');
+      // Clear the failed audio source
+      audio.src = '';
+      if (cachedUrlRef.current) {
+        URL.revokeObjectURL(cachedUrlRef.current);
+        cachedUrlRef.current = null;
+      }
+    }
+  }, [playbackSource, currentTrack?.trackId, setPlaybackSource]);
+
   return (
     <audio
       ref={audioRef}
@@ -851,6 +1046,7 @@ export const AudioPlayer = () => {
       onDurationChange={handleDurationChange}
       onEnded={handleEnded}
       onProgress={handleProgress}
+      onError={handleAudioError}
       onPlaying={() => (playbackSource === 'cached' || playbackSource === 'r2') && setBufferHealth(100, 'healthy')}
       onWaiting={() => (playbackSource === 'cached' || playbackSource === 'r2') && setBufferHealth(50, 'warning')}
       onPause={() => {

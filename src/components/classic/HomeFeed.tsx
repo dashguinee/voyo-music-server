@@ -919,9 +919,10 @@ interface HomeFeedProps {
   onSearch: () => void;
   onDahub: () => void;
   onNavVisibilityChange?: (visible: boolean) => void;
+  onSwitchToVOYO?: () => void;
 }
 
-export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange }: HomeFeedProps) => {
+export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange, onSwitchToVOYO }: HomeFeedProps) => {
   const { history, hotTracks, discoverTracks, refreshRecommendations } = usePlayerStore();
   const { hotPool } = useTrackPoolStore();
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -1146,8 +1147,8 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
         <h1 className="text-2xl font-bold text-white">{greeting}, Dash</h1>
       </div>
 
-      {/* Sign In Prompt for guests */}
-      <SignInPrompt />
+      {/* VoyoLiveCard - "Vibes on Vibes" → Opens VOYO Player */}
+      <SignInPrompt onSwitchToVOYO={onSwitchToVOYO} />
 
       {/* Continue Listening */}
       {hasHistory && (

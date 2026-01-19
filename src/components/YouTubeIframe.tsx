@@ -151,17 +151,26 @@ export const YouTubeIframe = memo(() => {
       events: {
         onReady: (e: any) => {
           initializingRef.current = false;
-          const psNow = usePlayerStore.getState().playbackSource;
+          const store = usePlayerStore.getState();
+          const psNow = store.playbackSource;
           const isBoostedNow = psNow === 'cached' || psNow === 'r2';
+          const videoNeeded = store.videoTarget !== 'hidden';
+
           if (isBoostedNow) {
             e.target.mute();
+            // DOUBLE STREAMING FIX: Don't auto-play video when boosted + hidden
+            if (!videoNeeded) {
+              console.log('[YouTubeIframe] Skipping video playback (boosted + hidden)');
+              e.target.pauseVideo?.();
+              return;
+            }
           } else {
             e.target.unMute();
             e.target.setVolume(volume * 100);
           }
           const dur = e.target.getDuration?.() || 0;
           if (dur > 0) setDuration(dur);
-          if (usePlayerStore.getState().isPlaying) {
+          if (store.isPlaying) {
             e.target.playVideo();
           }
         },
@@ -199,16 +208,32 @@ export const YouTubeIframe = memo(() => {
   }, [youtubeId, initPlayer]);
 
   // Play/Pause sync
+  // DOUBLE STREAMING FIX: When using cached/r2 audio with hidden video, pause iframe to save bandwidth
+  // Only stream video when: (1) iframe is the audio source, OR (2) video is visible
   useEffect(() => {
     const player = playerRef.current;
     if (!player?.getPlayerState) return;
+
     const state = player.getPlayerState();
+    const isBoosted = playbackSource === 'cached' || playbackSource === 'r2';
+    const videoNeeded = videoTarget !== 'hidden';
+
+    // If we're boosted AND video is hidden, pause iframe to prevent double streaming
+    if (isBoosted && !videoNeeded) {
+      if (state === YT_STATES.PLAYING || state === YT_STATES.BUFFERING) {
+        console.log('[YouTubeIframe] Pausing hidden video to prevent double streaming');
+        player.pauseVideo?.();
+      }
+      return;
+    }
+
+    // Normal sync: play/pause based on isPlaying state
     if (isPlaying && state !== YT_STATES.PLAYING) {
       player.playVideo?.();
     } else if (!isPlaying && state === YT_STATES.PLAYING) {
       player.pauseVideo?.();
     }
-  }, [isPlaying]);
+  }, [isPlaying, playbackSource, videoTarget]);
 
   // Volume sync (only when not boosted/r2)
   useEffect(() => {
@@ -228,6 +253,31 @@ export const YouTubeIframe = memo(() => {
       player.setVolume?.(volume * 100);
     }
   }, [playbackSource, volume]);
+
+  // VIDEO MODE ACTIVATION: Resume video playback when user explicitly shows video
+  // This handles the case: boosted audio + hidden video → user clicks video button
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player?.getPlayerState || !player?.playVideo) return;
+
+    const isBoosted = playbackSource === 'cached' || playbackSource === 'r2';
+    const videoShown = videoTarget !== 'hidden';
+
+    // When video is shown while boosted, start playing the (muted) video for visual sync
+    if (isBoosted && videoShown && isPlaying) {
+      const state = player.getPlayerState();
+      if (state !== YT_STATES.PLAYING) {
+        console.log('[YouTubeIframe] Resuming video for visual sync (user requested video)');
+        player.playVideo();
+
+        // Sync position with audio
+        const audioTime = usePlayerStore.getState().currentTime;
+        if (audioTime > 2) {
+          player.seekTo?.(audioTime, true);
+        }
+      }
+    }
+  }, [videoTarget, playbackSource, isPlaying]);
 
   // Seek handling
   useEffect(() => {
