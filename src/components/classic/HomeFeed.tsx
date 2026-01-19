@@ -538,8 +538,8 @@ const WideTrackCard = ({ track, onPlay }: TrackCardProps) => {
   };
 
   return (
-    <motion.button
-      className="flex-shrink-0"
+    <motion.div
+      className="flex-shrink-0 cursor-pointer"
       onClick={onPlay}
       onHoverStart={() => setIsHovered(true)}
       onHoverEnd={() => setIsHovered(false)}
@@ -598,7 +598,7 @@ const WideTrackCard = ({ track, onPlay }: TrackCardProps) => {
         </div>
       </div>
       <p className="text-white/60 text-[11px] truncate">{track.artist}</p>
-    </motion.button>
+    </motion.div>
   );
 };
 
