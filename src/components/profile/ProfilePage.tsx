@@ -21,6 +21,7 @@ import {
 import { useAuth } from '../../hooks/useAuth';
 import { usePlayerStore } from '../../store/playerStore';
 import { profileAPI, friendsAPI, NowPlaying } from '../../lib/voyo-api';
+import { openCommandCenterForSSO } from '../../lib/dash-auth';
 import type { VoyoProfile } from '../../lib/voyo-api';
 import { PortalChat } from '../portal/PortalChat';
 
@@ -153,12 +154,9 @@ export const ProfilePage = () => {
   // TODO: Implement real-time portal sync via Supabase subscription
   // For now, portal viewing works one-way (see what host is playing, join to sync)
 
-  // Handle PIN login (redirects to Command Center)
-  const handlePinLogin = async () => {
-    // DASH ID auth happens through Command Center, not per-app PINs
-    // Open Command Center sign-in
-    window.open('https://hub.dasuperhub.com/signin', '_blank');
-    setShowPinInput(false);
+  // Handle PIN login (redirects to Command Center with SSO)
+  const handlePinLogin = () => {
+    openCommandCenterForSSO();
   };
 
   // Handle join portal (sync playback)
