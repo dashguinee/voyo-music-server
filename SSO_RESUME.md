@@ -1,149 +1,88 @@
-# SSO Implementation Resume File
-**Created**: 2026-01-19
+# SSO Implementation - WORKING ARCHITECTURE
 **Updated**: 2026-01-26
-**Status**: FIXED - Ready for Testing
-**Priority**: HIGH - Verify SSO flow works
+**Status**: IMPLEMENTED - voyo-fork's working pattern adopted
+**Commit**: `eae398a`
 
 ---
 
-## FIX APPLIED (Jan 26, 2026)
+## THE WORKING ARCHITECTURE
 
-**Root cause**: voyo-fork uses simpler `returnUrl` flow, voyo-music was using broken `from` flow.
-
-**Solution**: Updated voyo-music to support BOTH flows (matching voyo-fork's working approach):
-
-1. **handleSSOCallback()** now checks for:
-   - `dashAuth` param FIRST (base64 citizen data - simpler, no DB call)
-   - Falls back to `sso_token` if dashAuth not present
-
-2. **openCommandCenterForSSO()** now uses `returnUrl` flow (proven working in voyo-fork)
-
-Commits:
-- `690f345` - Fix SSO: Support both dashAuth and sso_token flows
-- `d75f15f` - Fix auth storage format compatibility across all components
-
-## IMMEDIATE NEXT ACTION
-**Test the complete SSO flow:**
-1. Go to https://voyo-music.vercel.app (clear localStorage first)
-2. Click profile → "Sign In with DASH"
-3. Should redirect to Command Center with `?returnUrl=...&app=V`
-4. Enter DASH ID + PIN, click Sign In
-5. Should redirect back to VOYO with `?dashAuth=base64...`
-6. VOYO should auto-sign-in and clean URL
-
----
-
-## What We Built
-Bidirectional SSO between VOYO and Command Center:
 ```
-VOYO → Command Center (with ?from=voyo) → Sign in → VOYO (with ?sso_token=xxx) → Auto signed in
+┌─────────────────────────────────────────────────────────────────┐
+│  ONE DAHUB - Command Center as Single Source of Truth          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. User clicks "Login with DASH"                               │
+│     → loginWithDash() in universeStore                          │
+│     → Redirects to: dash-command.vercel.app?returnUrl=...&app=V │
+│                                                                 │
+│  2. Command Center authenticates                                │
+│     → Redirects back: voyo.app?dashAuth=base64(FLAT citizen)    │
+│                                                                 │
+│  3. App.tsx useEffect runs handleDashCallback()                 │
+│     → Parses ?dashAuth param                                    │
+│     → Saves FLAT to localStorage: { coreId, fullName, ... }     │
+│     → Updates universeStore: isLoggedIn=true, coreId=xxx        │
+│     → Cleans URL                                                │
+│                                                                 │
+│  4. User opens DaHub                                            │
+│     → useDashIdentity() reads localStorage FLAT                 │
+│     → Gets coreId directly: citizen.coreId                      │
+│     → friendsAPI.getFriends(coreId) → Command Center Supabase   │
+│     → FRIENDS LOAD!                                             │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-## Files Changed
+## Key Files
 
-### VOYO (voyo-music) - /home/dash/voyo-music/
-| File | Changes |
+| File | Purpose |
 |------|---------|
-| `src/lib/dash-auth.tsx:325-400` | `exchangeSSOToken()`, `handleSSOCallback()`, `openCommandCenterForSSO()` |
-| `src/App.tsx:932-943` | Calls `handleSSOCallback()` on startup |
-| `src/components/universe/UniversePanel.tsx:280-302` | Single "Sign In with DASH" button |
-| `src/components/profile/ProfilePage.tsx:157-160` | Uses `openCommandCenterForSSO()` |
+| `src/store/universeStore.ts` | `loginWithDash()`, `handleDashCallback()` |
+| `src/App.tsx` | Calls `handleDashCallback()` on mount |
+| `src/components/dahub/Dahub.tsx` | Unified DaHub with `useDashIdentity()` |
+| `src/lib/dahub/dahub-api.ts` | Friends/Messages API → Command Center Supabase |
 
-### Command Center (dash-command) - /home/dash/dash-command/
-| File | Changes |
-|------|---------|
-| `src/lib/supabase.ts` | `generateSSOToken()`, `buildSSORedirectUrl()` |
-| `src/App.tsx:329-331` | SignInPage receives `fromApp`, `prefilledDashId` as props |
-| `src/App.tsx:3881-3889` | Parses `from` param at App level |
-| `src/App.tsx:3904-3909` | Auto-navigates to signin when `from` present |
-| `src/App.tsx:369-383` | `handleSignIn` generates token and redirects |
-| `supabase/sso_migration.sql` | SQL for sso_tokens table (ALREADY RUN) |
+## Storage Format (FLAT - matches Command Center)
 
----
-
-## SSO Flow (Step by Step)
-
-```
-1. VOYO: User clicks "Sign In with DASH"
-   → openCommandCenterForSSO() in dash-auth.tsx:405
-   → Redirects to: https://dash-command.vercel.app?from=voyo
-
-2. Command Center: App.tsx loads
-   → useMemo parses from=voyo (line 3882-3889)
-   → useEffect auto-navigates to signin (line 3904-3909)
-   → SignInPage receives fromApp="voyo" as prop
-
-3. User enters DASH ID + PIN, clicks Sign In
-   → handleSignIn() at line 358
-   → Calls signIn() to verify credentials
-   → If success AND fromApp exists:
-      → generateSSOToken(user.core_id, fromApp) - line 372
-      → buildSSORedirectUrl(token, fromApp) - line 375
-      → window.location.href = redirectUrl - line 377
-
-4. Redirect to VOYO with token
-   → URL: https://voyo-music.vercel.app?sso_token=xxx
-
-5. VOYO: App.tsx loads
-   → handleSSOCallback() runs in useEffect (line 932-943)
-   → Exchanges token via exchangeSSOToken()
-   → Stores user in localStorage
-   → User is signed in
+```javascript
+// localStorage key: 'dash_citizen_storage'
+{
+  coreId: "0046AAD",
+  fullName: "Abdoul Aziz",
+  initials: "AA",
+  sequence: 46,
+  phone: "+224..."
+}
 ```
 
----
+**NOT nested.** Command Center sends flat, we store flat.
 
-## SQL Migration (ALREADY DONE IN SUPABASE)
-```sql
--- Table
-CREATE TABLE sso_tokens (token, dash_id, target_app, expires_at, used)
+## What Was Removed
 
--- RPC Functions
-generate_sso_token(p_dash_id, p_target_app) → returns {success, token}
-exchange_sso_token(p_token) → returns {success, user}
-```
+- `VoyoDahub.tsx` - OG VOYO-specific Dahub (RIP, you served well)
+- `DahubCore.tsx` - Old core component
+- Complex SSO token exchange in `dash-auth.tsx` (kept only Badge component)
 
----
+## What Was Kept
 
-## Debug Checklist
+- Now Playing cards in ProfileCard (when `appContext='V'`)
+- `useDashIdentity()` handles both flat and nested formats (backward compat)
+- `DashAuthBadge` component for header display
 
-### On Command Center (after clicking sign in):
-- [ ] Console shows `[DASH SSO] Sign in complete, redirecting to: voyo`
-- [ ] Console shows `[DASH SSO] Redirecting with token to: https://voyo-music.vercel.app?sso_token=xxx`
-- [ ] If NOT: Check if `fromApp` is undefined (param not captured)
+## Test Flow
 
-### On VOYO (after redirect):
-- [ ] URL has `?sso_token=xxx` parameter
-- [ ] Console shows `[DASH SSO] Found token, exchanging...`
-- [ ] Console shows `[DASH SSO] Auto sign-in successful!`
+1. Go to https://voyo-music.vercel.app
+2. Clear localStorage: `localStorage.clear()`
+3. Open DaHub → Click "Login with DASH"
+4. Should redirect to Command Center
+5. Sign in → Should redirect back with `?dashAuth=...`
+6. URL should clean, user should be logged in
+7. DaHub should show friends (if any)
 
-### Common Issues:
-1. **fromApp is undefined** → App.tsx not parsing `from` param correctly
-2. **Token generation fails** → Check Supabase RPC, might need to re-run migration
-3. **Token exchange fails** → Token expired (60 sec) or already used
+## Philosophy
 
----
+ONE Dahub. ONE social graph. ONE support layer. ONE sense of "here".
+Different vibes. Same gravity.
 
-## Test URLs
-- VOYO: https://voyo-music.vercel.app
-- Command Center: https://dash-command.vercel.app
-- Direct SSO test: https://dash-command.vercel.app?from=voyo
-
----
-
-## Deployments
-```bash
-# VOYO - auto-deploys on GitHub push
-cd /home/dash/voyo-music && git push
-
-# Command Center - manual via Vercel CLI
-cd /home/dash/dash-command && vercel --prod --yes
-```
-
----
-
-## Other Fixes Done This Session
-- Hub.tsx: Moved Add Friend button to DASH card (grey, smaller)
-- ClassicMode.tsx: Fixed VOYO Feed tab navigation (was going to player instead of feed)
-- UniversePanel: Stats page shows first by default
-- Unified all sign-in paths to use SSO redirect
+You in DASH, G.
