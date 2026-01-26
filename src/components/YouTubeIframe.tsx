@@ -307,7 +307,7 @@ export const YouTubeIframe = memo(() => {
       const drift = Math.abs(videoTime - audioTime);
 
       if (drift > DRIFT_THRESHOLD) {
-        console.log(`[YouTubeIframe] Drift detected: ${drift.toFixed(1)}s - syncing video to audio`);
+        devLog(`[YouTubeIframe] Drift detected: ${drift.toFixed(1)}s - syncing video to audio`);
         player.seekTo(audioTime, true);
       }
     }, CHECK_INTERVAL);

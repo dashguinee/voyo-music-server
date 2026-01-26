@@ -14,6 +14,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { devLog } from '../../utils/logger';
 import {
   ChevronDown,
   Heart,
@@ -403,7 +404,7 @@ export const NowPlaying = ({ isOpen, onClose }: NowPlayingProps) => {
       }
     } catch (error) {
       // User cancelled or error occurred
-      console.log('Share cancelled or failed:', error);
+      devLog('Share cancelled or failed:', error);
     }
   }, [currentTrack, spawnReaction]);
 

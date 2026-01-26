@@ -12,6 +12,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { VideoSnippet, type TeaserFormat, TEASER_CONFIGS } from './VideoSnippet';
 import { AnimatedArtCard, extractDominantColor, type ArtDisplayMode } from './AnimatedArtCard';
 import { DynamicVignette } from './DynamicVignette';
+import { devLog } from '../../../utils/logger';
 
 // ============================================
 // ADAPTIVE FORMAT SELECTION
@@ -52,7 +53,7 @@ let cachedTeaserFormat: TeaserFormat | null = null;
 const getTeaserFormat = (): TeaserFormat => {
   if (!cachedTeaserFormat) {
     cachedTeaserFormat = getAdaptiveTeaserFormat();
-    console.log(`[ContentMixer] Adaptive format selected: ${cachedTeaserFormat}`);
+    devLog(`[ContentMixer] Adaptive format selected: ${cachedTeaserFormat}`);
   }
   return cachedTeaserFormat;
 };
@@ -180,7 +181,7 @@ export const ContentMixer = ({
             fallbackThumbnail={thumbnail}
             teaserFormat={teaserFormat}
             onVideoError={() => {
-              console.log(`[ContentMixer] Video blocked for ${trackId}, switching to art`);
+              devLog(`[ContentMixer] Video blocked for ${trackId}, switching to art`);
               setVideoBlocked(true);
             }}
           />
@@ -247,7 +248,7 @@ export const trackContentEngagement = (
   event: 'view' | 'oye' | 'share' | 'complete',
   watchTime?: number
 ) => {
-  console.log(`[ContentMixer] ${event} on ${contentType} for ${trackId}`, watchTime ? `(${watchTime}s)` : '');
+  devLog(`[ContentMixer] ${event} on ${contentType} for ${trackId}`, watchTime ? `(${watchTime}s)` : '');
   // In production, send to analytics
 };
 

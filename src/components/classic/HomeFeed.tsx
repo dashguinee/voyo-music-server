@@ -8,7 +8,7 @@
  * - Mobile-first, touch-friendly design
  */
 
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Bell, Play, RefreshCw, Zap } from 'lucide-react';
 import { getThumb } from '../../utils/thumbnail';
@@ -662,7 +662,7 @@ const decodeVoyoId = (trackId: string): string => {
   }
 };
 
-const AfricanVibesVideoCard = ({
+const AfricanVibesVideoCard = memo(({
   track,
   idx,
   isActive,
@@ -803,7 +803,7 @@ const AfricanVibesVideoCard = ({
       </div>
     </motion.button>
   );
-};
+});
 
 // ============================================
 // AFRICAN VIBES CAROUSEL
@@ -854,7 +854,7 @@ interface VibeCardProps {
   index: number;
 }
 
-const VibeCard = ({ vibe, onSelect, index }: VibeCardProps) => (
+const VibeCard = memo(({ vibe, onSelect, index }: VibeCardProps) => (
   <motion.button
     className="flex-shrink-0 relative group"
     onClick={onSelect}
@@ -908,7 +908,7 @@ const VibeCard = ({ vibe, onSelect, index }: VibeCardProps) => (
       }} />
     </div>
   </motion.button>
-);
+));
 
 // ============================================
 // HOME FEED COMPONENT

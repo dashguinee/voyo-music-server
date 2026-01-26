@@ -320,7 +320,7 @@ const DynamicIsland = () => {
   };
 
   const handleAction = (action: string) => {
-    console.log(`Action: ${action} for ${currentNotification?.title}`);
+    devLog(`Action: ${action} for ${currentNotification?.title}`);
 
     // Action taken - remove from queue and next wave
     const remaining = notifications.filter((_, i) => i !== currentIndex);
@@ -423,11 +423,25 @@ const DynamicIsland = () => {
   useEffect(() => {
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
-      if (audioContextRef.current) audioContextRef.current.close().catch(() => {});
-      if (recognitionRef.current) recognitionRef.current.stop();
+      if (audioContextRef.current) {
+        try {
+          audioContextRef.current.close();
+        } catch {
+          // Ignore errors during cleanup
+        }
+      }
+      try {
+        if (recognitionRef.current) recognitionRef.current.stop();
+      } catch {
+        // Recognition may already be stopped
+      }
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-        mediaRecorderRef.current.stop();
-        mediaRecorderRef.current.stream?.getTracks().forEach(t => t.stop());
+        try {
+          mediaRecorderRef.current.stop();
+          mediaRecorderRef.current.stream?.getTracks().forEach(t => t.stop());
+        } catch {
+          // MediaRecorder may already be stopped
+        }
       }
     };
   }, []);
@@ -465,7 +479,7 @@ const DynamicIsland = () => {
         content: replyText || '[voice note]',
         transcript: isRecording ? transcript : null, // Include transcript for voice
       };
-      console.log(`Reply to ${currentNotification?.title}:`, replyData);
+      devLog(`Reply to ${currentNotification?.title}:`, replyData);
 
       stopRecording();
       setIsSending(true);
@@ -953,7 +967,7 @@ function App() {
     const { handleDashCallback } = useUniverseStore.getState();
     const success = handleDashCallback();
     if (success) {
-      console.log('[VOYO] DASH sign-in successful!');
+      devLog('[VOYO] DASH sign-in successful!');
       // Trigger re-render for components listening to storage
       window.dispatchEvent(new StorageEvent('storage', {
         key: 'dash_citizen_storage',
@@ -981,7 +995,7 @@ function App() {
       };
 
       // Play the track - consolidated playTrack for reliable playback
-      console.log('[VOYO] Playing cross-promo track:', title);
+      devLog('[VOYO] Playing cross-promo track:', title);
       usePlayerStore.getState().playTrack(track as any);
     };
 
@@ -1000,14 +1014,14 @@ function App() {
 
   // BRAIN: Initialize intelligent DJ signal capture
   useEffect(() => {
-    console.log('[Brain] Initializing VOYO Brain integration...');
+    devLog('[Brain] Initializing VOYO Brain integration...');
     initializeBrainIntegration();
 
     // Expose brain stats for debugging
     (window as any).brainStats = getBrainStats;
 
     return () => {
-      console.log('[Brain] Cleaning up VOYO Brain integration');
+      devLog('[Brain] Cleaning up VOYO Brain integration');
       cleanupBrainIntegration();
     };
   }, []);
@@ -1030,20 +1044,20 @@ function App() {
   // TRACK POOL MAINTENANCE: Start automatic pool management (rescoring every 5 mins)
   useEffect(() => {
     startPoolMaintenance();
-    console.log('[VOYO] Track pool maintenance started');
+    devLog('[VOYO] Track pool maintenance started');
 
     // SEED SYNC: Upload local tracks to Supabase (one-time per device)
     // This ensures the collective brain has our seed tracks
     syncSeedTracks(TRACKS).then(count => {
       if (count > 0) {
-        console.log(`[VOYO] 🌱 Synced ${count} seed tracks to Supabase`);
+        devLog(`[VOYO] 🌱 Synced ${count} seed tracks to Supabase`);
       }
     });
 
     // VIDEO INTELLIGENCE: Also sync seed tracks to collective brain
     syncManyToDatabase(TRACKS).then(count => {
       if (count > 0) {
-        console.log(`[VOYO] 🧠 Synced ${count} seed tracks to video_intelligence`);
+        devLog(`[VOYO] 🧠 Synced ${count} seed tracks to video_intelligence`);
       }
     });
 
@@ -1051,11 +1065,11 @@ function App() {
     // These made 60+ API calls to Fly.io on every load
     // With 324K tracks in Supabase, refreshRecommendations() is sufficient
     // Re-enable as server-side jobs, not client-side startup
-    console.log('[VOYO] Skipping bootstrap/heal/curate - database is source of truth');
+    devLog('[VOYO] Skipping bootstrap/heal/curate - database is source of truth');
 
     // VIBES FIRST: Load from 324K database IMMEDIATELY
     usePlayerStore.getState().refreshRecommendations();
-    console.log('[VOYO] VIBES FIRST: Loading from 324K database...');
+    devLog('[VOYO] VIBES FIRST: Loading from 324K database...');
   }, []);
 
   // REALTIME NOTIFICATIONS: Subscribe to Supabase events for DynamicIsland

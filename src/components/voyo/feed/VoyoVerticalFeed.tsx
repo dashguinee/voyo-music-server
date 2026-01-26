@@ -16,7 +16,7 @@
  * - Tap to show/hide full comments section
  */
 
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Heart, MessageCircle, Share2, Music2, Zap, Play, Pause,
@@ -468,7 +468,7 @@ interface FeedCardProps {
   onDoubleTapReaction?: () => void; // Double-tap = reaction storm
 }
 
-const FeedCard = ({
+const FeedCard = memo(({
   trackId,
   trackTitle,
   trackArtist,
@@ -913,7 +913,7 @@ const FeedCard = ({
       />
     </div>
   );
-};
+});
 
 // ============================================
 // MAIN FEED COMPONENT

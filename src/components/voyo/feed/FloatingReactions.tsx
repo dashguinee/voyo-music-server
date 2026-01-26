@@ -14,7 +14,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, Zap, Flame, Sparkles } from 'lucide-react';
+import { Heart, Zap, Flame } from 'lucide-react';
 import type { ReactionType } from '../../../store/reactionStore';
 
 // Single floating reaction

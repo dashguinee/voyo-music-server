@@ -13,6 +13,7 @@ import {
 } from '../../utils/imageUtils';
 import { getCachedThumbnail, cacheThumbnail } from '../../hooks/useThumbnailCache';
 import { verifyTrack } from '../../services/trackVerifier';
+import { devLog, devWarn } from '../../utils/logger';
 
 export interface SmartImageProps {
   src: string;
@@ -172,7 +173,7 @@ const SmartImageInner: React.FC<SmartImageProps> = ({
         // SELF-HEALING: If we have artist+title, try verification FIRST
         // Keep showing loading skeleton while we verify - NO PLACEHOLDER SHOWN
         if (artist && title && trackId) {
-          console.log(`[SmartImage] 🔧 Self-healing: ${artist} - ${title}`);
+          devLog(`[SmartImage] 🔧 Self-healing: ${artist} - ${title}`);
           // Stay in loading state while we verify
           setLoadState('loading');
 
@@ -181,7 +182,7 @@ const SmartImageInner: React.FC<SmartImageProps> = ({
 
             if (newThumbnail) {
               // Verification succeeded! Use the real thumbnail
-              console.log(`[SmartImage] ✅ Self-heal succeeded: ${artist} - ${title}`);
+              devLog(`[SmartImage] ✅ Self-heal succeeded: ${artist} - ${title}`);
               const success = await preloadImage(newThumbnail);
               if (success && !cancelled) {
                 setCurrentSrc(newThumbnail);
@@ -195,7 +196,7 @@ const SmartImageInner: React.FC<SmartImageProps> = ({
             }
 
             // Verification failed - NOW show placeholder as last resort
-            console.warn(`[SmartImage] ⚠️ Self-heal failed: ${artist} - ${title}`);
+            devWarn(`[SmartImage] ⚠️ Self-heal failed: ${artist} - ${title}`);
             const placeholderSrc = generatePlaceholder(alt || 'Track', 400);
             setCurrentSrc(placeholderSrc);
             setLoadState('loaded');
@@ -214,7 +215,7 @@ const SmartImageInner: React.FC<SmartImageProps> = ({
           });
         } else {
           // No artist+title - can't self-heal, show placeholder immediately
-          console.warn(`[SmartImage] ⚠️ No artist/title for self-heal, trackId: ${trackId}, src: ${src?.slice(0, 50)}`);
+          devWarn(`[SmartImage] ⚠️ No artist/title for self-heal, trackId: ${trackId}, src: ${src?.slice(0, 50)}`);
           const placeholderSrc = generatePlaceholder(alt || 'Track', 400);
           setCurrentSrc(placeholderSrc);
           setLoadState('loaded');

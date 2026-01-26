@@ -18,6 +18,7 @@ import { syncSearchResults } from '../../services/databaseSync';
 import { searchTracks as searchDatabase } from '../../services/databaseDiscovery';
 import { AlbumSection } from './AlbumSection';
 import { VibesSection } from './VibesSection';
+import { devWarn } from '../../utils/logger';
 
 interface SearchOverlayProps {
   isOpen: boolean;
@@ -374,7 +375,7 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
       if (err?.name === 'AbortError') return;
 
       // Only show error if we have no results at all
-      console.warn('[Search] Error:', err);
+      devWarn('[Search] Error:', err);
       setError(results.length === 0 ? 'No results found. Try a different search.' : null);
       setResults([]);
     } finally {
