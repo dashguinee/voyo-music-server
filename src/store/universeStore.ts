@@ -81,6 +81,8 @@ interface UniverseStore {
   // Auth State
   isLoggedIn: boolean;
   currentUsername: string | null;
+  coreId: string | null;           // DASH identity (Command Center)
+  dashCitizen: DashCitizen | null; // Full DASH citizen data
   isLoading: boolean;
   error: string | null;
 
@@ -101,6 +103,8 @@ interface UniverseStore {
   // Auth Actions
   signup: (username: string, pin: string, displayName?: string) => Promise<boolean>;
   login: (username: string, pin: string) => Promise<boolean>;
+  loginWithDash: () => void;                    // Redirect to Command Center
+  handleDashCallback: () => boolean;            // Handle return from Command Center
   logout: () => void;
   checkUsername: (username: string) => Promise<boolean>;
 
@@ -135,6 +139,35 @@ const STORAGE_KEYS = {
   username: 'voyo-username',
   session: 'voyo-session',
   lastBackup: 'voyo-last-backup',
+};
+
+// ============================================
+// DASH CITIZEN (Command Center SSO)
+// ============================================
+const DASH_CITIZEN_KEY = 'dash_citizen_storage';
+const COMMAND_CENTER_URL = 'https://dash-command.vercel.app';
+
+export interface DashCitizen {
+  coreId: string;
+  displayId: string;
+  fullName: string;
+  initials: string;
+  sequence?: number;
+  phone?: string;
+}
+
+// Helper to get DASH citizen from localStorage (FLAT format)
+const getDashCitizen = (): DashCitizen | null => {
+  try {
+    const stored = localStorage.getItem(DASH_CITIZEN_KEY);
+    if (stored) {
+      const data = JSON.parse(stored);
+      // Handle both flat and nested formats for backward compatibility
+      const citizen = data.state?.citizen || data;
+      if (citizen.coreId) return citizen;
+    }
+  } catch (e) { /* ignore */ }
+  return null;
 };
 
 // ============================================
@@ -222,9 +255,11 @@ function getBoostedTrackIds(): string[] {
 // ============================================
 
 export const useUniverseStore = create<UniverseStore>((set, get) => ({
-  // Initial State - check localStorage for existing session
-  isLoggedIn: Boolean(localStorage.getItem(STORAGE_KEYS.username)),
-  currentUsername: localStorage.getItem(STORAGE_KEYS.username),
+  // Initial State - check localStorage for existing session OR DASH citizen
+  isLoggedIn: Boolean(localStorage.getItem(STORAGE_KEYS.username) || getDashCitizen()),
+  currentUsername: localStorage.getItem(STORAGE_KEYS.username) || getDashCitizen()?.coreId || null,
+  coreId: getDashCitizen()?.coreId || null,
+  dashCitizen: getDashCitizen(),
   isLoading: false,
   error: null,
 
@@ -307,12 +342,61 @@ export const useUniverseStore = create<UniverseStore>((set, get) => ({
   logout: () => {
     localStorage.removeItem(STORAGE_KEYS.username);
     localStorage.removeItem(STORAGE_KEYS.session);
+    localStorage.removeItem(DASH_CITIZEN_KEY);
     set({
       isLoggedIn: false,
       currentUsername: null,
+      coreId: null,
+      dashCitizen: null,
       portalSession: null,
       isPortalOpen: false,
     });
+  },
+
+  // ========================================
+  // AUTH: LOGIN WITH DASH (Command Center SSO)
+  // ========================================
+  loginWithDash: () => {
+    // Don't encode - URLSearchParams handles it
+    const returnUrl = window.location.origin;
+    window.location.href = `${COMMAND_CENTER_URL}?returnUrl=${returnUrl}&app=V`;
+  },
+
+  // ========================================
+  // AUTH: HANDLE DASH CALLBACK
+  // ========================================
+  handleDashCallback: () => {
+    const params = new URLSearchParams(window.location.search);
+    const authData = params.get('dashAuth');
+
+    if (!authData) return false;
+
+    try {
+      const citizen: DashCitizen = JSON.parse(atob(authData));
+
+      if (citizen.coreId) {
+        // Save FLAT to localStorage (matches Command Center format)
+        localStorage.setItem(DASH_CITIZEN_KEY, JSON.stringify(citizen));
+
+        // Update store
+        set({
+          isLoggedIn: true,
+          currentUsername: citizen.coreId,
+          coreId: citizen.coreId,
+          dashCitizen: citizen,
+          isLoading: false,
+        });
+
+        // Clean URL
+        window.history.replaceState({}, '', window.location.pathname);
+
+        console.log('[DASH Auth] Logged in as:', citizen.coreId);
+        return true;
+      }
+    } catch (e) {
+      console.error('[DASH Auth] Failed to parse callback:', e);
+    }
+    return false;
   },
 
   // ========================================

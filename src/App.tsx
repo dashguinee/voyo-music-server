@@ -50,7 +50,8 @@ import { runStartupHeal } from './services/trackVerifier';
 import { syncSeedTracks } from './services/centralDJ';
 import { TRACKS } from './data/tracks';
 import { syncManyToDatabase } from './services/databaseSync';
-import { DashAuthBadge, useDashCitizen, handleSSOCallback } from './lib/dash-auth';
+import { DashAuthBadge, useDashCitizen } from './lib/dash-auth';
+import { useUniverseStore } from './store/universeStore';
 
 // App modes
 type AppMode = 'classic' | 'voyo' | 'video';
@@ -929,17 +930,17 @@ function App() {
     setupMobileAudioUnlock();
   }, []);
 
-  // SSO: Handle redirect from Command Center with SSO token
+  // DASH AUTH: Handle callback from Command Center (simple, synchronous)
   useEffect(() => {
-    handleSSOCallback().then(success => {
-      if (success) {
-        console.log('[VOYO] SSO sign-in successful!');
-        // Trigger a re-render by dispatching storage event
-        window.dispatchEvent(new StorageEvent('storage', {
-          key: 'dash_citizen_storage',
-        }));
-      }
-    });
+    const { handleDashCallback } = useUniverseStore.getState();
+    const success = handleDashCallback();
+    if (success) {
+      console.log('[VOYO] DASH sign-in successful!');
+      // Trigger re-render for components listening to storage
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: 'dash_citizen_storage',
+      }));
+    }
   }, []);
 
   // VOYO:PLAYTRACK - Listen for track play events from cross-promo sections

@@ -1,15 +1,12 @@
 /**
  * DAHUB Components for VOYO
  *
- * Uses Command Center's Supabase for social data
- * VOYO filters to show only music activity (appContext='V')
+ * ONE Dahub - Command Center's unified social layer
+ * Same friends, same messages, same presence across all apps
  */
 
-export { DahubCore } from './DahubCore';
-export type { DahubCoreProps } from './DahubCore';
+export { Dahub } from './Dahub';
 export { DirectMessageChat } from './DirectMessageChat';
-export { VoyoDahub } from './VoyoDahub';
-export { Dahub } from './Dahub'; // New unified DaHub
 
 // Re-export API
 export {

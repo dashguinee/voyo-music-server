@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users, MessageCircle, X, Music, Tv, GraduationCap, Shirt, Plane,
   UserPlus, Check, Loader2, Clock, Plus, Headphones, ChevronRight,
-  Search, Zap, Bell, CreditCard, BadgeCheck
+  Search, Zap, Bell, CreditCard, BadgeCheck, Music2
 } from 'lucide-react';
 import {
   friendsAPI, messagesAPI, presenceAPI,
@@ -17,6 +17,8 @@ import {
   type Friend, type Conversation, type AppCode, type SharedAccountMember
 } from '../../lib/dahub/dahub-api';
 import { DirectMessageChat } from './DirectMessageChat';
+import { usePlayerStore } from '../../store/playerStore';
+import { getYouTubeThumbnail } from '../../data/tracks';
 
 // ==============================================
 // CONSTANTS & HELPERS
@@ -137,7 +139,8 @@ function ProfileCard({
   coreId,
   totalFriends,
   onlineFriends,
-  onAddFriend
+  onAddFriend,
+  appContext
 }: {
   userName: string;
   userAvatar?: string;
@@ -145,10 +148,16 @@ function ProfileCard({
   totalFriends: number;
   onlineFriends: Friend[];
   onAddFriend: () => void;
+  appContext?: AppCode;
 }) {
   const [copied, setCopied] = useState(false);
   const [showLive, setShowLive] = useState(false);
   const [showFriendCount, setShowFriendCount] = useState(false);
+
+  // VOYO Now Playing - only in VOYO context
+  const isVoyo = appContext === 'V';
+  const { currentTrack, queue } = usePlayerStore();
+  const nextTrack = queue[0];
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -235,8 +244,40 @@ function ProfileCard({
                 </button>
               </div>
 
-              {/* Friends count (only when expanded) + Add button */}
-              <div className="flex items-center gap-3 flex-shrink-0">
+              {/* VOYO Now Playing + Friends count + Add button */}
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {/* Now Playing Cards (VOYO only) */}
+                {isVoyo && (
+                  <div className="flex items-center gap-1.5">
+                    {currentTrack?.trackId ? (
+                      <div className="relative w-11 h-11 rounded-xl overflow-hidden shadow-lg ring-1 ring-white/[0.1]">
+                        <img src={getYouTubeThumbnail(currentTrack.trackId, 'medium')} alt="" className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+                        <div className="absolute top-1 left-1 flex gap-0.5">
+                          {[...Array(3)].map((_, i) => (
+                            <motion.div
+                              key={i}
+                              className="w-0.5 bg-white rounded-full"
+                              animate={{ height: [3, 8, 3] }}
+                              transition={{ duration: 0.5, repeat: Infinity, delay: i * 0.12, ease: "easeInOut" }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="w-11 h-11 rounded-xl bg-white/5 flex items-center justify-center ring-1 ring-white/[0.1]">
+                        <Music2 className="w-5 h-5 text-white/30" />
+                      </div>
+                    )}
+                    {nextTrack?.track?.trackId && (
+                      <div className="relative w-9 h-9 rounded-lg overflow-hidden opacity-40 ring-1 ring-white/[0.05]">
+                        <img src={getYouTubeThumbnail(nextTrack.track.trackId, 'medium')} alt="" className="w-full h-full object-cover" />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Friends count (only when expanded) */}
                 <AnimatePresence>
                   {showFriendCount && (
                     <motion.div
@@ -250,6 +291,8 @@ function ProfileCard({
                     </motion.div>
                   )}
                 </AnimatePresence>
+
+                {/* Add Friend button */}
                 <motion.button
                   onClick={(e) => { e.stopPropagation(); onAddFriend(); }}
                   className="w-10 h-10 rounded-full bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-400 hover:bg-purple-500/30 transition-all"
@@ -1221,7 +1264,7 @@ export function Dahub({ userId: propsUserId, userName: propsUserName, userAvatar
       ) : (
         <>
           {/* Profile Card */}
-          <ProfileCard userName={userName} userAvatar={userAvatar} coreId={coreId || userId} totalFriends={friends.length} onlineFriends={friends.filter(f => f.status === 'online')} onAddFriend={() => setShowAddFriend(true)} />
+          <ProfileCard userName={userName} userAvatar={userAvatar} coreId={coreId || userId} totalFriends={friends.length} onlineFriends={friends.filter(f => f.status === 'online')} onAddFriend={() => setShowAddFriend(true)} appContext={appContext} />
 
           {/* Notes & Stories */}
           <NotesStoriesSection
