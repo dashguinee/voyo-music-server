@@ -446,9 +446,9 @@ export async function handleSSOCallback(): Promise<boolean> {
  */
 export function openCommandCenterForSSO(dashId?: string): void {
   const baseUrl = 'https://dash-command.vercel.app';
-  const returnUrl = encodeURIComponent(window.location.origin);
   const params = new URLSearchParams();
-  params.set('returnUrl', returnUrl);
+  // Don't pre-encode - URLSearchParams handles encoding automatically
+  params.set('returnUrl', window.location.origin);
   params.set('app', 'V');
   if (dashId) params.set('dashId', dashId);
 
