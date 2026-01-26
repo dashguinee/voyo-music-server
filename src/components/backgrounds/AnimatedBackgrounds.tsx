@@ -1,17 +1,15 @@
 /**
- * VOYO Animated Backgrounds & Reaction Canvas
+ * VOYO Backgrounds & Reaction Canvas
  *
- * Simple, clean background with reaction animations.
- * When users tap reactions, they pop up and float in the space.
- *
- * NEW: Custom image backdrop with user controls (blur, animation, upload)
+ * Simple backgrounds: black or custom image.
+ * Reaction animations pop up when users tap reactions.
  */
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePlayerStore } from '../../store/playerStore';
 import { useState, useEffect, useRef } from 'react';
 
-export type BackgroundType = 'glow' | 'particles' | 'aurora' | 'none' | 'custom';
+export type BackgroundType = 'none' | 'custom';
 
 // Custom backdrop animation types
 export type CustomAnimation = 'none' | 'zoom' | 'pan';
@@ -91,336 +89,6 @@ export const ReactionCanvas = () => {
 };
 
 // ============================================
-// SIMPLE AMBIENT GLOW - Clean, cinematic
-// MOBILE OPTIMIZED: Uses CSS animations instead of Framer Motion
-// ============================================
-const AmbientGlow = () => {
-  return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {/* Center glow - purple/pink - CSS animation for mobile performance */}
-      <div
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[100%] h-[100%] rounded-full animate-ambient-breathe"
-        style={{
-          background: 'radial-gradient(ellipse at center, rgba(147, 51, 234, 0.12) 0%, transparent 60%)',
-          willChange: 'transform, opacity',
-        }}
-      />
-      {/* Secondary glow - pink accent - CSS animation with different timing */}
-      <div
-        className="absolute top-1/3 right-1/4 w-[60%] h-[60%] rounded-full animate-ambient-secondary"
-        style={{
-          background: 'radial-gradient(ellipse at center, rgba(219, 39, 119, 0.08) 0%, transparent 50%)',
-          willChange: 'transform',
-          animation: 'ambient-secondary 8s ease-in-out infinite',
-        }}
-      />
-    </div>
-  );
-};
-
-// ============================================
-// PARTICLE FIELD - Floating particles
-// MOBILE OPTIMIZED: Pure CSS animations with GPU acceleration
-// ============================================
-const ParticleField = () => {
-  // Generate 25 particles with random properties
-  const particles = Array.from({ length: 25 }, (_, i) => {
-    const left = Math.random() * 100; // Random horizontal position
-    const size = 2 + Math.random() * 2; // 2-4px
-    const duration = 8 + Math.random() * 8; // 8-16s animation duration
-    const delay = Math.random() * 8; // Random start delay
-    const xDrift = (Math.random() - 0.5) * 100; // Horizontal drift: -50 to 50px
-
-    // Randomize color between purple and pink tones
-    const colors = [
-      'rgba(147, 51, 234, 0.6)', // Purple
-      'rgba(168, 85, 247, 0.6)', // Light purple
-      'rgba(219, 39, 119, 0.6)', // Pink
-      'rgba(236, 72, 153, 0.6)', // Light pink
-      'rgba(192, 132, 252, 0.5)', // Violet
-    ];
-    const color = colors[Math.floor(Math.random() * colors.length)];
-
-    return {
-      id: i,
-      left: `${left}%`,
-      size: `${size}px`,
-      duration: `${duration}s`,
-      delay: `${delay}s`,
-      xDrift: `${xDrift}px`,
-      color,
-    };
-  });
-
-  return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      <style>{`
-        @keyframes particle-float {
-          0% {
-            transform: translateY(0) translateX(0);
-            opacity: 0;
-          }
-          10% {
-            opacity: 1;
-          }
-          90% {
-            opacity: 1;
-          }
-          100% {
-            transform: translateY(-100vh) translateX(var(--x-drift));
-            opacity: 0;
-          }
-        }
-      `}</style>
-
-      {particles.map(particle => (
-        <div
-          key={particle.id}
-          className="absolute rounded-full"
-          style={{
-            left: particle.left,
-            bottom: '-10px',
-            width: particle.size,
-            height: particle.size,
-            backgroundColor: particle.color,
-            boxShadow: `0 0 ${parseInt(particle.size) * 2}px ${particle.color}`,
-            animation: `particle-float ${particle.duration} linear ${particle.delay} infinite`,
-            willChange: 'transform, opacity',
-            // @ts-ignore - CSS custom property
-            '--x-drift': particle.xDrift,
-          }}
-        />
-      ))}
-    </div>
-  );
-};
-
-// ============================================
-// AURORA EFFECT - Dreamy Northern Lights
-// MOBILE OPTIMIZED: Reduced blur on mobile for smooth performance
-// ============================================
-const AuroraEffect = () => {
-  // Detect mobile/Android for performance optimization
-  const isMobile = typeof window !== 'undefined' && (
-    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
-    window.innerWidth < 768
-  );
-  const isAndroid = typeof window !== 'undefined' && /Android/i.test(navigator.userAgent);
-
-  // Mobile gets reduced blur (Android even more reduced due to GPU limitations)
-  const blurLevel = isAndroid ? 15 : isMobile ? 25 : 60;
-  const blurLevel2 = isAndroid ? 18 : isMobile ? 30 : 70;
-
-  // On Android, use only 2 layers instead of 4 for better performance
-  if (isAndroid) {
-    return (
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {/* Simplified Aurora for Android - Single flowing gradient */}
-        <div
-          className="absolute inset-0"
-          style={{
-            background: 'radial-gradient(ellipse at 50% 80%, rgba(147, 51, 234, 0.2) 0%, rgba(168, 85, 247, 0.12) 30%, rgba(236, 72, 153, 0.08) 50%, transparent 70%)',
-            animation: 'aurora-mobile 8s ease-in-out infinite',
-            willChange: 'transform',
-          }}
-        />
-
-        {/* Secondary glow layer */}
-        <div
-          className="absolute inset-0"
-          style={{
-            background: 'radial-gradient(ellipse at 30% 60%, rgba(139, 92, 246, 0.15) 0%, transparent 50%)',
-            animation: 'aurora-mobile-secondary 10s ease-in-out infinite',
-            willChange: 'transform',
-          }}
-        />
-
-        <style>{`
-          @keyframes aurora-mobile {
-            0%, 100% {
-              transform: translateY(0%) scale(1);
-              opacity: 1;
-            }
-            50% {
-              transform: translateY(-5%) scale(1.05);
-              opacity: 0.85;
-            }
-          }
-
-          @keyframes aurora-mobile-secondary {
-            0%, 100% {
-              transform: translateX(0%) translateY(0%);
-              opacity: 0.8;
-            }
-            50% {
-              transform: translateX(5%) translateY(-3%);
-              opacity: 1;
-            }
-          }
-        `}</style>
-      </div>
-    );
-  }
-
-  return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {/* Aurora Layer 1 - Purple to Teal */}
-      <div
-        className="absolute inset-0"
-        style={{
-          background: 'linear-gradient(135deg, rgba(147, 51, 234, 0.15) 0%, rgba(20, 184, 166, 0.1) 50%, transparent 100%)',
-          filter: `blur(${blurLevel}px)`,
-          transform: 'translateY(0%) scale(1.2)',
-          animation: 'aurora-wave-1 12s ease-in-out infinite',
-          willChange: 'transform, opacity',
-        }}
-      />
-
-      {/* Aurora Layer 2 - Pink to Blue */}
-      <div
-        className="absolute inset-0"
-        style={{
-          background: 'linear-gradient(225deg, rgba(236, 72, 153, 0.12) 0%, rgba(59, 130, 246, 0.08) 50%, transparent 100%)',
-          filter: `blur(${blurLevel2}px)`,
-          transform: 'translateY(0%) scale(1.1)',
-          animation: 'aurora-wave-2 15s ease-in-out infinite',
-          animationDelay: '2s',
-          willChange: 'transform, opacity',
-        }}
-      />
-
-      {/* Aurora Layer 3 - Teal Accent (Skip on mobile for perf) */}
-      {!isMobile && (
-        <div
-          className="absolute top-0 left-0 right-0 h-[70%]"
-          style={{
-            background: 'linear-gradient(180deg, rgba(20, 184, 166, 0.1) 0%, rgba(168, 85, 247, 0.08) 60%, transparent 100%)',
-            filter: 'blur(80px)',
-            transform: 'translateX(0%)',
-            animation: 'aurora-wave-3 18s ease-in-out infinite',
-            animationDelay: '4s',
-            willChange: 'transform, opacity',
-          }}
-        />
-      )}
-
-      {/* Aurora Layer 4 - Purple Curtain (Skip on mobile for perf) */}
-      {!isMobile && (
-        <div
-          className="absolute bottom-0 left-0 right-0 h-[60%]"
-          style={{
-            background: 'linear-gradient(0deg, rgba(139, 92, 246, 0.12) 0%, rgba(236, 72, 153, 0.06) 50%, transparent 100%)',
-            filter: 'blur(90px)',
-            transform: 'translateX(0%)',
-            animation: 'aurora-wave-4 20s ease-in-out infinite',
-            animationDelay: '6s',
-            willChange: 'transform, opacity',
-          }}
-        />
-      )}
-
-      {/* Subtle shimmer overlay */}
-      <div
-        className="absolute inset-0"
-        style={{
-          background: 'radial-gradient(ellipse at 50% 50%, rgba(255, 255, 255, 0.03) 0%, transparent 60%)',
-          animation: 'aurora-shimmer 8s ease-in-out infinite',
-          willChange: 'opacity',
-        }}
-      />
-
-      {/* CSS Keyframes injected via style tag */}
-      <style>{`
-        @keyframes aurora-wave-1 {
-          0%, 100% {
-            transform: translateY(0%) translateX(0%) scale(1.2) rotate(0deg);
-            opacity: 1;
-          }
-          25% {
-            transform: translateY(-8%) translateX(5%) scale(1.25) rotate(1deg);
-            opacity: 0.9;
-          }
-          50% {
-            transform: translateY(-5%) translateX(-3%) scale(1.15) rotate(-1deg);
-            opacity: 1;
-          }
-          75% {
-            transform: translateY(-10%) translateX(3%) scale(1.22) rotate(0.5deg);
-            opacity: 0.95;
-          }
-        }
-
-        @keyframes aurora-wave-2 {
-          0%, 100% {
-            transform: translateY(0%) translateX(0%) scale(1.1) rotate(0deg);
-            opacity: 1;
-          }
-          30% {
-            transform: translateY(6%) translateX(-4%) scale(1.18) rotate(-1deg);
-            opacity: 0.85;
-          }
-          60% {
-            transform: translateY(-4%) translateX(6%) scale(1.12) rotate(1deg);
-            opacity: 1;
-          }
-          85% {
-            transform: translateY(3%) translateX(-2%) scale(1.15) rotate(-0.5deg);
-            opacity: 0.9;
-          }
-        }
-
-        @keyframes aurora-wave-3 {
-          0%, 100% {
-            transform: translateX(0%) translateY(0%) scale(1);
-            opacity: 1;
-          }
-          35% {
-            transform: translateX(8%) translateY(-3%) scale(1.08);
-            opacity: 0.8;
-          }
-          65% {
-            transform: translateX(-6%) translateY(2%) scale(1.05);
-            opacity: 1;
-          }
-          90% {
-            transform: translateX(4%) translateY(-1%) scale(1.06);
-            opacity: 0.9;
-          }
-        }
-
-        @keyframes aurora-wave-4 {
-          0%, 100% {
-            transform: translateX(0%) translateY(0%) scale(1);
-            opacity: 1;
-          }
-          40% {
-            transform: translateX(-7%) translateY(-4%) scale(1.1);
-            opacity: 0.9;
-          }
-          70% {
-            transform: translateX(5%) translateY(3%) scale(1.05);
-            opacity: 0.85;
-          }
-          95% {
-            transform: translateX(-3%) translateY(-2%) scale(1.07);
-            opacity: 0.95;
-          }
-        }
-
-        @keyframes aurora-shimmer {
-          0%, 100% {
-            opacity: 0.4;
-          }
-          50% {
-            opacity: 0.7;
-          }
-        }
-      `}</style>
-    </div>
-  );
-};
-
-// ============================================
 // CUSTOM IMAGE BACKDROP - User uploaded image with controls
 // ============================================
 const CustomBackdrop = () => {
@@ -442,9 +110,9 @@ const CustomBackdrop = () => {
     if (loadedBrightness) setBrightness(Number(loadedBrightness));
   }, []);
 
-  // If no image uploaded, fallback to glow
+  // If no image uploaded, just show nothing (black bg)
   if (!imageData) {
-    return <AmbientGlow />;
+    return null;
   }
 
   // Animation styles
@@ -688,12 +356,6 @@ interface AnimatedBackgroundProps {
 
 export const AnimatedBackground = ({ type }: AnimatedBackgroundProps) => {
   switch (type) {
-    case 'glow':
-      return <AmbientGlow />;
-    case 'particles':
-      return <ParticleField />;
-    case 'aurora':
-      return <AuroraEffect />;
     case 'custom':
       return <CustomBackdrop />;
     case 'none':
@@ -703,7 +365,7 @@ export const AnimatedBackground = ({ type }: AnimatedBackgroundProps) => {
 };
 
 // ============================================
-// BACKGROUND PICKER UI (Simplified)
+// BACKGROUND PICKER UI - Simple toggle: Black or Custom Image
 // ============================================
 interface BackgroundPickerProps {
   current: BackgroundType;
@@ -716,16 +378,13 @@ export const BackgroundPicker = ({ current, onSelect, isOpen, onClose }: Backgro
   const [showCustomSettings, setShowCustomSettings] = useState(false);
 
   const options: { type: BackgroundType; label: string; icon: string }[] = [
-    { type: 'none', label: 'Clean', icon: '🌑' },
-    { type: 'glow', label: 'Glow', icon: '💜' },
-    { type: 'particles', label: 'Particles', icon: '✨' },
-    { type: 'aurora', label: 'Aurora', icon: '🌌' },
-    { type: 'custom', label: 'Custom', icon: '🖼️' },
+    { type: 'none', label: 'Black', icon: '🌑' },
+    { type: 'custom', label: 'Image', icon: '🖼️' },
   ];
 
   const handleSelect = (type: BackgroundType) => {
     if (type === 'custom') {
-      // Show custom settings instead of closing
+      // Show custom settings for image upload
       setShowCustomSettings(true);
       onSelect(type);
     } else {
