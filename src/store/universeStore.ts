@@ -145,7 +145,7 @@ const STORAGE_KEYS = {
 // DASH CITIZEN (Command Center SSO)
 // ============================================
 const DASH_CITIZEN_KEY = 'dash_citizen_storage';
-const COMMAND_CENTER_URL = 'https://dash-command.vercel.app';
+const COMMAND_CENTER_URL = 'https://hub.dasuperhub.com';
 
 export interface DashCitizen {
   coreId: string;

@@ -1243,8 +1243,8 @@ export function Dahub({ userId: propsUserId, userName: propsUserName, userAvatar
           </p>
           <motion.button
             onClick={() => {
-              const returnUrl = encodeURIComponent(window.location.href);
-              window.location.href = `https://dash-command.vercel.app?returnUrl=${returnUrl}&app=V`;
+              const returnUrl = window.location.origin;
+              window.location.href = `https://hub.dasuperhub.com?returnUrl=${returnUrl}&app=V`;
             }}
             className="px-8 py-3 rounded-2xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold flex items-center gap-2 shadow-lg shadow-purple-500/25"
             whileHover={{ scale: 1.02 }}

@@ -238,7 +238,7 @@ export function DashAuthBadge({
   if (!citizen) {
     return (
       <button
-        onClick={() => window.open('https://hub.dasuperhub.com', '_blank')}
+        onClick={() => window.location.href = `https://hub.dasuperhub.com?returnUrl=${window.location.origin}&app=V`}
         className={`
           px-3 py-1.5 rounded-full text-xs font-medium
           bg-white/5 hover:bg-white/10 border border-white/10
@@ -306,10 +306,11 @@ export function useDashCitizen(productCode: ProductCode) {
   // Open Command Center with dashId prefilled if signed in
   const openCommandCenter = () => {
     const currentCitizen = getCitizen(productCode);
+    const returnUrl = window.location.origin;
     const url = currentCitizen
-      ? `https://hub.dasuperhub.com?dashId=${currentCitizen.coreId}&from=voyo`
-      : 'https://hub.dasuperhub.com';
-    window.open(url, '_blank');
+      ? `https://hub.dasuperhub.com?returnUrl=${returnUrl}&app=V&dashId=${currentCitizen.coreId}`
+      : `https://hub.dasuperhub.com?returnUrl=${returnUrl}&app=V`;
+    window.location.href = url;
   };
 
   return {
