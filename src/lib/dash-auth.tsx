@@ -382,25 +382,26 @@ export async function handleSSOCallback(): Promise<boolean> {
 
   if (!ssoToken) return false;
 
-  // Clean URL immediately
-  const url = new URL(window.location.href);
-  url.searchParams.delete('sso_token');
-  window.history.replaceState({}, '', url.pathname + url.search);
+  console.log('[DASH SSO] Found SSO token, exchanging...');
 
-  console.log('[DASH SSO] Found token, exchanging...');
+  // Exchange the token via Supabase RPC
   const result = await exchangeSSOToken(ssoToken);
 
   if (result.success) {
+    // Clean URL to remove token
+    const cleanUrl = window.location.pathname;
+    window.history.replaceState({}, '', cleanUrl);
     console.log('[DASH SSO] Auto sign-in successful!');
     return true;
-  } else {
-    console.error('[DASH SSO] Auto sign-in failed:', result.error);
-    return false;
   }
+
+  console.error('[DASH SSO] Token exchange failed:', result.error);
+  return false;
 }
 
 /**
  * Open Command Center for sign-in with SSO return
+ * Command Center recognizes 'from=voyo' and will redirect back with sso_token
  */
 export function openCommandCenterForSSO(dashId?: string): void {
   const baseUrl = 'https://dash-command.vercel.app';
