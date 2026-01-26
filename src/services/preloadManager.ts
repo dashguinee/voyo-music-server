@@ -21,6 +21,7 @@
  */
 
 import { checkR2Cache } from './api';
+import { devLog, devWarn } from '../utils/logger';
 
 // Edge Worker for extraction (FREE - replaces Fly.io)
 const EDGE_WORKER_URL = 'https://voyo-edge.dash-webtv.workers.dev';
@@ -79,13 +80,13 @@ export async function preloadNextTrack(
 
   // Already preloading this track
   if (state.isPreloading && state.lastPreloadedId === normalizedId) {
-    console.log('🔮 [Preload] Already preloading:', normalizedId);
+    devLog('🔮 [Preload] Already preloading:', normalizedId);
     return state.preloaded;
   }
 
   // Already preloaded this track
   if (state.preloaded?.normalizedId === normalizedId && state.preloaded.isReady) {
-    console.log('🔮 [Preload] Already preloaded:', normalizedId);
+    devLog('🔮 [Preload] Already preloaded:', normalizedId);
     return state.preloaded;
   }
 
@@ -102,7 +103,7 @@ export async function preloadNextTrack(
   state.isPreloading = true;
   state.lastPreloadedId = normalizedId;
 
-  console.log('🔮 [Preload] Starting preload for:', normalizedId);
+  devLog('🔮 [Preload] Starting preload for:', normalizedId);
 
   try {
     // STEP 1: Check local cache (IndexedDB) - fastest
@@ -111,7 +112,7 @@ export async function preloadNextTrack(
     if (signal.aborted) return null;
 
     if (cachedUrl) {
-      console.log('🔮 [Preload] Found in local cache, preloading audio element');
+      devLog('🔮 [Preload] Found in local cache, preloading audio element');
       const audioEl = createPreloadAudioElement(cachedUrl, signal);
 
       state.preloaded = {
@@ -134,7 +135,7 @@ export async function preloadNextTrack(
 
       state.preloaded.isReady = true;
       state.isPreloading = false;
-      console.log('🔮 [Preload] ✅ Local cache preload complete');
+      devLog('🔮 [Preload] ✅ Local cache preload complete');
       return state.preloaded;
     }
 
@@ -144,7 +145,7 @@ export async function preloadNextTrack(
     if (signal.aborted) return null;
 
     if (r2Result.exists && r2Result.url) {
-      console.log('🔮 [Preload] Found in R2, preloading audio element');
+      devLog('🔮 [Preload] Found in R2, preloading audio element');
       const audioEl = createPreloadAudioElement(r2Result.url, signal);
 
       state.preloaded = {
@@ -167,13 +168,13 @@ export async function preloadNextTrack(
 
       state.preloaded.isReady = true;
       state.isPreloading = false;
-      console.log('🔮 [Preload] ✅ R2 preload complete');
+      devLog('🔮 [Preload] ✅ R2 preload complete');
       return state.preloaded;
     }
 
     // STEP 3: Get YouTube direct URL and preload
     // Browser fetches from YouTube CDN directly
-    console.log('🔮 [Preload] Not in cache/R2, getting YouTube stream URL');
+    devLog('🔮 [Preload] Not in cache/R2, getting YouTube stream URL');
 
     try {
       const streamResponse = await fetch(`${EDGE_WORKER_URL}/stream?v=${normalizedId}`);
@@ -183,7 +184,7 @@ export async function preloadNextTrack(
       const streamData = await streamResponse.json();
 
       if (!streamData.url) {
-        console.warn('🔮 [Preload] No stream URL available for:', normalizedId);
+        devWarn('🔮 [Preload] No stream URL available for:', normalizedId);
         state.isPreloading = false;
         return null;
       }
@@ -210,16 +211,16 @@ export async function preloadNextTrack(
 
       state.preloaded.isReady = true;
       state.isPreloading = false;
-      console.log('🔮 [Preload] ✅ YouTube direct stream preload complete');
+      devLog('🔮 [Preload] ✅ YouTube direct stream preload complete');
       return state.preloaded;
     } catch (extractError) {
-      console.warn('🔮 [Preload] Stream preload error:', extractError);
+      devWarn('🔮 [Preload] Stream preload error:', extractError);
       state.isPreloading = false;
       return null;
     }
 
   } catch (error) {
-    console.warn('🔮 [Preload] Error:', error);
+    devWarn('🔮 [Preload] Error:', error);
     state.isPreloading = false;
     return null;
   }
@@ -248,7 +249,7 @@ export function consumePreloadedAudio(trackId: string): HTMLAudioElement | null 
   if (state.preloaded?.normalizedId === normalizedId && state.preloaded.audioElement) {
     const audioEl = state.preloaded.audioElement;
     state.preloaded.audioElement = null; // Transfer ownership
-    console.log('🔮 [Preload] Consumed preloaded audio element');
+    devLog('🔮 [Preload] Consumed preloaded audio element');
     return audioEl;
   }
 
@@ -327,7 +328,7 @@ function waitForAudioReady(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const timeoutId = setTimeout(() => {
-      console.log('🔮 [Preload] Timeout waiting for audio ready, proceeding anyway');
+      devLog('🔮 [Preload] Timeout waiting for audio ready, proceeding anyway');
       resolve(); // Resolve anyway - partial preload is better than none
     }, timeout);
 
@@ -344,7 +345,7 @@ function waitForAudioReady(
 
     const onError = (e: Event) => {
       cleanup();
-      console.warn('🔮 [Preload] Audio error during preload:', e);
+      devWarn('🔮 [Preload] Audio error during preload:', e);
       resolve(); // Still resolve - we tried
     };
 

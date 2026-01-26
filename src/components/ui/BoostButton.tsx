@@ -16,6 +16,7 @@ import { motion } from 'framer-motion';
 import { usePlayerStore } from '../../store/playerStore';
 import { useDownloadStore } from '../../store/downloadStore';
 import { getThumbnailUrl } from '../../utils/imageHelpers';
+import { devLog } from '../../utils/logger';
 
 interface BoostButtonProps {
   variant?: 'toolbar' | 'floating' | 'mini' | 'inline';
@@ -413,7 +414,7 @@ export const BoostButton = ({ variant = 'toolbar', className = '' }: BoostButton
 
     if (!isCached) {
       // STATE 1: Not locally cached → Download it
-      console.log('🎵 [Boost] Downloading to local cache...');
+      devLog('🎵 [Boost] Downloading to local cache...');
       setShowSparks(true);
       boostTrack(
         currentTrack.trackId,
@@ -424,11 +425,11 @@ export const BoostButton = ({ variant = 'toolbar', className = '' }: BoostButton
       );
     } else if (isEqOn) {
       // STATE 2: Local + EQ ON → Turn OFF
-      console.log('🎵 [Boost] OFF → Raw audio');
+      devLog('🎵 [Boost] OFF → Raw audio');
       setBoostProfile('off');
     } else {
       // STATE 3: Local + EQ OFF → Turn ON
-      console.log(`🎵 [Boost] ON → ${lastActivePreset} mode`);
+      devLog(`🎵 [Boost] ON → ${lastActivePreset} mode`);
       setBoostProfile(lastActivePreset);
       setShowSparks(true);
       setTimeout(() => setShowSparks(false), 600);

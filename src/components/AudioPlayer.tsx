@@ -23,6 +23,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { Track } from '../types';
 import { usePlayerStore } from '../store/playerStore';
+import { devLog, devWarn } from '../utils/logger';
 import { usePreferenceStore } from '../store/preferenceStore';
 import { useDownloadStore } from '../store/downloadStore';
 import { useTrackPoolStore } from '../store/trackPoolStore';
@@ -162,7 +163,7 @@ export const AudioPlayer = () => {
 
     // Check network preference (always | wifi-only | ask | never)
     if (downloadSetting === 'never') {
-      console.log('🎵 [VOYO] 50% reached but download setting is "never"');
+      devLog('🎵 [VOYO] 50% reached but download setting is "never"');
       return;
     }
 
@@ -171,7 +172,7 @@ export const AudioPlayer = () => {
       const connection = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
       const isWifi = !connection || connection.type === 'wifi' || connection.type === 'ethernet' || !connection.effectiveType?.includes('2g');
       if (!isWifi) {
-        console.log('🎵 [VOYO] 50% reached but wifi-only setting blocks caching on mobile data');
+        devLog('🎵 [VOYO] 50% reached but wifi-only setting blocks caching on mobile data');
         return;
       }
     }
@@ -182,7 +183,7 @@ export const AudioPlayer = () => {
     hasTriggered50PercentCacheRef.current = true;
 
     const API_BASE = 'https://voyo-music-api.fly.dev';
-    console.log('🎵 [VOYO] 50% reached! Upgrading R2 low quality to HIGH (genuine interest)');
+    devLog('🎵 [VOYO] 50% reached! Upgrading R2 low quality to HIGH (genuine interest)');
 
     // Start background cache
     backgroundBoostingRef.current = currentTrack.trackId;
@@ -215,10 +216,10 @@ export const AudioPlayer = () => {
       // Queue empty - use predictNextTrack to determine what will play next
       nextTrackToPreload = predictNextTrack();
       if (!nextTrackToPreload?.trackId) {
-        console.log(`🔮 [Preload] No next track available (queue empty, prediction empty)`);
+        devLog(`🔮 [Preload] No next track available (queue empty, prediction empty)`);
         return;
       }
-      console.log(`🔮 [Preload] Queue empty, using prediction: ${nextTrackToPreload.title}`);
+      devLog(`🔮 [Preload] Queue empty, using prediction: ${nextTrackToPreload.title}`);
     }
 
     // Start preload immediately - like Spotify/YouTube Music
@@ -237,15 +238,15 @@ export const AudioPlayer = () => {
 
       hasTriggeredPreloadRef.current = true;
 
-      console.log(`🔮 [VOYO] Preloading next track: ${trackToPreload.title}`);
+      devLog(`🔮 [VOYO] Preloading next track: ${trackToPreload.title}`);
 
       // Start preloading (async, non-blocking) - this buffers the audio data
       preloadNextTrack(trackToPreload.trackId, checkCache).then((result) => {
         if (result) {
-          console.log(`🔮 [VOYO] ✅ Preload ready: ${trackToPreload!.title} (source: ${result.source})`);
+          devLog(`🔮 [VOYO] ✅ Preload ready: ${trackToPreload!.title} (source: ${result.source})`);
         }
       }).catch((err) => {
-        console.warn('🔮 [VOYO] Preload failed:', err);
+        devWarn('🔮 [VOYO] Preload failed:', err);
       });
     }, 500);
 
@@ -259,16 +260,29 @@ export const AudioPlayer = () => {
     };
   }, [currentTrack?.trackId]);
 
-  // Background playback protection
+  // Background playback + AudioContext battery optimization
   useEffect(() => {
     const handleVisibility = () => {
-      if (document.visibilityState === 'hidden' && (playbackSource === 'cached' || playbackSource === 'r2')) {
-        const { isPlaying: shouldPlay } = usePlayerStore.getState();
-        if (audioRef.current && shouldPlay) {
+      const { isPlaying: shouldPlay } = usePlayerStore.getState();
+
+      if (document.visibilityState === 'hidden') {
+        // Tab hidden - if playing, keep AudioContext running for background playback
+        if (shouldPlay && audioRef.current && (playbackSource === 'cached' || playbackSource === 'r2')) {
           if (audioContextRef.current?.state === 'suspended') {
             audioContextRef.current.resume();
           }
           audioRef.current.play().catch(() => {});
+        }
+        // If NOT playing and tab hidden, suspend AudioContext to save battery
+        else if (!shouldPlay && audioContextRef.current?.state === 'running') {
+          audioContextRef.current.suspend();
+          devLog('🔋 [Battery] AudioContext suspended (tab hidden, not playing)');
+        }
+      } else {
+        // Tab visible - resume AudioContext if it was suspended
+        if (audioContextRef.current?.state === 'suspended' && shouldPlay) {
+          audioContextRef.current.resume();
+          devLog('🔋 [Battery] AudioContext resumed (tab visible)');
         }
       }
     };
@@ -320,7 +334,7 @@ export const AudioPlayer = () => {
 
       // 'off' = RAW AUDIO - bypass all EQ, connect directly to output
       if (preset === 'off') {
-        console.log('🎵 [VOYO] RAW mode - EQ bypassed');
+        devLog('🎵 [VOYO] RAW mode - EQ bypassed');
         const source = ctx.createMediaElementSource(audioRef.current);
         sourceNodeRef.current = source;
         source.connect(ctx.destination);
@@ -349,7 +363,7 @@ export const AudioPlayer = () => {
       // VOYEX: Professional Multiband Compression Chain
       // ═══════════════════════════════════════════════════════════════
       if (settings.multiband) {
-        console.log('🎛️ [VOYO] VOYEX Multiband Mastering Chain Active');
+        devLog('🎛️ [VOYO] VOYEX Multiband Mastering Chain Active');
 
         // Create band-split filters (Linkwitz-Riley style crossover)
         // LOW BAND: lowpass at crossover frequency
@@ -478,7 +492,7 @@ export const AudioPlayer = () => {
 
         masterGain.connect(ctx.destination);
         audioEnhancedRef.current = true;
-        console.log('🎛️ [VOYO] Multiband: LOW(<180Hz) 5:1 | MID(180-4.5k) 2:1 | HIGH(>4.5k) 3:1');
+        devLog('🎛️ [VOYO] Multiband: LOW(<180Hz) 5:1 | MID(180-4.5k) 2:1 | HIGH(>4.5k) 3:1');
         return;
       }
 
@@ -555,9 +569,9 @@ export const AudioPlayer = () => {
       }
 
       audioEnhancedRef.current = true;
-      console.log(`🎵 [VOYO] Boost EQ active: ${preset.toUpperCase()}`);
+      devLog(`🎵 [VOYO] Boost EQ active: ${preset.toUpperCase()}`);
     } catch (e) {
-      console.warn('[VOYO] Audio enhancement failed:', e);
+      devWarn('[VOYO] Audio enhancement failed:', e);
     }
   }, []);
 
@@ -596,7 +610,7 @@ export const AudioPlayer = () => {
         multibandHighCompRef.current.threshold.value = 0;
         multibandHighCompRef.current.ratio.value = 1;
       }
-      console.log('🎵 [VOYO] RAW mode - EQ bypassed');
+      devLog('🎵 [VOYO] RAW mode - EQ bypassed');
       return;
     }
 
@@ -616,7 +630,7 @@ export const AudioPlayer = () => {
       compressorRef.current.threshold.value = s.compressor.threshold;
       compressorRef.current.ratio.value = s.compressor.ratio;
     }
-    console.log(`🎵 [VOYO] Switched to ${preset.toUpperCase()}`);
+    devLog(`🎵 [VOYO] Switched to ${preset.toUpperCase()}`);
   }, []);
 
   // === MAIN TRACK LOADING LOGIC ===
@@ -640,7 +654,7 @@ export const AudioPlayer = () => {
       // This fixes the bug where track seeks correctly on refresh but audio doesn't play
       if (isInitialLoadRef.current && savedCurrentTime > 5) {
         shouldAutoResumeRef.current = true;
-        console.log(`🔄 [VOYO] Session resume detected (position: ${savedCurrentTime.toFixed(1)}s) - will auto-play`);
+        devLog(`🔄 [VOYO] Session resume detected (position: ${savedCurrentTime.toFixed(1)}s) - will auto-play`);
       }
 
       lastTrackIdRef.current = trackId;
@@ -656,7 +670,7 @@ export const AudioPlayer = () => {
       // PRELOAD CHECK: Use preloaded audio if available (instant playback!)
       const preloaded = getPreloadedTrack(trackId);
       if (preloaded && preloaded.audioElement && (preloaded.source === 'cached' || preloaded.source === 'r2')) {
-        console.log(`🔮 [VOYO] Using PRELOADED audio (source: ${preloaded.source})`);
+        devLog(`🔮 [VOYO] Using PRELOADED audio (source: ${preloaded.source})`);
 
         // Consume the preloaded audio element
         const preloadedAudio = consumePreloadedAudio(trackId);
@@ -686,7 +700,7 @@ export const AudioPlayer = () => {
                 audioRef.current.play().then(() => {
                   audioRef.current!.volume = 1.0;
                   recordPlayEvent();
-                  console.log('🔮 [VOYO] Preloaded playback started!');
+                  devLog('🔮 [VOYO] Preloaded playback started!');
                 }).catch(() => {});
               }
             };
@@ -706,7 +720,7 @@ export const AudioPlayer = () => {
 
       if (cachedUrl) {
         // ⚡ BOOSTED - Play from cache instantly
-        console.log('🎵 [VOYO] Playing BOOSTED');
+        devLog('🎵 [VOYO] Playing BOOSTED');
         setPlaybackSource('cached');
 
         if (cachedUrlRef.current) URL.revokeObjectURL(cachedUrlRef.current);
@@ -748,26 +762,26 @@ export const AudioPlayer = () => {
                 if (shouldAutoResume && !shouldPlay) {
                   usePlayerStore.getState().togglePlay();
                 }
-                console.log('🎵 [VOYO] Playback started (cached)');
+                devLog('🎵 [VOYO] Playback started (cached)');
               }).catch(() => {});
             }
           };
         }
       } else {
         // 📡 NOT IN LOCAL CACHE - Check R2 collective cache before iframe
-        console.log('🎵 [VOYO] Not in local cache, checking R2 collective...');
+        devLog('🎵 [VOYO] Not in local cache, checking R2 collective...');
 
         const r2Result = await checkR2Cache(trackId);
 
         if (r2Result.exists && r2Result.url) {
           // 🚀 R2 HIT - Play from collective cache with EQ
           const qualityInfo = r2Result.hasHigh ? 'HIGH' : 'LOW';
-          console.log(`🎵 [VOYO] R2 HIT! Playing from collective cache (${qualityInfo} quality)`);
+          devLog(`🎵 [VOYO] R2 HIT! Playing from collective cache (${qualityInfo} quality)`);
           setPlaybackSource('r2');
 
           // PHASE 5: Track if low quality - will upgrade at 50%
           if (!r2Result.hasHigh && r2Result.hasLow) {
-            console.log('🎵 [VOYO] Low quality R2 - will upgrade at 50% interest');
+            devLog('🎵 [VOYO] Low quality R2 - will upgrade at 50% interest');
             hasTriggered50PercentCacheRef.current = false; // Allow upgrade trigger
           }
 
@@ -805,7 +819,7 @@ export const AudioPlayer = () => {
                   if (shouldAutoResume && !shouldPlay) {
                     usePlayerStore.getState().togglePlay();
                   }
-                  console.log('🎵 [VOYO] Playback started (R2)');
+                  devLog('🎵 [VOYO] Playback started (R2)');
                 }).catch(() => {});
               }
             };
@@ -813,7 +827,7 @@ export const AudioPlayer = () => {
         } else {
           // 📡 R2 MISS - Get direct YouTube URL, stream via browser
           // Browser fetches from YouTube CDN directly (no CORS issues with audio element)
-          console.log('🎵 [VOYO] R2 miss, getting stream URL...');
+          devLog('🎵 [VOYO] R2 miss, getting stream URL...');
 
           try {
             // Get the direct YouTube audio URL from our worker
@@ -825,7 +839,7 @@ export const AudioPlayer = () => {
               return;
             }
 
-            console.log(`🎵 [VOYO] Got stream URL (${streamData.bitrate}bps ${streamData.mimeType})`);
+            devLog(`🎵 [VOYO] Got stream URL (${streamData.bitrate}bps ${streamData.mimeType})`);
             setPlaybackSource('cached'); // Treat as cached for EQ purposes
 
             const { boostProfile: profile } = usePlayerStore.getState();
@@ -858,7 +872,7 @@ export const AudioPlayer = () => {
                     if (shouldAutoResume && !shouldPlay) {
                       usePlayerStore.getState().togglePlay();
                     }
-                    console.log('🎵 [VOYO] Playback started (YouTube direct stream)');
+                    devLog('🎵 [VOYO] Playback started (YouTube direct stream)');
                   }).catch(() => {});
                 }
               };
@@ -869,7 +883,7 @@ export const AudioPlayer = () => {
                 setTimeout(() => {
                   const currentState = usePlayerStore.getState();
                   if (currentState.currentTrack?.trackId === trackId && currentState.isPlaying) {
-                    console.log('🎵 [VOYO] Starting background cache for streaming track');
+                    devLog('🎵 [VOYO] Starting background cache for streaming track');
                     cacheTrack(
                       trackId,
                       currentTrack.title,
@@ -909,7 +923,7 @@ export const AudioPlayer = () => {
     oyoOnTrackPlay(currentTrack, previousTrackRef.current || undefined);
     viRegisterPlay(currentTrack.trackId, currentTrack.title, currentTrack.artist, 'user_play');
     previousTrackRef.current = currentTrack;
-    console.log(`[VOYO] Recorded play: ${currentTrack.title}`);
+    devLog(`[VOYO] Recorded play: ${currentTrack.title}`);
   }, [currentTrack]);
 
   // === HOT-SWAP: When boost completes mid-stream (R2 → cached upgrade) ===
@@ -928,18 +942,18 @@ export const AudioPlayer = () => {
     // Cancel any previous hot-swap operation to prevent race condition
     if (hotSwapAbortRef.current) {
       hotSwapAbortRef.current.abort();
-      console.log('[VOYO] Cancelled previous hot-swap operation');
+      devLog('[VOYO] Cancelled previous hot-swap operation');
     }
     hotSwapAbortRef.current = new AbortController();
     const signal = hotSwapAbortRef.current.signal;
     const swapTrackId = currentTrack.trackId; // Capture at start
 
-    console.log('🔄 [VOYO] Hot-swap: Boost complete, upgrading R2 to cached audio...');
+    devLog('🔄 [VOYO] Hot-swap: Boost complete, upgrading R2 to cached audio...');
 
     const performHotSwap = async () => {
       // Check if aborted before starting
       if (signal.aborted) {
-        console.log('[VOYO] Hot-swap aborted before start');
+        devLog('[VOYO] Hot-swap aborted before start');
         return;
       }
 
@@ -947,14 +961,14 @@ export const AudioPlayer = () => {
 
       // Check AGAIN after async operation - track may have changed
       if (signal.aborted) {
-        console.log('[VOYO] Hot-swap aborted after cache check');
+        devLog('[VOYO] Hot-swap aborted after cache check');
         return;
       }
 
       // Double-verify we're still on the same track (belt and suspenders)
       const storeTrackId = usePlayerStore.getState().currentTrack?.trackId;
       if (storeTrackId !== swapTrackId) {
-        console.log('[VOYO] Track changed during hot-swap, aborting. Expected:', swapTrackId, 'Got:', storeTrackId);
+        devLog('[VOYO] Track changed during hot-swap, aborting. Expected:', swapTrackId, 'Got:', storeTrackId);
         return;
       }
 
@@ -979,7 +993,7 @@ export const AudioPlayer = () => {
       audioRef.current.oncanplaythrough = () => {
         // Final check before applying - ensure we haven't been aborted
         if (signal.aborted) {
-          console.log('[VOYO] Hot-swap aborted during canplaythrough');
+          devLog('[VOYO] Hot-swap aborted during canplaythrough');
           return;
         }
         if (!audioRef.current) return;
@@ -1001,15 +1015,15 @@ export const AudioPlayer = () => {
             // NOW switch to cached mode - audio is playing, safe to mute iframe
             setPlaybackSource('cached');
             audioRef.current!.volume = 1.0;
-            console.log('🔄 [VOYO] Hot-swap complete! Now playing boosted audio');
+            devLog('🔄 [VOYO] Hot-swap complete! Now playing boosted audio');
           }).catch((err) => {
             // Play failed - don't switch source, keep iframe playing
-            console.log('[VOYO] Hot-swap play failed, keeping iframe:', err);
+            devLog('[VOYO] Hot-swap play failed, keeping iframe:', err);
           });
         } else if (!shouldPlayNow) {
           // Paused state - switch source but don't play
           setPlaybackSource('cached');
-          console.log('🔄 [VOYO] Hot-swap ready (paused state)');
+          devLog('🔄 [VOYO] Hot-swap ready (paused state)');
         }
       };
     };
@@ -1025,14 +1039,27 @@ export const AudioPlayer = () => {
   }, [lastBoostCompletion, currentTrack?.trackId, playbackSource, isPlaying, checkCache, setPlaybackSource, setupAudioEnhancement]);
 
   // Handle play/pause (only when using audio element: cached or r2)
+  // Also suspend AudioContext when paused to save battery
   useEffect(() => {
     if ((playbackSource !== 'cached' && playbackSource !== 'r2') || !audioRef.current) return;
 
     const audio = audioRef.current;
     if (isPlaying && audio.paused && audio.src && audio.readyState >= 1) {
+      // Resume AudioContext if suspended, then play
+      if (audioContextRef.current?.state === 'suspended') {
+        audioContextRef.current.resume();
+      }
       audio.play().catch(() => {});
     } else if (!isPlaying && !audio.paused) {
       audio.pause();
+      // Suspend AudioContext after short delay (allows for quick resume)
+      // Only if tab is also hidden (user not actively using app)
+      setTimeout(() => {
+        if (!usePlayerStore.getState().isPlaying && document.visibilityState === 'hidden') {
+          audioContextRef.current?.suspend();
+          devLog('🔋 [Battery] AudioContext suspended (paused + hidden)');
+        }
+      }, 5000);
     }
   }, [isPlaying, playbackSource]);
 
@@ -1148,7 +1175,7 @@ export const AudioPlayer = () => {
 
     // On error, try to re-extract
     if (currentTrack?.trackId && error) {
-      console.log('🚨 [VOYO] Audio error - clearing source. User may need to retry.');
+      devLog('🚨 [VOYO] Audio error - clearing source. User may need to retry.');
       // Clear the failed audio source
       audio.src = '';
       if (cachedUrlRef.current) {
