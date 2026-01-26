@@ -11,9 +11,9 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Command Center's Supabase credentials (social data)
-// These should be set via environment variables
-const CC_SUPABASE_URL = import.meta.env.VITE_CC_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL || '';
-const CC_SUPABASE_KEY = import.meta.env.VITE_CC_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+// Check multiple env var names for compatibility
+const CC_SUPABASE_URL = import.meta.env.VITE_COMMAND_CENTER_URL || import.meta.env.VITE_CC_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL || '';
+const CC_SUPABASE_KEY = import.meta.env.VITE_COMMAND_CENTER_KEY || import.meta.env.VITE_CC_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 // Create Command Center Supabase client for social features
 export const ccSupabase = CC_SUPABASE_URL && CC_SUPABASE_KEY

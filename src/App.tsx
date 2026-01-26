@@ -1049,7 +1049,8 @@ function App() {
         const stored = localStorage.getItem('dash_citizen_storage');
         if (stored) {
           const parsed = JSON.parse(stored);
-          return parsed.state?.dashId || null;
+          // Handle nested format { state: { citizen: { coreId } } }
+          return parsed.state?.citizen?.coreId || parsed.coreId || null;
         }
       } catch { /* ignore */ }
       return null;

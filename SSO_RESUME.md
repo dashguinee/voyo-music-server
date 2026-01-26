@@ -1,16 +1,34 @@
 # SSO Implementation Resume File
 **Created**: 2026-01-19
-**Status**: IN PROGRESS - Testing Phase
-**Priority**: HIGH - Debug SSO redirect
+**Updated**: 2026-01-26
+**Status**: FIXED - Ready for Testing
+**Priority**: HIGH - Verify SSO flow works
 
 ---
 
+## FIX APPLIED (Jan 26, 2026)
+
+**Root cause**: voyo-fork uses simpler `returnUrl` flow, voyo-music was using broken `from` flow.
+
+**Solution**: Updated voyo-music to support BOTH flows (matching voyo-fork's working approach):
+
+1. **handleSSOCallback()** now checks for:
+   - `dashAuth` param FIRST (base64 citizen data - simpler, no DB call)
+   - Falls back to `sso_token` if dashAuth not present
+
+2. **openCommandCenterForSSO()** now uses `returnUrl` flow (proven working in voyo-fork)
+
+Commits:
+- `690f345` - Fix SSO: Support both dashAuth and sso_token flows
+
 ## IMMEDIATE NEXT ACTION
-Debug why SSO redirect doesn't include token. Open browser console and test:
-1. Go to https://voyo-music.vercel.app
+**Test the complete SSO flow:**
+1. Go to https://voyo-music.vercel.app (clear localStorage first)
 2. Click profile → "Sign In with DASH"
-3. Watch console for `[DASH SSO]` logs on Command Center
-4. After sign-in, check if redirect URL has `?sso_token=xxx`
+3. Should redirect to Command Center with `?returnUrl=...&app=V`
+4. Enter DASH ID + PIN, click Sign In
+5. Should redirect back to VOYO with `?dashAuth=base64...`
+6. VOYO should auto-sign-in and clean URL
 
 ---
 

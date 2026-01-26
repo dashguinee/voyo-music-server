@@ -11,8 +11,9 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 // Command Center Supabase - THE source of truth
-const COMMAND_CENTER_URL = 'https://mclbbkmpovnvcfmwsoqt.supabase.co';
-const COMMAND_CENTER_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1jbGJia21wb3ZudmNmbXdzb3F0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzY2MjMxNTMsImV4cCI6MjA1MjE5OTE1M30.vEuCNf0xCB1TvsSF9DxN3ZJxPMZk0rD5N4X-4rHv3TI';
+// Use env vars with fallback to hardcoded values for reliability
+const COMMAND_CENTER_URL = import.meta.env.VITE_COMMAND_CENTER_URL || 'https://mclbbkmpovnvcfmwsoqt.supabase.co';
+const COMMAND_CENTER_ANON_KEY = import.meta.env.VITE_COMMAND_CENTER_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1jbGJia21wb3ZudmNmbXdzb3F0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzY2MjMxNTMsImV4cCI6MjA1MjE5OTE1M30.vEuCNf0xCB1TvsSF9DxN3ZJxPMZk0rD5N4X-4rHv3TI';
 const commandCenter = createClient(COMMAND_CENTER_URL, COMMAND_CENTER_ANON_KEY);
 
 // Product codes for the DASH ecosystem
@@ -403,9 +404,6 @@ export async function handleSSOCallback(): Promise<boolean> {
           version: 0
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(storageData));
-
-        // Also store in dash_citizen_storage for cross-app compatibility
-        localStorage.setItem('dash_citizen_storage', JSON.stringify(citizen));
 
         // Clean URL
         window.history.replaceState({}, '', window.location.pathname);

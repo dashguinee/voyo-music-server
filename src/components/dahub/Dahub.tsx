@@ -91,10 +91,15 @@ function useDashIdentity(propsUserId?: string, propsUserName?: string): { userId
   }
 
   // 2. Check dash_citizen_storage (cross-app SSO)
+  // Handles both nested format { state: { citizen: {...} } } and flat format { coreId: ... }
   try {
     const stored = localStorage.getItem(DASH_STORAGE_KEY);
     if (stored) {
-      const citizen: DashCitizen = JSON.parse(stored);
+      const data = JSON.parse(stored);
+
+      // Try nested format first (from dash-auth.tsx)
+      const citizen = data.state?.citizen || data;
+
       if (citizen.coreId) {
         return {
           userId: citizen.coreId,
