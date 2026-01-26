@@ -373,40 +373,79 @@ export async function exchangeSSOToken(
 }
 
 /**
- * Check URL for SSO token and auto-sign-in
- * Call this on app startup
+ * Check URL for SSO callback and auto-sign-in
+ * Supports both flows:
+ * 1. dashAuth=base64 (legacy, simpler, no DB call) - from returnUrl flow
+ * 2. sso_token=xxx (token-based, requires exchange) - from 'from' flow
  */
 export async function handleSSOCallback(): Promise<boolean> {
   const params = new URLSearchParams(window.location.search);
-  const ssoToken = params.get('sso_token');
 
-  if (!ssoToken) return false;
+  // Flow 1: Check for dashAuth (base64 citizen data - simpler, proven working)
+  const dashAuth = params.get('dashAuth');
+  if (dashAuth) {
+    try {
+      const citizen = JSON.parse(atob(dashAuth));
+      if (citizen.coreId) {
+        // Store in localStorage
+        const storageData = {
+          state: {
+            citizen: {
+              coreId: citizen.coreId,
+              fullName: citizen.fullName,
+              phone: citizen.phone,
+              countryCode: citizen.countryCode || 'GN',
+              isActivated: true,
+              role: citizen.role || 'user',
+            },
+            isAuthenticated: true,
+          },
+          version: 0
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(storageData));
 
-  console.log('[DASH SSO] Found SSO token, exchanging...');
+        // Also store in dash_citizen_storage for cross-app compatibility
+        localStorage.setItem('dash_citizen_storage', JSON.stringify(citizen));
 
-  // Exchange the token via Supabase RPC
-  const result = await exchangeSSOToken(ssoToken);
+        // Clean URL
+        window.history.replaceState({}, '', window.location.pathname);
+        console.log('[DASH SSO] Auto sign-in successful via dashAuth!', citizen.coreId);
 
-  if (result.success) {
-    // Clean URL to remove token
-    const cleanUrl = window.location.pathname;
-    window.history.replaceState({}, '', cleanUrl);
-    console.log('[DASH SSO] Auto sign-in successful!');
-    return true;
+        // Trigger re-render
+        window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY }));
+        return true;
+      }
+    } catch (e) {
+      console.error('[DASH SSO] Failed to parse dashAuth:', e);
+    }
   }
 
-  console.error('[DASH SSO] Token exchange failed:', result.error);
+  // Flow 2: Check for sso_token (token-based, requires exchange)
+  const ssoToken = params.get('sso_token');
+  if (ssoToken) {
+    console.log('[DASH SSO] Found SSO token, exchanging...');
+    const result = await exchangeSSOToken(ssoToken);
+    if (result.success) {
+      window.history.replaceState({}, '', window.location.pathname);
+      console.log('[DASH SSO] Auto sign-in successful via token!');
+      return true;
+    }
+    console.error('[DASH SSO] Token exchange failed:', result.error);
+  }
+
   return false;
 }
 
 /**
  * Open Command Center for sign-in with SSO return
- * Command Center recognizes 'from=voyo' and will redirect back with sso_token
+ * Uses returnUrl flow (proven working in voyo-fork)
  */
 export function openCommandCenterForSSO(dashId?: string): void {
   const baseUrl = 'https://dash-command.vercel.app';
+  const returnUrl = encodeURIComponent(window.location.origin);
   const params = new URLSearchParams();
-  params.set('from', 'voyo');
+  params.set('returnUrl', returnUrl);
+  params.set('app', 'V');
   if (dashId) params.set('dashId', dashId);
 
   window.location.href = `${baseUrl}?${params.toString()}`;
