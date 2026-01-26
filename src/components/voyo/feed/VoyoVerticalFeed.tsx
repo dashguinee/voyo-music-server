@@ -28,6 +28,7 @@ import { usePlayerStore } from '../../../store/playerStore';
 import { useAuth } from '../../../hooks/useAuth';
 import { useTrackPoolStore } from '../../../store/trackPoolStore';
 import { useDownloadStore } from '../../../store/downloadStore';
+import { devLog } from '../../../utils/logger';
 import { safeAddManyToPool } from '../../../services/trackVerifier';
 import { friendsAPI } from '../../../lib/voyo-api';
 import { TRACKS, pipedTrackToVoyoTrack } from '../../../data/tracks';
@@ -555,7 +556,7 @@ const FeedCard = ({
   useEffect(() => {
     if (isActive && snippetStarted && onSnippetEnd) {
       snippetTimerRef.current = setTimeout(() => {
-        console.log(`[Feed] ${snippetMode === 'extract' ? 'Hot extract' : 'Snippet'} ended for ${trackTitle}, auto-advancing...`);
+        devLog(`[Feed] ${snippetMode === 'extract' ? 'Hot extract' : 'Snippet'} ended for ${trackTitle}, auto-advancing...`);
         onSnippetEnd();
       }, snippetDuration * 1000);
 
@@ -991,7 +992,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
         // Show button after 6 seconds of engagement
         if (playTimeRef.current >= 6 && !showContinueButton) {
           setShowContinueButton(true);
-          console.log('[Feed] User engaged! Showing Continue Playing button');
+          devLog('[Feed] User engaged! Showing Continue Playing button');
         }
       }, 1000);
     }
@@ -1007,7 +1008,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
   const markEngaged = useCallback(() => {
     if (!showContinueButton) {
       setShowContinueButton(true);
-      console.log('[Feed] Reaction detected! Showing Continue Playing button');
+      devLog('[Feed] Reaction detected! Showing Continue Playing button');
     }
   }, [showContinueButton]);
 
@@ -1041,7 +1042,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
     // position is 0-100 percentage
     const targetTime = (position / 100) * duration;
     seekTo(targetTime);
-    console.log(`[Feed] Seeking to hotspot at ${position}% (${targetTime}s)`);
+    devLog(`[Feed] Seeking to hotspot at ${position}% (${targetTime}s)`);
   }, [duration, seekTo]);
 
   // 🔥 INFINITE SCROLL - Discover more tracks when near end
@@ -1058,14 +1059,14 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
     const queryIndex = (baseIndex + randomOffset) % DISCOVERY_QUERIES.length;
     const query = DISCOVERY_QUERIES[queryIndex];
 
-    console.log(`[Feed] 🔍 Discovering more tracks: "${query}" (query ${queryIndex + 1}/${DISCOVERY_QUERIES.length})`);
+    devLog(`[Feed] 🔍 Discovering more tracks: "${query}" (query ${queryIndex + 1}/${DISCOVERY_QUERIES.length})`);
 
     try {
       // Search for playlists/albums matching query (get 5 for more options)
       const albums = await searchAlbums(query, 5);
 
       if (albums.length === 0) {
-        console.log('[Feed] No albums found, trying next query...');
+        devLog('[Feed] No albums found, trying next query...');
         setDiscoveryIndex(prev => prev + 1);
         setIsDiscovering(false);
         discoveryQueueRef.current = null;
@@ -1094,11 +1095,11 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
         // GATE: Validate each track before adding to pool
         const added = await safeAddManyToPool(voyoTracks, 'related');
         totalAdded += added;
-        console.log(`[Feed] ✅ Added ${added}/${voyoTracks.length} validated tracks from "${album.name}"`);
+        devLog(`[Feed] ✅ Added ${added}/${voyoTracks.length} validated tracks from "${album.name}"`);
       }
 
       if (totalAdded === 0) {
-        console.log('[Feed] No new tracks found, trying next query...');
+        devLog('[Feed] No new tracks found, trying next query...');
         setDiscoveryIndex(prev => prev + 1);
         setIsDiscovering(false);
         discoveryQueueRef.current = null;
@@ -1106,7 +1107,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
         return;
       }
 
-      console.log(`[Feed] 🎉 Total: ${totalAdded} new tracks added to pool`);
+      devLog(`[Feed] 🎉 Total: ${totalAdded} new tracks added to pool`);
 
       // Move to next query for variety
       setDiscoveryIndex(prev => prev + 1);
@@ -1259,7 +1260,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
 
     const tracksRemaining = trackGroups.length - currentIndex;
     if (tracksRemaining <= DISCOVERY_THRESHOLD && !isDiscovering && trackGroups.length > 0) {
-      console.log(`[Feed] Only ${tracksRemaining} tracks left, discovering more...`);
+      devLog(`[Feed] Only ${tracksRemaining} tracks left, discovering more...`);
       discoverMoreTracks();
     }
   }, [currentIndex, trackGroups.length, isActive, isDiscovering, discoverMoreTracks]);
@@ -1284,7 +1285,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
     // Cache in background (non-blocking)
     feedContentService.cacheBatch(contentToCache).then(cached => {
       if (cached > 0) {
-        console.log(`[FeedContent] Cached ${cached} tracks for feed`);
+        devLog(`[FeedContent] Cached ${cached} tracks for feed`);
       }
     });
 
@@ -1293,7 +1294,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
     feedContentService.getBatch(trackIds).then(batchResult => {
       // The batch fetch populates the local cache for quick thumbnail access
       if (batchResult.size > 0) {
-        console.log(`[FeedContent] Pre-fetched ${batchResult.size} cached thumbnails`);
+        devLog(`[FeedContent] Pre-fetched ${batchResult.size} cached thumbnails`);
       }
     });
   }, [currentIndex, isActive, trackGroups]);
@@ -1315,7 +1316,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
     // Log cache stats periodically
     if (currentIndex % 5 === 0) {
       const stats = mediaCache.getStats();
-      console.log(`[MediaCache] Stats: ${stats.totalItems} items, ${(stats.hitRate * 100).toFixed(1)}% hit rate`);
+      devLog(`[MediaCache] Stats: ${stats.totalItems} items, ${(stats.hitRate * 100).toFixed(1)}% hit rate`);
     }
   }, [currentIndex, isActive, trackGroups]);
 
@@ -1332,10 +1333,10 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
         behavior: 'smooth',
       });
       setCurrentIndex(nextIndex);
-      console.log(`[Feed] Auto-advancing to card ${nextIndex + 1}/${trackGroups.length}`);
+      devLog(`[Feed] Auto-advancing to card ${nextIndex + 1}/${trackGroups.length}`);
     } else {
       // At end of feed - could loop or stop
-      console.log('[Feed] Reached end of feed');
+      devLog('[Feed] Reached end of feed');
     }
   }, [currentIndex, trackGroups.length]);
 
@@ -1421,7 +1422,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
       trackPosition, // Where in the song the reaction happened
     });
 
-    console.log(`[Feed] Reaction ${type} at position ${trackPosition}% on ${trackTitle}`);
+    devLog(`[Feed] Reaction ${type} at position ${trackPosition}% on ${trackTitle}`);
   }, [createReaction, currentTrack, progress, dashId]);
 
   // Handle add comment - with track position

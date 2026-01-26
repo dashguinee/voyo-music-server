@@ -15,6 +15,7 @@ import { useEffect, useRef, useCallback, memo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { usePlayerStore } from '../store/playerStore';
 import { markTrackAsFailed } from '../services/trackVerifier';
+import { devLog } from '../utils/logger';
 
 const YT_STATES = {
   UNSTARTED: -1,
@@ -160,7 +161,7 @@ export const YouTubeIframe = memo(() => {
             e.target.mute();
             // DOUBLE STREAMING FIX: Don't auto-play video when boosted + hidden
             if (!videoNeeded) {
-              console.log('[YouTubeIframe] Skipping video playback (boosted + hidden)');
+              devLog('[YouTubeIframe] Skipping video playback (boosted + hidden)');
               e.target.pauseVideo?.();
               return;
             }
@@ -192,7 +193,7 @@ export const YouTubeIframe = memo(() => {
           // Auto-skip to next track on playback errors
           // Error codes: 100 = not found, 101/150 = embedding disabled
           if (errorCode === 100 || errorCode === 101 || errorCode === 150) {
-            console.log('[YouTubeIframe] Skipping unplayable track...');
+            devLog('[YouTubeIframe] Skipping unplayable track...');
             setTimeout(() => nextTrack(), 500);
           }
         },
@@ -221,7 +222,7 @@ export const YouTubeIframe = memo(() => {
     // If we're boosted AND video is hidden, pause iframe to prevent double streaming
     if (isBoosted && !videoNeeded) {
       if (state === YT_STATES.PLAYING || state === YT_STATES.BUFFERING) {
-        console.log('[YouTubeIframe] Pausing hidden video to prevent double streaming');
+        devLog('[YouTubeIframe] Pausing hidden video to prevent double streaming');
         player.pauseVideo?.();
       }
       return;
@@ -267,7 +268,7 @@ export const YouTubeIframe = memo(() => {
     if (isBoosted && videoShown && isPlaying) {
       const state = player.getPlayerState();
       if (state !== YT_STATES.PLAYING) {
-        console.log('[YouTubeIframe] Resuming video for visual sync (user requested video)');
+        devLog('[YouTubeIframe] Resuming video for visual sync (user requested video)');
         player.playVideo();
 
         // Sync position with audio

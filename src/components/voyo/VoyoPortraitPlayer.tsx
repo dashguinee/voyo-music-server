@@ -28,6 +28,7 @@ import { BoostButton } from '../ui/BoostButton';
 import { BoostSettings } from '../ui/BoostSettings';
 import { haptics, getReactionHaptic } from '../../utils/haptics';
 import { useReactionStore, ReactionCategory, initReactionSubscription } from '../../store/reactionStore';
+import { devLog } from '../../utils/logger';
 // TiviPlusCrossPromo moved to HomeFeed.tsx (classic homepage)
 import { useAuth } from '../../hooks/useAuth';
 import { generateLyrics, getCurrentSegment, type EnrichedLyrics, type LyricsGenerationProgress } from '../../services/lyricsEngine';
@@ -3623,7 +3624,7 @@ export const VoyoPortraitPlayer = ({
     const trackId = currentTrack.trackId || currentTrack.id;
     trainVibeOnReaction(trackId, category as MixBoardMode).catch(() => {});
 
-    console.log(`[Signal] Opening input for ${category} on ${currentTrack.title}`);
+    devLog(`[Signal] Opening input for ${category} on ${currentTrack.title}`);
   }, [currentTrack]);
 
   // Submit Signal (billboard contribution)
@@ -3654,7 +3655,7 @@ export const VoyoPortraitPlayer = ({
       trackPosition, // Where in the song the signal was sent
     });
 
-    console.log(`[Signal] ${isSignal ? '📍 SIGNAL' : '💬 Comment'}: "${text}" on ${signalCategory} at ${trackPosition}%`);
+    devLog(`[Signal] ${isSignal ? '📍 SIGNAL' : '💬 Comment'}: "${text}" on ${signalCategory} at ${trackPosition}%`);
 
     setSignalInputOpen(false);
     setSignalText('');
@@ -3688,7 +3689,7 @@ export const VoyoPortraitPlayer = ({
 
   // Handle punch click - navigate to track's expand view
   const handlePunchClick = useCallback((punch: CommunityPunch) => {
-    console.log(`[Punch] Navigate to track: ${punch.trackTitle} (${punch.trackId})`);
+    devLog(`[Punch] Navigate to track: ${punch.trackTitle} (${punch.trackId})`);
 
     // Find the track in HOT or DISCOVERY feeds
     const allTracks = [...hotTracks, ...discoverTracks];
@@ -3700,7 +3701,7 @@ export const VoyoPortraitPlayer = ({
     } else {
       // Track not in current feeds - trigger search with the track title
       // This opens the search overlay with the track as query
-      console.log(`[Punch] Track not in feeds, would search for: ${punch.trackTitle}`);
+      devLog(`[Punch] Track not in feeds, would search for: ${punch.trackTitle}`);
       // For now, just log - full search integration would require onSearch callback
     }
   }, [hotTracks, discoverTracks, playTrack]);
@@ -3931,7 +3932,7 @@ export const VoyoPortraitPlayer = ({
     const timeSinceLastRefresh = now - lastRefreshRef.current;
 
     if (significantChange && timeSinceLastRefresh > 2000) {
-      console.log('[VOYO Intent] Significant MixBoard change detected, refreshing recommendations...');
+      devLog('[VOYO Intent] Significant MixBoard change detected, refreshing recommendations...');
       refreshRecommendations();
       lastRefreshRef.current = now;
     }
@@ -3950,7 +3951,7 @@ export const VoyoPortraitPlayer = ({
     // Drag-to-queue is the STRONGEST intent signal - trigger immediate refresh
     // (User explicitly said "give me this vibe NOW")
     setTimeout(() => {
-      console.log('[VOYO Intent] Drag-to-queue detected, refreshing recommendations...');
+      devLog('[VOYO Intent] Drag-to-queue detected, refreshing recommendations...');
       refreshRecommendations();
     }, 500); // Small delay to let queue update first
   }, [handleModeToQueue, intentRecordDragToQueue, refreshRecommendations]);
@@ -4200,10 +4201,10 @@ export const VoyoPortraitPlayer = ({
 
   // Handle SKEEP start (after 200ms hold to differentiate from tap)
   const handleScrubStart = useCallback((direction: 'forward' | 'backward') => {
-    console.log('🎵 SKEEP: handleScrubStart called', direction);
+    devLog('🎵 SKEEP: handleScrubStart called', direction);
     // Set a timer - if held for 200ms, start SKEEP mode
     skeepHoldTimer.current = setTimeout(() => {
-      console.log('🎵 SKEEP: 200ms passed, starting SKEEP mode', direction);
+      devLog('🎵 SKEEP: 200ms passed, starting SKEEP mode', direction);
       setIsScrubbing(true);
       setScrubDirection(direction);
       setSkeepLevel(1);
@@ -4219,27 +4220,27 @@ export const VoyoPortraitPlayer = ({
 
       if (!isBackward) {
         // Forward: start with native 2x
-        console.log('🎵 SKEEP: Setting native playbackRate to 2');
+        devLog('🎵 SKEEP: Setting native playbackRate to 2');
         setPlaybackRate(2);
       }
 
       // Start seek interval for backward OR when we escalate past 2x
       const startSeekMode = () => {
         if (skeepSeekInterval.current) return; // Already running
-        console.log('🎵 SKEEP: Starting seek mode');
+        devLog('🎵 SKEEP: Starting seek mode');
 
         // PAUSE playback so YouTube doesn't fight our seeks!
         const { isPlaying } = usePlayerStore.getState();
         wasPlayingBeforeSkeep.current = isPlaying;
         if (isPlaying) {
-          console.log('🎵 SKEEP: Pausing playback for clean seeks');
+          devLog('🎵 SKEEP: Pausing playback for clean seeks');
           handlePlayPause(); // Pause
         }
 
         // Initialize target time from current position
         const { currentTime, duration: dur } = usePlayerStore.getState();
         skeepTargetTime.current = currentTime;
-        console.log('🎵 SKEEP: Initialized target time to', currentTime.toFixed(1));
+        devLog('🎵 SKEEP: Initialized target time to', currentTime.toFixed(1));
 
         skeepSeekInterval.current = setInterval(() => {
           const { duration: dur } = usePlayerStore.getState();
@@ -4250,7 +4251,7 @@ export const VoyoPortraitPlayer = ({
             ? Math.max(skeepTargetTime.current - jump, 0)
             : Math.min(skeepTargetTime.current + jump, dur - 0.5);
 
-          console.log('🎵 SKEEP: Seeking to', skeepTargetTime.current.toFixed(1), 'jump:', jump);
+          devLog('🎵 SKEEP: Seeking to', skeepTargetTime.current.toFixed(1), 'jump:', jump);
           seekTo(skeepTargetTime.current);
           haptics.light();
         }, 100); // Faster interval (100ms) for smoother seeking
@@ -4312,7 +4313,7 @@ export const VoyoPortraitPlayer = ({
 
       // Resume playback if it was playing before SKEEP
       if (wasPlayingBeforeSkeep.current) {
-        console.log('🎵 SKEEP: Resuming playback');
+        devLog('🎵 SKEEP: Resuming playback');
         setTimeout(() => {
           const { isPlaying } = usePlayerStore.getState();
           if (!isPlaying) handlePlayPause(); // Resume
