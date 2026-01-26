@@ -28,6 +28,7 @@ import { OfflineIndicator } from './components/ui/OfflineIndicator';
 import { VoyoSplash } from './components/voyo/VoyoSplash';
 import { UniversePanel } from './components/universe/UniversePanel';
 import { useReactionStore } from './store/reactionStore';
+import { devLog, devWarn } from './utils/logger';
 import { useAuth } from './hooks/useAuth';
 import { AuthProvider } from './providers/AuthProvider';
 
@@ -111,8 +112,12 @@ const DynamicIsland = () => {
   // Expose function to add notifications globally
   useEffect(() => {
     (window as any).pushNotification = (notif: Notification) => {
-      setNotifications(prev => [...prev, notif]);
-      setCurrentIndex(prev => prev === 0 && notifications.length === 0 ? 0 : notifications.length);
+      setNotifications(prev => {
+        const newList = [...prev, notif];
+        // Navigate to the new notification (use callback to avoid stale closure)
+        setCurrentIndex(newList.length - 1);
+        return newList;
+      });
       triggerNewNotification(); // Wave for new notifications
     };
 
@@ -413,6 +418,19 @@ const DynamicIsland = () => {
     }
     setWaveformLevels([0.3, 0.3, 0.3, 0.3, 0.3]);
   };
+
+  // Cleanup recording resources on unmount (prevents memory leak)
+  useEffect(() => {
+    return () => {
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      if (audioContextRef.current) audioContextRef.current.close().catch(() => {});
+      if (recognitionRef.current) recognitionRef.current.stop();
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+        mediaRecorderRef.current.stream?.getTracks().forEach(t => t.stop());
+      }
+    };
+  }, []);
 
   const handleVoiceTap = () => {
     // Tap on wavy box triggers voice mode
@@ -1108,22 +1126,27 @@ function App() {
     // Subscribe to incoming DMs for DynamicIsland notifications
     let dmUnsubscribe: (() => void) | null = null;
     const setupDMSubscription = async () => {
-      const { messagesAPI, isConfigured } = await import('./lib/voyo-api');
-      if (!isConfigured) return;
+      try {
+        const { messagesAPI, isConfigured } = await import('./lib/voyo-api');
+        if (!isConfigured) return;
 
-      const dashId = getDashId();
-      if (!dashId) return;
+        const dashId = getDashId();
+        if (!dashId) return;
 
-      // Subscribe returns an unsubscribe function
-      dmUnsubscribe = messagesAPI.subscribeToIncoming(dashId, (newMessage) => {
-        // Push to DynamicIsland
-        (window as any).pushNotification?.({
-          id: `dm-${newMessage.id}`,
-          type: 'message',
-          title: newMessage.from_id,
-          subtitle: newMessage.message.slice(0, 50) + (newMessage.message.length > 50 ? '...' : '')
+        // Subscribe returns an unsubscribe function
+        dmUnsubscribe = messagesAPI.subscribeToIncoming(dashId, (newMessage) => {
+          // Push to DynamicIsland
+          (window as any).pushNotification?.({
+            id: `dm-${newMessage.id}`,
+            type: 'message',
+            title: newMessage.from_id,
+            subtitle: newMessage.message.slice(0, 50) + (newMessage.message.length > 50 ? '...' : '')
+          });
         });
-      });
+        devLog('📬 [DM] Subscription setup complete');
+      } catch (err) {
+        devWarn('📬 [DM] Subscription setup failed:', err);
+      }
     };
     setupDMSubscription();
 

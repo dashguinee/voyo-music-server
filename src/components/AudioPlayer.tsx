@@ -271,7 +271,7 @@ export const AudioPlayer = () => {
           if (audioContextRef.current?.state === 'suspended') {
             audioContextRef.current.resume();
           }
-          audioRef.current.play().catch(() => {});
+          audioRef.current.play().catch(e => devWarn('🎵 [Playback] Background resume failed:', e.name));
         }
         // If NOT playing and tab hidden, suspend AudioContext to save battery
         else if (!shouldPlay && audioContextRef.current?.state === 'running') {
@@ -294,18 +294,20 @@ export const AudioPlayer = () => {
   useEffect(() => {
     const manageWakeLock = async () => {
       if (!isPlaying && wakeLockRef.current) {
-        await wakeLockRef.current.release().catch(() => {});
+        await wakeLockRef.current.release().catch(e => devWarn('🔒 [WakeLock] Release failed:', e.name));
         wakeLockRef.current = null;
         return;
       }
       if (isPlaying && 'wakeLock' in navigator && !wakeLockRef.current) {
         try {
           wakeLockRef.current = await navigator.wakeLock.request('screen');
-        } catch (e) { /* ignore */ }
+        } catch (e) {
+          devWarn('🔒 [WakeLock] Request failed:', (e as Error).name);
+        }
       }
     };
     manageWakeLock();
-    return () => { wakeLockRef.current?.release().catch(() => {}); };
+    return () => { wakeLockRef.current?.release().catch(e => devWarn('🔒 [WakeLock] Cleanup release failed:', e.name)); };
   }, [isPlaying]);
 
   // Harmonic exciter curve
@@ -701,7 +703,7 @@ export const AudioPlayer = () => {
                   audioRef.current!.volume = 1.0;
                   recordPlayEvent();
                   devLog('🔮 [VOYO] Preloaded playback started!');
-                }).catch(() => {});
+                }).catch(e => devWarn('🎵 [Playback] Preloaded play failed:', e.name));
               }
             };
           }
@@ -763,7 +765,7 @@ export const AudioPlayer = () => {
                   usePlayerStore.getState().togglePlay();
                 }
                 devLog('🎵 [VOYO] Playback started (cached)');
-              }).catch(() => {});
+              }).catch(e => devWarn('🎵 [Playback] Cached play failed:', e.name));
             }
           };
         }
@@ -820,7 +822,7 @@ export const AudioPlayer = () => {
                     usePlayerStore.getState().togglePlay();
                   }
                   devLog('🎵 [VOYO] Playback started (R2)');
-                }).catch(() => {});
+                }).catch(e => devWarn('🎵 [Playback] R2 play failed:', e.name));
               }
             };
           }
@@ -873,7 +875,7 @@ export const AudioPlayer = () => {
                       usePlayerStore.getState().togglePlay();
                     }
                     devLog('🎵 [VOYO] Playback started (YouTube direct stream)');
-                  }).catch(() => {});
+                  }).catch(e => devWarn('🎵 [Playback] Stream play failed:', e.name));
                 }
               };
 
@@ -1049,7 +1051,7 @@ export const AudioPlayer = () => {
       if (audioContextRef.current?.state === 'suspended') {
         audioContextRef.current.resume();
       }
-      audio.play().catch(() => {});
+      audio.play().catch(e => devWarn('🎵 [Playback] Resume play failed:', e.name));
     } else if (!isPlaying && !audio.paused) {
       audio.pause();
     }
@@ -1228,7 +1230,7 @@ export const AudioPlayer = () => {
         if (hasEnded) return;
         // Resume if should be playing (handles interruptions)
         if (shouldPlay && audio.src && audio.readyState >= 1) {
-          audio.play().catch(() => {});
+          audio.play().catch(e => devWarn('🎵 [Playback] Pause handler resume failed:', e.name));
         }
       }}
       style={{ display: 'none' }}

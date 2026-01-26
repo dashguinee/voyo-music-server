@@ -14,6 +14,7 @@ import { useDownloadStore } from '../../store/downloadStore';
 import { usePreferenceStore } from '../../store/preferenceStore';
 import { TRACKS } from '../../data/tracks';
 import { mediaCache } from '../../services/mediaCache';
+import { devLog, devWarn } from '../../utils/logger';
 
 interface VoyoSplashProps {
   onComplete: () => void;
@@ -35,16 +36,16 @@ export const VoyoSplash = ({ onComplete, minDuration = 2800 }: VoyoSplashProps) 
   useEffect(() => {
     const preloadData = async () => {
       try {
-        console.log('🎵 SPLASH: Initializing stores & caching content...');
+        devLog('🎵 SPLASH: Initializing stores & caching content...');
 
         // 1. Initialize IndexedDB for cached tracks (with timeout)
         await Promise.race([
           initDownloads(),
           new Promise((_, reject) => setTimeout(() => reject(new Error('IndexedDB timeout')), 3000))
         ]).catch(err => {
-          console.warn('🎵 SPLASH: IndexedDB init failed/timeout, continuing:', err);
+          devWarn('🎵 SPLASH: IndexedDB init failed/timeout, continuing:', err);
         });
-        console.log('🎵 SPLASH: ✅ IndexedDB ready!');
+        devLog('🎵 SPLASH: ✅ IndexedDB ready!');
 
         // 2. Cache first 5 track thumbnails using mediaCache (not just Image preload)
         const firstTracks = TRACKS.slice(0, 5);
@@ -55,26 +56,26 @@ export const VoyoSplash = ({ onComplete, minDuration = 2800 }: VoyoSplashProps) 
           Promise.all(cachePromises),
           new Promise(resolve => setTimeout(resolve, 2000))
         ]);
-        console.log('🎵 SPLASH: ✅ First 5 thumbnails cached!');
+        devLog('🎵 SPLASH: ✅ First 5 thumbnails cached!');
 
         // 3. Skipping Fly.io search warmup - database is source of truth
         // refreshRecommendations() in App.tsx loads from 324K Supabase tracks
-        console.log('🎵 SPLASH: ✅ Database is source of truth (no Fly.io warmup)');
+        devLog('🎵 SPLASH: ✅ Database is source of truth (no Fly.io warmup)');
 
         // 4. Touch preference store to ensure it's initialized
-        console.log('🎵 SPLASH: ✅ Preferences loaded!', Object.keys(preferenceStore.trackPreferences).length, 'tracks');
+        devLog('🎵 SPLASH: ✅ Preferences loaded!', Object.keys(preferenceStore.trackPreferences).length, 'tracks');
 
         // 5. Pre-cache audio for first track (background, non-blocking)
         if (firstTracks[0]) {
           mediaCache.cacheTrack(firstTracks[0].trackId, { audio: true, thumbnail: true })
-            .then(() => console.log('🎵 SPLASH: ✅ First track audio pre-cached!'))
+            .then(() => devLog('🎵 SPLASH: ✅ First track audio pre-cached!'))
             .catch(() => {});
         }
 
         isDataReadyRef.current = true;
         setIsDataReady(true);
       } catch (err) {
-        console.warn('🎵 SPLASH: Init error (continuing anyway):', err);
+        devWarn('🎵 SPLASH: Init error (continuing anyway):', err);
         isDataReadyRef.current = true;
         setIsDataReady(true);
       }
@@ -85,7 +86,7 @@ export const VoyoSplash = ({ onComplete, minDuration = 2800 }: VoyoSplashProps) 
     // SAFETY: Force ready after 5 seconds no matter what
     const safetyTimeout = setTimeout(() => {
       if (!isDataReadyRef.current) {
-        console.warn('🎵 SPLASH: Safety timeout triggered, forcing ready');
+        devWarn('🎵 SPLASH: Safety timeout triggered, forcing ready');
         isDataReadyRef.current = true;
         setIsDataReady(true);
       }
