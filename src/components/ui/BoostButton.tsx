@@ -23,8 +23,18 @@ interface BoostButtonProps {
 }
 
 // Preset color configurations
-// 🟡 boosted (Yellow) | 🔵 calm (Blue) | 🟣 voyex (Purple) | 🔴 xtreme (Red)
+// ⚪ off (Gray) | 🟡 boosted (Yellow) | 🔵 calm (Blue) | 🟣 voyex (Purple) | 🔴 xtreme (Red)
 const PRESET_COLORS = {
+  off: {
+    primary: '#6b7280',    // Gray
+    secondary: '#4b5563',
+    light: '#9ca3af',
+    glow: 'rgba(107,114,128,0.3)',
+    bg: 'bg-gray-500/20',
+    border: 'border-gray-400/40',
+    shadow: 'shadow-gray-500/20',
+    text: 'text-gray-400',
+  },
   boosted: {
     primary: '#fbbf24',    // Yellow
     secondary: '#f59e0b',
@@ -67,7 +77,7 @@ const PRESET_COLORS = {
   },
 };
 
-type BoostPreset = 'boosted' | 'calm' | 'voyex' | 'xtreme';
+type BoostPreset = 'off' | 'boosted' | 'calm' | 'voyex' | 'xtreme';
 
 // Clean Lightning Bolt SVG Icon - Color changes based on preset
 // NEW: outlineOnly mode = yellow stroke, no fill (for R2 server-boosted)
@@ -301,10 +311,8 @@ const BoostSparks = ({ preset = 'boosted' }: { preset?: BoostPreset }) => {
 export const BoostButton = ({ variant = 'toolbar', className = '' }: BoostButtonProps) => {
   const currentTrack = usePlayerStore((state) => state.currentTrack);
   const playbackSource = usePlayerStore((state) => state.playbackSource);
-  const setPlaybackSource = usePlayerStore((state) => state.setPlaybackSource);
-  const seekTo = usePlayerStore((state) => state.seekTo);
   const boostProfile = usePlayerStore((state) => state.boostProfile) as BoostPreset;
-  const colors = PRESET_COLORS[boostProfile];
+  const setBoostProfile = usePlayerStore((state) => state.setBoostProfile);
 
   const {
     boostTrack,
@@ -312,52 +320,49 @@ export const BoostButton = ({ variant = 'toolbar', className = '' }: BoostButton
     downloads,
     isTrackBoosted,
     lastBoostCompletion,
-    checkCache,
   } = useDownloadStore();
 
-  const [isBoosted, setIsBoosted] = useState(false);
-  const [isChecking, setIsChecking] = useState(true);
+  const [isCached, setIsCached] = useState(false);
   const [showSparks, setShowSparks] = useState(false);
   const [showBurst, setShowBurst] = useState(false);
-  // Toggle state: true = using boosted, false = using original
-  const [usingBoosted, setUsingBoosted] = useState(true);
+  // Remember last active preset for toggling back from 'off'
+  const [lastActivePreset, setLastActivePreset] = useState<BoostPreset>('boosted');
 
-  // R2 = Server boosted (collective cache) - show as "cloud boosted"
-  const isServerBoosted = playbackSource === 'r2';
+  // EQ is ON when profile is not 'off'
+  const isEqOn = boostProfile !== 'off';
+  // Get colors - use last active preset colors when off (for subtle hint)
+  const activePreset = isEqOn ? boostProfile : lastActivePreset;
+  const colors = PRESET_COLORS[activePreset];
 
-  // Check if current track is already boosted
+  // R2 = Server cached (collective cache)
+  const isServerCached = playbackSource === 'r2';
+  // Local = IndexedDB cached
+  const isLocalCached = playbackSource === 'cached';
+
+  // Check if current track is cached locally
   useEffect(() => {
-    const checkBoosted = async () => {
+    const checkCached = async () => {
       if (!currentTrack?.trackId) {
-        setIsBoosted(false);
-        setIsChecking(false);
+        setIsCached(false);
         return;
       }
-
-      setIsChecking(true);
-      const boosted = await isTrackBoosted(currentTrack.trackId);
-      setIsBoosted(boosted);
-      setIsChecking(false);
+      const cached = await isTrackBoosted(currentTrack.trackId);
+      setIsCached(cached);
     };
-
-    checkBoosted();
+    checkCached();
   }, [currentTrack?.trackId, isTrackBoosted]);
 
-  // React to boost completion immediately
+  // React to cache completion with visual feedback
   useEffect(() => {
     if (!lastBoostCompletion || !currentTrack?.trackId) return;
-
-    // Check if completion is for current track
     const isMatch =
       lastBoostCompletion.trackId === currentTrack.trackId ||
       lastBoostCompletion.trackId === currentTrack.trackId.replace('VOYO_', '');
-
     if (isMatch) {
-      console.log('🎵 BoostButton: Detected boost completion, updating UI');
       setShowBurst(true);
       setShowSparks(true);
       setTimeout(() => {
-        setIsBoosted(true);
+        setIsCached(true);
         setShowSparks(false);
       }, 800);
     }
@@ -366,18 +371,23 @@ export const BoostButton = ({ variant = 'toolbar', className = '' }: BoostButton
   // Update when downloads complete
   useEffect(() => {
     if (!currentTrack?.trackId) return;
-
     const status = downloads.get(currentTrack.trackId);
     if (status?.status === 'complete') {
-      // Trigger completion burst, then show boosted state
       setShowBurst(true);
       setShowSparks(true);
       setTimeout(() => {
-        setIsBoosted(true);
+        setIsCached(true);
         setShowSparks(false);
       }, 800);
     }
   }, [downloads, currentTrack?.trackId]);
+
+  // Track last active preset when changing away from 'off'
+  useEffect(() => {
+    if (boostProfile !== 'off') {
+      setLastActivePreset(boostProfile);
+    }
+  }, [boostProfile]);
 
   if (!currentTrack?.trackId) return null;
 
@@ -385,65 +395,77 @@ export const BoostButton = ({ variant = 'toolbar', className = '' }: BoostButton
   const isDownloading = downloadStatus?.status === 'downloading';
   const isQueued = downloadStatus?.status === 'queued';
   const progress = downloadStatus?.progress || 0;
-  // Active = locally boosted AND using boosted audio (not toggled to original)
-  const isLocalBoosted = isBoosted && usingBoosted;
-  // Active includes BOTH local boost and server R2 boost
-  const isActive = isLocalBoosted || isServerBoosted;
-  // Show toggle indicator when boosted but using original
-  const isToggled = isBoosted && !usingBoosted;
 
-  const handleBoost = async () => {
+  // Visual states:
+  // - OUTLINE (contour) = R2/stream + Boost (EQ ON, not downloaded yet)
+  // - FILLED = Local + Boost (downloaded + EQ ON)
+  // - GRAY = EQ OFF (raw audio)
+  const isActive = isEqOn;
+  const showOutline = isEqOn && !isCached; // R2/stream: boosted but not local
+  const showFilled = isEqOn && isCached;   // Local: boosted and downloaded
+
+  // 3-ACTION TAP LOGIC:
+  // 1. Not local + EQ ON → Download to local (EQ stays ON)
+  // 2. Local + EQ ON → Turn EQ OFF
+  // 3. Local + EQ OFF → Turn EQ ON
+  const handleTap = () => {
     if (isDownloading || isQueued) return;
 
-    // If already boosted, DJ Rewind - play from beginning
-    if (isBoosted) {
-      console.log('🎵 DJ REWIND: Boosted track tap → play from start');
-      seekTo(0);
-      return;
+    if (!isCached) {
+      // STATE 1: Not locally cached → Download it
+      console.log('🎵 [Boost] Downloading to local cache...');
+      setShowSparks(true);
+      boostTrack(
+        currentTrack.trackId,
+        currentTrack.title,
+        currentTrack.artist,
+        currentTrack.duration || 0,
+        getThumbnailUrl(currentTrack.trackId, 'medium')
+      );
+    } else if (isEqOn) {
+      // STATE 2: Local + EQ ON → Turn OFF
+      console.log('🎵 [Boost] OFF → Raw audio');
+      setBoostProfile('off');
+    } else {
+      // STATE 3: Local + EQ OFF → Turn ON
+      console.log(`🎵 [Boost] ON → ${lastActivePreset} mode`);
+      setBoostProfile(lastActivePreset);
+      setShowSparks(true);
+      setTimeout(() => setShowSparks(false), 600);
     }
-
-    // Not boosted yet - start boost download
-    setShowSparks(true);
-    boostTrack(
-      currentTrack.trackId,
-      currentTrack.title,
-      currentTrack.artist,
-      currentTrack.duration || 0,
-      getThumbnailUrl(currentTrack.trackId, 'medium')
-    );
   };
 
-  // Sync usingBoosted state with actual playback source
-  useEffect(() => {
-    if (isBoosted) {
-      setUsingBoosted(playbackSource === 'cached');
-    }
-  }, [playbackSource, isBoosted]);
-
   // ============================================
-  // TOOLBAR VARIANT - Premium floating style (matches Like/Settings buttons)
-  // Dynamic colors based on active preset
+  // TOOLBAR VARIANT - 3 visual states
+  // OUTLINE = R2 + Boost (tap to download)
+  // FILLED = Local + Boost (tap for raw)
+  // GRAY = EQ OFF (tap for boost)
   // ============================================
   if (variant === 'toolbar') {
+    // Dynamic title based on state
+    const getTitle = () => {
+      if (isDownloading) return `Downloading ${progress}%`;
+      if (showOutline) return 'Boosted (tap to download)';
+      if (showFilled) return `${activePreset.charAt(0).toUpperCase() + activePreset.slice(1)} (tap for raw)`;
+      return 'Raw audio (tap for boost)';
+    };
+
     return (
       <motion.button
-        onClick={handleBoost}
-        disabled={isDownloading || isQueued}
+        onClick={handleTap}
         className={`w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-md shadow-lg transition-all duration-300 relative ${
-          isLocalBoosted
-            ? `${colors.bg} border ${colors.border} ${colors.shadow}` // FULL: Yellow bg + yellow border (locally boosted)
-            : isServerBoosted
-              ? `bg-black/40 border-2 ${colors.border}` // CONTOUR ONLY: Dark bg + yellow border (R2 server)
-              : isToggled
-                ? 'bg-white/10 border border-white/20 hover:bg-white/15' // Dimmed when toggled to original
-                : 'bg-black/40 border border-white/10 hover:bg-black/50 hover:border-white/20' // Default: dark
+          showOutline
+            ? `bg-black/40 border-2 ${colors.border}` // OUTLINE: R2 boosted, not local
+            : showFilled
+              ? `${colors.bg} border ${colors.border} ${colors.shadow}` // FILLED: Local + boosted
+              : 'bg-black/40 border border-white/20 hover:bg-black/50' // GRAY: Raw/off
         } ${className}`}
         whileHover={{ scale: 1.15, y: -2 }}
         whileTap={{ scale: 0.9 }}
-        title={isServerBoosted ? `Server Boosted (R2 Collective)` : isLocalBoosted ? `${boostProfile.charAt(0).toUpperCase() + boostProfile.slice(1)} Mode (tap to rewind)` : isToggled ? 'Using original (tap for boosted)' : isDownloading ? `Boosting ${progress}%` : 'Boost (HD + Enhanced Audio)'}
+        title={getTitle()}
       >
-        {/* Glow effect when boosted - color based on preset */}
-        {isActive && (
+        {/* Glow effect when EQ is ON */}
+        {isEqOn && (
           <motion.div
             className="absolute inset-0 rounded-full blur-md -z-10"
             style={{ backgroundColor: `${colors.primary}33` }}
@@ -452,46 +474,39 @@ export const BoostButton = ({ variant = 'toolbar', className = '' }: BoostButton
           />
         )}
 
-        {/* Completion burst when boost finishes */}
-        {showBurst && <CompletionBurst onComplete={() => setShowBurst(false)} preset={boostProfile} />}
+        {/* Completion burst when cache finishes */}
+        {showBurst && <CompletionBurst onComplete={() => setShowBurst(false)} preset={activePreset} />}
 
-        {/* Progress ring - fills around the button edge */}
-        {(isDownloading || isQueued) && <ProgressRing progress={progress} isStarting={isDownloading || isQueued} size={44} preset={boostProfile} />}
+        {/* Progress ring for background caching */}
+        {(isDownloading || isQueued) && <ProgressRing progress={progress} isStarting={isDownloading || isQueued} size={44} preset={activePreset} />}
 
-        {/* Lightning icon - 3 states:
-            1. Gray filled = not boosted (iframe)
-            2. Yellow FILLED + yellow contour button = server boosted (R2 collective)
-            3. Yellow FILLED + yellow filled button = locally boosted (IndexedDB cache)
-        */}
-        <div className={isToggled ? 'opacity-50' : ''}>
-          <LightningIcon
-            isGlowing={isActive || isToggled}
-            isCharging={isDownloading || isQueued}
-            size={16}
-            preset={boostProfile}
-          />
-        </div>
-        {showSparks && <BoostSparks preset={boostProfile} />}
+        {/* Lightning icon: OUTLINE=R2, FILLED=local+boost, GRAY=off */}
+        <LightningIcon
+          isGlowing={isEqOn}
+          isCharging={isDownloading || isQueued}
+          size={16}
+          preset={isEqOn ? activePreset : 'off'}
+          outlineOnly={showOutline}
+        />
+        {showSparks && <BoostSparks preset={activePreset} />}
       </motion.button>
     );
   }
 
   // ============================================
   // FLOATING VARIANT - Standalone ergonomic position
-  // Dynamic colors based on active preset
   // ============================================
   if (variant === 'floating') {
     return (
       <motion.button
-        onClick={handleBoost}
-        disabled={isDownloading || isQueued || isActive}
+        onClick={handleTap}
         className={`relative ${className}`}
         initial={{ scale: 0, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.9 }}
       >
-        {isActive && (
+        {isEqOn && (
           <motion.div
             className="absolute inset-0 rounded-full"
             style={{ background: `radial-gradient(circle, ${colors.primary}4D 0%, transparent 70%)`, filter: 'blur(8px)' }}
@@ -500,7 +515,7 @@ export const BoostButton = ({ variant = 'toolbar', className = '' }: BoostButton
           />
         )}
         <div className={`relative w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300 ${
-          isActive ? `bg-gradient-to-br ${colors.bg.replace('/30', '/20')} border ${colors.border.replace('/60', '/40')}` : 'bg-white/5 border border-white/10 hover:bg-white/10'
+          isEqOn ? `bg-gradient-to-br ${colors.bg.replace('/30', '/20')} border ${colors.border.replace('/60', '/40')}` : 'bg-white/5 border border-white/10 hover:bg-white/10'
         }`}>
           {(isDownloading || isQueued) && (
             <svg className="absolute inset-0 w-full h-full -rotate-90">
@@ -508,8 +523,8 @@ export const BoostButton = ({ variant = 'toolbar', className = '' }: BoostButton
               <motion.circle cx="24" cy="24" r="22" fill="none" stroke={colors.primary} strokeWidth="2" strokeLinecap="round" strokeDasharray={138} strokeDashoffset={138 - (138 * progress) / 100} />
             </svg>
           )}
-          <LightningIcon isGlowing={isActive} isCharging={isDownloading || isQueued} size={20} preset={boostProfile} />
-          {showSparks && <BoostSparks preset={boostProfile} />}
+          <LightningIcon isGlowing={isEqOn} isCharging={isDownloading || isQueued} size={20} preset={isEqOn ? activePreset : 'off'} />
+          {showSparks && <BoostSparks preset={activePreset} />}
         </div>
       </motion.button>
     );
@@ -517,37 +532,33 @@ export const BoostButton = ({ variant = 'toolbar', className = '' }: BoostButton
 
   // ============================================
   // MINI VARIANT - For tight spaces
-  // Dynamic colors based on active preset
   // ============================================
   if (variant === 'mini') {
     return (
       <motion.button
-        onClick={handleBoost}
-        disabled={isDownloading || isQueued || isActive}
-        className={`relative w-8 h-8 rounded-full flex items-center justify-center ${isActive ? colors.bg.replace('/30', '/20') : 'bg-white/5 hover:bg-white/10'} ${className}`}
+        onClick={handleTap}
+        className={`relative w-8 h-8 rounded-full flex items-center justify-center ${isEqOn ? colors.bg.replace('/30', '/20') : 'bg-white/5 hover:bg-white/10'} ${className}`}
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.9 }}
       >
-        <LightningIcon isGlowing={isActive} isCharging={isDownloading} size={12} preset={boostProfile} />
+        <LightningIcon isGlowing={isEqOn} isCharging={isDownloading} size={12} preset={isEqOn ? activePreset : 'off'} />
       </motion.button>
     );
   }
 
   // ============================================
   // INLINE VARIANT - Text with icon
-  // Dynamic colors based on active preset
   // ============================================
   return (
     <motion.button
-      onClick={handleBoost}
-      disabled={isDownloading || isQueued || isActive}
-      className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${isActive ? `${colors.bg.replace('/30', '/10')} border ${colors.border.replace('/60', '/30')}` : 'bg-white/5 border border-white/10 hover:bg-white/10'} ${className}`}
+      onClick={handleTap}
+      className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${isEqOn ? `${colors.bg.replace('/30', '/10')} border ${colors.border.replace('/60', '/30')}` : 'bg-white/5 border border-white/10 hover:bg-white/10'} ${className}`}
       whileHover={{ scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
     >
-      <LightningIcon isGlowing={isActive} isCharging={isDownloading} size={14} preset={boostProfile} />
-      <span className={`text-xs font-medium ${isActive ? colors.text : 'text-white/60'}`}>
-        {isActive ? boostProfile.charAt(0).toUpperCase() + boostProfile.slice(1) : isDownloading ? `${progress}%` : 'Boost'}
+      <LightningIcon isGlowing={isEqOn} isCharging={isDownloading} size={14} preset={isEqOn ? activePreset : 'off'} />
+      <span className={`text-xs font-medium ${isEqOn ? colors.text : 'text-white/60'}`}>
+        {isEqOn ? activePreset.charAt(0).toUpperCase() + activePreset.slice(1) : 'Raw'}
       </span>
     </motion.button>
   );

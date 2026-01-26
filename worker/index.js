@@ -1,10 +1,18 @@
 /**
- * VOYO Music - Cloudflare Worker v3
+ * VOYO Music - Cloudflare Worker v4
  *
- * BULLETPROOF STREAMING:
- * 1. R2 First (342K pre-cached tracks) - /audio/:id, /exists/:id
- * 2. YouTube Fallback - /stream?v=id (multi-client extraction)
- * 3. Thumbnails - /thumb/:id
+ * ZERO-GAP ARCHITECTURE:
+ * - Supabase = Source of Truth (what's cached)
+ * - R2 = Dumb Storage (just bytes)
+ * - Worker = Single Gateway (atomic operations)
+ *
+ * ENDPOINTS:
+ * - /exists/{id}   → Query Supabase for cache status
+ * - /audio/{id}    → Stream from R2
+ * - /extract/{id}  → YouTube extraction (best quality)
+ * - /upload/{id}   → ATOMIC: R2 put + Supabase upsert
+ * - /stream?v={id} → Get extraction URL (legacy)
+ * - /thumb/{id}    → Thumbnail proxy
  *
  * Edge = 300+ locations worldwide = FAST
  */
@@ -119,10 +127,12 @@ function extractBestAudio(data) {
     return { error: 'No audio formats' };
   }
 
-  // Prefer mp4, highest bitrate
-  const mp4Audio = audioFormats.filter(f => f.mimeType?.includes('mp4'));
-  const bestAudio = (mp4Audio.length > 0 ? mp4Audio : audioFormats)
-    .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0];
+  // BEST QUALITY: Sort ALL formats by bitrate, take highest
+  // opus/webm typically has higher bitrates (160kbps) vs mp4/aac (128kbps)
+  const sortedByQuality = audioFormats.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+  const bestAudio = sortedByQuality[0];
+
+  console.log(`[Quality] Best: ${bestAudio.mimeType} @ ${bestAudio.bitrate}bps | Available: ${sortedByQuality.map(f => `${f.mimeType?.split(';')[0]}@${f.bitrate}`).join(', ')}`);
 
   if (!bestAudio.url) {
     return { error: 'URL requires deciphering', cipher: !!bestAudio.signatureCipher };
@@ -133,6 +143,7 @@ function extractBestAudio(data) {
     mimeType: bestAudio.mimeType,
     bitrate: bestAudio.bitrate,
     contentLength: bestAudio.contentLength,
+    quality: bestAudio.audioQuality || 'AUDIO_QUALITY_MEDIUM',
     title: data.videoDetails?.title,
   };
 }
@@ -168,8 +179,8 @@ export default {
     // R2 AUDIO STREAMING - Primary path (95%)
     // ========================================
 
-    // Check if audio exists in R2
-    // Files stored as: 128/{videoId}.opus or 64/{videoId}.opus
+    // Check if audio exists - Supabase first, R2 fallback
+    // Zero-gap: Supabase is source of truth
     if (url.pathname.startsWith('/exists/')) {
       const videoId = url.pathname.split('/')[2];
       if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
@@ -180,7 +191,48 @@ export default {
       }
 
       try {
-        // Check both quality variants (stored in quality-prefixed folders)
+        // TRY SUPABASE FIRST (source of truth)
+        if (env.SUPABASE_URL && env.SUPABASE_KEY) {
+          const supabaseResponse = await fetch(
+            `${env.SUPABASE_URL}/rest/v1/voyo_tracks?youtube_id=eq.${videoId}&select=r2_cached,r2_quality,r2_size`,
+            {
+              headers: {
+                'apikey': env.SUPABASE_KEY,
+                'Authorization': `Bearer ${env.SUPABASE_KEY}`,
+              }
+            }
+          );
+
+          if (supabaseResponse.ok) {
+            const rows = await supabaseResponse.json();
+            if (rows.length > 0 && rows[0].r2_cached !== null) {
+              const track = rows[0];
+              if (track.r2_cached) {
+                return new Response(JSON.stringify({
+                  exists: true,
+                  high: track.r2_quality === '128',
+                  low: track.r2_quality === '64',
+                  size: track.r2_size || 0,
+                  source: 'supabase'
+                }), {
+                  headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+              } else {
+                return new Response(JSON.stringify({
+                  exists: false,
+                  high: false,
+                  low: false,
+                  size: 0,
+                  source: 'supabase'
+                }), {
+                  headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+              }
+            }
+          }
+        }
+
+        // FALLBACK: Check R2 directly (for tracks not yet in Supabase or migration pending)
         const [high, low] = await Promise.all([
           env.VOYO_AUDIO.head(`128/${videoId}.opus`),
           env.VOYO_AUDIO.head(`64/${videoId}.opus`)
@@ -190,7 +242,8 @@ export default {
           exists: !!(high || low),
           high: !!high,
           low: !!low,
-          size: high?.size || low?.size || 0
+          size: high?.size || low?.size || 0,
+          source: 'r2'
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
@@ -349,6 +402,93 @@ export default {
       });
     }
 
+    // ========================================
+    // EXTRACT + STREAM - Full audio extraction (replaces Fly.io)
+    // ========================================
+    // Returns actual audio bytes, not just URL. Handles CORS.
+    if (url.pathname.startsWith('/extract/')) {
+      const videoId = url.pathname.split('/')[2];
+      if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+        return new Response(JSON.stringify({ error: 'Invalid video ID' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      // Try each client until one works
+      let audioUrl = null;
+      let mimeType = 'audio/mp4';
+
+      for (const client of CLIENTS) {
+        try {
+          const data = await tryClient(videoId, client);
+          const result = extractBestAudio(data);
+
+          if (result.url) {
+            audioUrl = result.url;
+            mimeType = result.mimeType || 'audio/mp4';
+            console.log(`[Extract] Success with ${client.name}: ${videoId}`);
+            break;
+          }
+        } catch (err) {
+          // Try next client
+        }
+      }
+
+      if (!audioUrl) {
+        return new Response(JSON.stringify({ error: 'Extraction failed' }), {
+          status: 503,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      // Fetch and stream the audio bytes
+      try {
+        const audioResponse = await fetch(audioUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': '*/*',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Range': request.headers.get('Range') || 'bytes=0-',
+          }
+        });
+
+        if (!audioResponse.ok) {
+          return new Response(JSON.stringify({ error: `Fetch failed: ${audioResponse.status}` }), {
+            status: audioResponse.status,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+
+        // Stream response with CORS headers
+        const responseHeaders = {
+          ...corsHeaders,
+          'Content-Type': mimeType.split(';')[0],
+          'Accept-Ranges': 'bytes',
+          'Cache-Control': 'public, max-age=3600',
+          'X-VOYO-Source': 'extract'
+        };
+
+        if (audioResponse.headers.get('Content-Length')) {
+          responseHeaders['Content-Length'] = audioResponse.headers.get('Content-Length');
+        }
+        if (audioResponse.headers.get('Content-Range')) {
+          responseHeaders['Content-Range'] = audioResponse.headers.get('Content-Range');
+        }
+
+        return new Response(audioResponse.body, {
+          status: audioResponse.status,
+          headers: responseHeaders
+        });
+
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
     // CORS Proxy - Forward requests to YouTube with CORS headers
     // This allows client-side youtubei.js to use Cloudflare's trusted IPs
     if (url.pathname === '/proxy') {
@@ -434,12 +574,14 @@ export default {
     }
 
     // ========================================
-    // R2 COLLECTIVE UPLOAD - Phase 4
-    // Users contribute to shared cache on boost
+    // R2 COLLECTIVE UPLOAD - ATOMIC (R2 + Supabase)
+    // Zero-gap: Both succeed or neither
     // ========================================
     if (url.pathname.startsWith('/upload/') && request.method === 'POST') {
       const videoId = url.pathname.split('/')[2];
       const quality = url.searchParams.get('q') || 'high'; // high = 128kbps folder
+      const title = url.searchParams.get('title') || '';
+      const artist = url.searchParams.get('artist') || '';
 
       if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
         return new Response(JSON.stringify({ error: 'Invalid video ID' }), {
@@ -449,11 +591,31 @@ export default {
       }
 
       try {
-        // Check if already exists (don't overwrite)
         const qualityFolder = quality === 'low' ? '64' : '128';
+
+        // Check if already exists in R2
         const existingCheck = await env.VOYO_AUDIO.head(`${qualityFolder}/${videoId}.opus`);
 
         if (existingCheck) {
+          // Already in R2, ensure Supabase is synced
+          if (env.SUPABASE_URL && env.SUPABASE_KEY) {
+            // Update ALL matching records (youtube_id is not unique)
+            await fetch(`${env.SUPABASE_URL}/rest/v1/voyo_tracks?youtube_id=eq.${videoId}`, {
+              method: 'PATCH',
+              headers: {
+                'apikey': env.SUPABASE_KEY,
+                'Authorization': `Bearer ${env.SUPABASE_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                r2_cached: true,
+                r2_quality: qualityFolder,
+                r2_size: existingCheck.size,
+                r2_cached_at: new Date().toISOString()
+              })
+            });
+          }
+
           return new Response(JSON.stringify({
             success: true,
             status: 'already_exists',
@@ -474,7 +636,7 @@ export default {
           });
         }
 
-        // Upload to R2
+        // STEP 1: Upload to R2
         await env.VOYO_AUDIO.put(`${qualityFolder}/${videoId}.opus`, audioData, {
           httpMetadata: {
             contentType: 'audio/opus',
@@ -487,18 +649,69 @@ export default {
 
         console.log(`[R2] Uploaded ${videoId} to ${qualityFolder}/ (${audioData.byteLength} bytes)`);
 
+        // STEP 2: Update Supabase (atomic - if this fails, delete from R2)
+        if (env.SUPABASE_URL && env.SUPABASE_KEY) {
+          try {
+            // Update ALL matching records (youtube_id is not unique)
+            const supabaseResponse = await fetch(`${env.SUPABASE_URL}/rest/v1/voyo_tracks?youtube_id=eq.${videoId}`, {
+              method: 'PATCH',
+              headers: {
+                'apikey': env.SUPABASE_KEY,
+                'Authorization': `Bearer ${env.SUPABASE_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                r2_cached: true,
+                r2_quality: qualityFolder,
+                r2_size: audioData.byteLength,
+                r2_cached_at: new Date().toISOString()
+              })
+            });
+
+            if (!supabaseResponse.ok) {
+              // ROLLBACK: Delete from R2 if Supabase fails
+              console.error(`[Supabase] Update failed, rolling back R2 upload for ${videoId}`);
+              await env.VOYO_AUDIO.delete(`${qualityFolder}/${videoId}.opus`);
+              const errorText = await supabaseResponse.text();
+              return new Response(JSON.stringify({
+                success: false,
+                error: 'Supabase update failed',
+                details: errorText
+              }), {
+                status: 500,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+              });
+            }
+
+            console.log(`[Supabase] Updated ${videoId} with r2_cached=true`);
+          } catch (supabaseErr) {
+            // ROLLBACK: Delete from R2 if Supabase fails
+            console.error(`[Supabase] Error, rolling back R2 upload for ${videoId}:`, supabaseErr);
+            await env.VOYO_AUDIO.delete(`${qualityFolder}/${videoId}.opus`);
+            return new Response(JSON.stringify({
+              success: false,
+              error: 'Supabase update failed',
+              details: supabaseErr.message
+            }), {
+              status: 500,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+          }
+        }
+
         return new Response(JSON.stringify({
           success: true,
           status: 'uploaded',
           videoId,
           quality: qualityFolder,
-          size: audioData.byteLength
+          size: audioData.byteLength,
+          supabase_synced: !!(env.SUPABASE_URL && env.SUPABASE_KEY)
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
 
       } catch (err) {
-        console.error(`[R2] Upload error for ${videoId}:`, err);
+        console.error(`[Upload] Error for ${videoId}:`, err);
         return new Response(JSON.stringify({ error: err.message }), {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -506,6 +719,75 @@ export default {
       }
     }
 
-    return new Response('VOYO Edge Worker v3 - Multiband + Collective', { headers: corsHeaders });
+    // ========================================
+    // RECONCILIATION - Sync R2 file to Supabase
+    // Call this for orphaned R2 files
+    // ========================================
+    if (url.pathname.startsWith('/reconcile/') && request.method === 'POST') {
+      const videoId = url.pathname.split('/')[2];
+
+      if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+        return new Response(JSON.stringify({ error: 'Invalid video ID' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      try {
+        // Check R2 for this file
+        const [high, low] = await Promise.all([
+          env.VOYO_AUDIO.head(`128/${videoId}.opus`),
+          env.VOYO_AUDIO.head(`64/${videoId}.opus`)
+        ]);
+
+        if (!high && !low) {
+          return new Response(JSON.stringify({
+            success: false,
+            error: 'Not found in R2'
+          }), {
+            status: 404,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+
+        const qualityFolder = high ? '128' : '64';
+        const size = high?.size || low?.size || 0;
+
+        // Update ALL matching records in Supabase (youtube_id is not unique)
+        if (env.SUPABASE_URL && env.SUPABASE_KEY) {
+          await fetch(`${env.SUPABASE_URL}/rest/v1/voyo_tracks?youtube_id=eq.${videoId}`, {
+            method: 'PATCH',
+            headers: {
+              'apikey': env.SUPABASE_KEY,
+              'Authorization': `Bearer ${env.SUPABASE_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              r2_cached: true,
+              r2_quality: qualityFolder,
+              r2_size: size,
+              r2_cached_at: new Date().toISOString()
+            })
+          });
+        }
+
+        return new Response(JSON.stringify({
+          success: true,
+          videoId,
+          quality: qualityFolder,
+          size
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
+    return new Response('VOYO Edge Worker v4 - Zero Gap Architecture', { headers: corsHeaders });
   }
 };

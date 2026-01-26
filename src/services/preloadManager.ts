@@ -4,10 +4,15 @@
  * Inspired by Spotify/YouTube Music for gapless playback.
  *
  * STRATEGY (like major platforms):
- * 1. Start preloading IMMEDIATELY when next track is known (not waiting for 70%)
+ * 1. Start preloading IMMEDIATELY when next track is known
  * 2. Use a hidden audio element that actually buffers the audio data
  * 3. When track changes, audio is already buffered → instant playback
- * 4. For iframe tracks, warm up backend so YouTube loads faster
+ * 4. For R2 misses, extract via Edge Worker and cache locally
+ *
+ * PRELOAD SOURCES (priority order):
+ * 1. Local IndexedDB cache → Fastest, already downloaded
+ * 2. R2 collective cache → Fast, 170K+ shared tracks
+ * 3. Edge Worker extraction → Extract, cache, then buffer
  *
  * KEY DIFFERENCE from basic preloading:
  * - We actually LOAD the audio data into the browser's buffer
@@ -15,7 +20,10 @@
  * - This is how Spotify achieves gapless playback
  */
 
-import { checkR2Cache, prefetchTrack } from './api';
+import { checkR2Cache } from './api';
+
+// Edge Worker for extraction (FREE - replaces Fly.io)
+const EDGE_WORKER_URL = 'https://voyo-edge.dash-webtv.workers.dev';
 
 // Decode VOYO ID to YouTube ID
 function decodeVoyoId(voyoId: string): string {
@@ -37,7 +45,7 @@ function decodeVoyoId(voyoId: string): string {
 export interface PreloadedTrack {
   trackId: string;
   normalizedId: string;
-  source: 'cached' | 'r2' | 'iframe';
+  source: 'cached' | 'r2';
   url: string | null;
   audioElement: HTMLAudioElement | null;
   isReady: boolean;
@@ -163,23 +171,52 @@ export async function preloadNextTrack(
       return state.preloaded;
     }
 
-    // STEP 3: Iframe fallback - just warm up the backend
-    console.log('🔮 [Preload] Not in cache/R2, warming up backend');
-    prefetchTrack(normalizedId); // Fire and forget
+    // STEP 3: Get YouTube direct URL and preload
+    // Browser fetches from YouTube CDN directly
+    console.log('🔮 [Preload] Not in cache/R2, getting YouTube stream URL');
 
-    state.preloaded = {
-      trackId,
-      normalizedId,
-      source: 'iframe',
-      url: null,
-      audioElement: null,
-      isReady: true, // Nothing to preload, but backend is warmed
-      preloadedAt: Date.now(),
-    };
+    try {
+      const streamResponse = await fetch(`${EDGE_WORKER_URL}/stream?v=${normalizedId}`);
 
-    state.isPreloading = false;
-    console.log('🔮 [Preload] ✅ Backend warmup complete (iframe fallback)');
-    return state.preloaded;
+      if (signal.aborted) return null;
+
+      const streamData = await streamResponse.json();
+
+      if (!streamData.url) {
+        console.warn('🔮 [Preload] No stream URL available for:', normalizedId);
+        state.isPreloading = false;
+        return null;
+      }
+
+      const audioEl = createPreloadAudioElement(streamData.url, signal);
+
+      state.preloaded = {
+        trackId,
+        normalizedId,
+        source: 'r2', // Treat as r2 for consistent handling
+        url: streamData.url,
+        audioElement: audioEl,
+        isReady: false,
+        preloadedAt: Date.now(),
+      };
+
+      // Wait for audio to buffer enough to play
+      await waitForAudioReady(audioEl, signal, 8000);
+
+      if (signal.aborted) {
+        audioEl.src = '';
+        return null;
+      }
+
+      state.preloaded.isReady = true;
+      state.isPreloading = false;
+      console.log('🔮 [Preload] ✅ YouTube direct stream preload complete');
+      return state.preloaded;
+    } catch (extractError) {
+      console.warn('🔮 [Preload] Stream preload error:', extractError);
+      state.isPreloading = false;
+      return null;
+    }
 
   } catch (error) {
     console.warn('🔮 [Preload] Error:', error);
@@ -232,7 +269,7 @@ export function isPreloaded(trackId: string): boolean {
 export function getPreloadStatus(): {
   isPreloading: boolean;
   preloadedId: string | null;
-  source: 'cached' | 'r2' | 'iframe' | null;
+  source: 'cached' | 'r2' | null;
 } {
   return {
     isPreloading: state.isPreloading,

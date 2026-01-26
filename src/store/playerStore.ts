@@ -230,7 +230,7 @@ interface PlayerStore {
   // 🔵 calm (Blue) - Relaxed, balanced
   // 🟣 voyex (Purple) - Full holistic experience
   // 🔴 xtreme (Red) - Maximum bass power
-  boostProfile: 'boosted' | 'calm' | 'voyex' | 'xtreme';
+  boostProfile: 'off' | 'boosted' | 'calm' | 'voyex' | 'xtreme';
 
   // OYÉ Bar Behavior - Signature VOYO element
   // 'fade' - stays visible but ghosted after timeout
@@ -328,7 +328,7 @@ interface PlayerStore {
   setPlaybackSource: (source: 'cached' | 'iframe' | 'r2' | 'direct' | 'cdn' | null) => void;
   setPrefetchStatus: (trackId: string, status: PrefetchStatus) => void;
   detectNetworkQuality: () => void;
-  setBoostProfile: (profile: 'boosted' | 'calm' | 'voyex' | 'xtreme') => void;
+  setBoostProfile: (profile: 'off' | 'boosted' | 'calm' | 'voyex' | 'xtreme') => void;
   setOyeBarBehavior: (behavior: 'fade' | 'disappear') => void;
 }
 

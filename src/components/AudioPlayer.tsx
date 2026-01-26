@@ -1,19 +1,23 @@
 /**
- * VOYO Music - Hybrid Audio Player
+ * VOYO Music - Audio Player with EQ Enhancement
  *
- * FLOW (Collective Intelligence):
+ * FLOW (No iframe dependency - 100% VOYO controlled):
  * 1. Check IndexedDB cache (local boost) → Play instantly with EQ
- * 2. Check R2 collective cache → Play with EQ (41K+ shared tracks)
- * 3. Fall to YouTube iframe → Background boost to both local + R2
+ * 2. Check R2 collective cache → Play with EQ (170K+ shared tracks)
+ * 3. R2 miss → Extract via Edge Worker → Cache locally + contribute to R2 → Play with EQ
  *
- * COORDINATION with YouTubeIframe:
- * - playbackSource === 'iframe' → Iframe handles audio (unmuted)
- * - playbackSource === 'cached' → Local boost handles audio, iframe muted (video only)
- * - playbackSource === 'r2' → R2 stream handles audio with EQ, iframe muted (video only)
+ * PLAYBACK SOURCES:
+ * - playbackSource === 'cached' → Local IndexedDB audio with full EQ
+ * - playbackSource === 'r2' → R2 collective stream with full EQ
  *
- * AUDIO ENHANCEMENT:
- * - Applies to cached AND r2 audio (via Web Audio API)
- * - 4 presets: Boosted, Calm, VOYEX, Xtreme
+ * AUDIO ENHANCEMENT (Web Audio API):
+ * - Applies to ALL audio (cached + r2)
+ * - 4 presets: Boosted, Calm, VOYEX (multiband mastering), Xtreme
+ *
+ * SMART BANDWIDTH:
+ * - Preload next 3 tracks from DJ queue
+ * - Quality upgrade at 50% interest (R2 low → high)
+ * - User bandwidth contributes to collective R2 cache
  */
 
 import { useEffect, useRef, useCallback, useState } from 'react';
@@ -24,6 +28,10 @@ import { useDownloadStore } from '../store/downloadStore';
 import { useTrackPoolStore } from '../store/trackPoolStore';
 import { audioEngine } from '../services/audioEngine';
 import { checkR2Cache } from '../services/api';
+import { downloadTrack, getCachedTrackUrl } from '../services/downloadManager';
+
+// Edge Worker for extraction (FREE - replaces Fly.io)
+const EDGE_WORKER_URL = 'https://voyo-edge.dash-webtv.workers.dev';
 import { recordPoolEngagement } from '../services/personalization';
 import { recordTrackInSession } from '../services/poolCurator';
 import { recordPlay as djRecordPlay } from '../services/intelligentDJ';
@@ -38,7 +46,7 @@ import {
   cancelPreload,
 } from '../services/preloadManager';
 
-export type BoostPreset = 'boosted' | 'calm' | 'voyex' | 'xtreme';
+export type BoostPreset = 'off' | 'boosted' | 'calm' | 'voyex' | 'xtreme';
 
 // Audio boost presets
 const BOOST_PRESETS = {
@@ -143,11 +151,11 @@ export const AudioPlayer = () => {
     initDownloads();
   }, [initDownloads]);
 
-  // 50% AUTO-BOOST: Trigger caching when user shows genuine interest
-  // Works for: iframe (new content) + r2 low quality (upgrade to high)
+  // 50% AUTO-BOOST: Trigger quality upgrade when user shows genuine interest
+  // Works for: r2 low quality (upgrade to high)
   useEffect(() => {
-    // Only trigger at 50% for iframe OR r2 (for quality upgrade)
-    if (playbackSource !== 'iframe' && playbackSource !== 'r2') return;
+    // Only trigger at 50% for r2 (for quality upgrade from low to high)
+    if (playbackSource !== 'r2') return;
     if (hasTriggered50PercentCacheRef.current) return;
     if (progress < 50) return;
     if (!currentTrack?.trackId) return;
@@ -174,8 +182,7 @@ export const AudioPlayer = () => {
     hasTriggered50PercentCacheRef.current = true;
 
     const API_BASE = 'https://voyo-music-api.fly.dev';
-    const isUpgrade = playbackSource === 'r2';
-    console.log(`🎵 [VOYO] 50% reached! ${isUpgrade ? 'Upgrading to HIGH quality' : 'Starting background cache'} (genuine interest)`);
+    console.log('🎵 [VOYO] 50% reached! Upgrading R2 low quality to HIGH (genuine interest)');
 
     // Start background cache
     backgroundBoostingRef.current = currentTrack.trackId;
@@ -309,9 +316,19 @@ export const AudioPlayer = () => {
 
       const ctx = new AudioContextClass();
       audioContextRef.current = ctx;
+      currentProfileRef.current = preset;
+
+      // 'off' = RAW AUDIO - bypass all EQ, connect directly to output
+      if (preset === 'off') {
+        console.log('🎵 [VOYO] RAW mode - EQ bypassed');
+        const source = ctx.createMediaElementSource(audioRef.current);
+        sourceNodeRef.current = source;
+        source.connect(ctx.destination);
+        audioEnhancedRef.current = true;
+        return;
+      }
 
       const settings = BOOST_PRESETS[preset] as any;
-      currentProfileRef.current = preset;
 
       const source = ctx.createMediaElementSource(audioRef.current);
       sourceNodeRef.current = source;
@@ -547,8 +564,43 @@ export const AudioPlayer = () => {
   // Update preset dynamically
   const updateBoostPreset = useCallback((preset: BoostPreset) => {
     if (!audioEnhancedRef.current) return;
-    const s = BOOST_PRESETS[preset];
     currentProfileRef.current = preset;
+
+    // 'off' = RAW AUDIO - set all EQ to neutral (bypass)
+    if (preset === 'off') {
+      subBassFilterRef.current && (subBassFilterRef.current.gain.value = 0);
+      bassFilterRef.current && (bassFilterRef.current.gain.value = 0);
+      warmthFilterRef.current && (warmthFilterRef.current.gain.value = 0);
+      presenceFilterRef.current && (presenceFilterRef.current.gain.value = 0);
+      airFilterRef.current && (airFilterRef.current.gain.value = 0);
+      gainNodeRef.current && (gainNodeRef.current.gain.value = 1.0); // Unity gain
+      harmonicExciterRef.current && (harmonicExciterRef.current.curve = null);
+      // Compressor to transparent settings
+      if (compressorRef.current) {
+        compressorRef.current.threshold.value = 0;
+        compressorRef.current.ratio.value = 1;
+      }
+      // Multiband compressors to transparent
+      multibandLowGainRef.current && (multibandLowGainRef.current.gain.value = 1.0);
+      multibandMidGainRef.current && (multibandMidGainRef.current.gain.value = 1.0);
+      multibandHighGainRef.current && (multibandHighGainRef.current.gain.value = 1.0);
+      if (multibandLowCompRef.current) {
+        multibandLowCompRef.current.threshold.value = 0;
+        multibandLowCompRef.current.ratio.value = 1;
+      }
+      if (multibandMidCompRef.current) {
+        multibandMidCompRef.current.threshold.value = 0;
+        multibandMidCompRef.current.ratio.value = 1;
+      }
+      if (multibandHighCompRef.current) {
+        multibandHighCompRef.current.threshold.value = 0;
+        multibandHighCompRef.current.ratio.value = 1;
+      }
+      console.log('🎵 [VOYO] RAW mode - EQ bypassed');
+      return;
+    }
+
+    const s = BOOST_PRESETS[preset];
 
     subBassFilterRef.current && (subBassFilterRef.current.gain.value = s.subBassGain);
     bassFilterRef.current && (bassFilterRef.current.gain.value = s.bassGain);
@@ -759,10 +811,79 @@ export const AudioPlayer = () => {
             };
           }
         } else {
-          // 📡 R2 MISS - Stream via iframe
-          // Caching will trigger at 50% progress (genuine interest threshold)
-          console.log('🎵 [VOYO] R2 miss, streaming via iframe (will cache at 50%)');
-          setPlaybackSource('iframe');
+          // 📡 R2 MISS - Get direct YouTube URL, stream via browser
+          // Browser fetches from YouTube CDN directly (no CORS issues with audio element)
+          console.log('🎵 [VOYO] R2 miss, getting stream URL...');
+
+          try {
+            // Get the direct YouTube audio URL from our worker
+            const streamResponse = await fetch(`${EDGE_WORKER_URL}/stream?v=${trackId}`);
+            const streamData = await streamResponse.json();
+
+            if (!streamData.url) {
+              console.error('🚨 [VOYO] No stream URL available');
+              return;
+            }
+
+            console.log(`🎵 [VOYO] Got stream URL (${streamData.bitrate}bps ${streamData.mimeType})`);
+            setPlaybackSource('cached'); // Treat as cached for EQ purposes
+
+            const { boostProfile: profile } = usePlayerStore.getState();
+            setupAudioEnhancement(profile);
+
+            if (audioRef.current) {
+              audioRef.current.volume = 0;
+              audioRef.current.src = streamData.url; // Browser fetches directly from YouTube CDN
+              audioRef.current.load();
+
+              audioRef.current.oncanplaythrough = () => {
+                if (!audioRef.current) return;
+
+                if (isInitialLoadRef.current && savedCurrentTime > 5) {
+                  audioRef.current.currentTime = savedCurrentTime;
+                  isInitialLoadRef.current = false;
+                }
+
+                const { isPlaying: shouldPlay } = usePlayerStore.getState();
+                const shouldAutoResume = shouldAutoResumeRef.current;
+                if (shouldAutoResume) {
+                  shouldAutoResumeRef.current = false;
+                }
+
+                if ((shouldPlay || shouldAutoResume) && audioRef.current.paused) {
+                  audioContextRef.current?.state === 'suspended' && audioContextRef.current.resume();
+                  audioRef.current.play().then(() => {
+                    audioRef.current!.volume = 1.0;
+                    recordPlayEvent();
+                    if (shouldAutoResume && !shouldPlay) {
+                      usePlayerStore.getState().togglePlay();
+                    }
+                    console.log('🎵 [VOYO] Playback started (YouTube direct stream)');
+                  }).catch(() => {});
+                }
+              };
+
+              // BACKGROUND: Download to cache after playback starts (non-blocking)
+              audioRef.current.onplay = () => {
+                // Start background caching after 5 seconds of playback (genuine interest)
+                setTimeout(() => {
+                  const currentState = usePlayerStore.getState();
+                  if (currentState.currentTrack?.trackId === trackId && currentState.isPlaying) {
+                    console.log('🎵 [VOYO] Starting background cache for streaming track');
+                    cacheTrack(
+                      trackId,
+                      currentTrack.title,
+                      currentTrack.artist,
+                      currentTrack.duration || 0,
+                      `https://voyo-music-api.fly.dev/cdn/art/${trackId}?quality=high`
+                    );
+                  }
+                }, 5000);
+              };
+            }
+          } catch (streamError) {
+            console.error('🚨 [VOYO] Stream error:', streamError);
+          }
         }
       }
     };
@@ -791,7 +912,7 @@ export const AudioPlayer = () => {
     console.log(`[VOYO] Recorded play: ${currentTrack.title}`);
   }, [currentTrack]);
 
-  // === HOT-SWAP: When boost completes mid-stream ===
+  // === HOT-SWAP: When boost completes mid-stream (R2 → cached upgrade) ===
   // CRITICAL: Uses AbortController to prevent race conditions when track changes mid-swap
   useEffect(() => {
     if (!lastBoostCompletion || !currentTrack?.trackId) return;
@@ -800,8 +921,9 @@ export const AudioPlayer = () => {
     const currentId = currentTrack.trackId.replace('VOYO_', '');
     const isCurrentTrackMatch = completedId === currentId || completedId === currentTrack.trackId;
 
-    // Only hot-swap if currently streaming via iframe AND boost is for current track
-    if (!isCurrentTrackMatch || playbackSource !== 'iframe') return;
+    // Only hot-swap if currently streaming via R2 AND boost is for current track
+    // This upgrades from R2 (potentially low quality) to local cached (high quality)
+    if (!isCurrentTrackMatch || playbackSource !== 'r2') return;
 
     // Cancel any previous hot-swap operation to prevent race condition
     if (hotSwapAbortRef.current) {
@@ -812,7 +934,7 @@ export const AudioPlayer = () => {
     const signal = hotSwapAbortRef.current.signal;
     const swapTrackId = currentTrack.trackId; // Capture at start
 
-    console.log('🔄 [VOYO] Hot-swap: Boost complete, switching to cached audio...');
+    console.log('🔄 [VOYO] Hot-swap: Boost complete, upgrading R2 to cached audio...');
 
     const performHotSwap = async () => {
       // Check if aborted before starting
@@ -919,7 +1041,8 @@ export const AudioPlayer = () => {
     if ((playbackSource !== 'cached' && playbackSource !== 'r2') || !audioRef.current) return;
 
     if (audioEnhancedRef.current && gainNodeRef.current) {
-      const profileGain = BOOST_PRESETS[currentProfileRef.current].gain;
+      // 'off' = unity gain, other presets use their defined gain
+      const profileGain = currentProfileRef.current === 'off' ? 1.0 : BOOST_PRESETS[currentProfileRef.current].gain;
       audioRef.current.volume = 1.0;
       gainNodeRef.current.gain.value = profileGain * (volume / 100);
     } else {
@@ -1023,10 +1146,9 @@ export const AudioPlayer = () => {
     const errorName = error ? (errorCodes[error.code] || `Unknown(${error.code})`) : 'Unknown';
     console.error(`🚨 [VOYO] Audio error: ${errorName}`, error?.message);
 
-    // On error, fall back to iframe streaming if available
+    // On error, try to re-extract
     if (currentTrack?.trackId && error) {
-      console.log('🚨 [VOYO] Falling back to iframe streaming due to audio error');
-      setPlaybackSource('iframe');
+      console.log('🚨 [VOYO] Audio error - clearing source. User may need to retry.');
       // Clear the failed audio source
       audio.src = '';
       if (cachedUrlRef.current) {
