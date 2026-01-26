@@ -20,6 +20,7 @@
 
 Commits:
 - `690f345` - Fix SSO: Support both dashAuth and sso_token flows
+- `d75f15f` - Fix auth storage format compatibility across all components
 
 ## IMMEDIATE NEXT ACTION
 **Test the complete SSO flow:**

@@ -97,6 +97,7 @@ export async function signInWithDashId(
 
 /**
  * Get current DASH session from localStorage
+ * Handles both nested format { state: { citizen: {...} } } and flat format { coreId: ... }
  */
 export function getDashSession(productCode: string = 'V'): DashSession | null {
   try {
@@ -104,9 +105,13 @@ export function getDashSession(productCode: string = 'V'): DashSession | null {
     if (!stored) return null;
 
     const data = JSON.parse(stored);
-    if (!data.state?.citizen || !data.state?.isAuthenticated) return null;
 
-    const citizen = data.state.citizen;
+    // Handle both nested (voyo-music) and flat (voyo-fork) formats
+    const citizen = data.state?.citizen || data;
+    const isAuthenticated = data.state?.isAuthenticated ?? Boolean(citizen.coreId);
+
+    if (!citizen.coreId || !isAuthenticated) return null;
+
     return {
       user: {
         core_id: citizen.coreId,
@@ -127,12 +132,8 @@ export function getDashSession(productCode: string = 'V'): DashSession | null {
  */
 export function signOutDash(): void {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const data = JSON.parse(stored);
-      data.state.isAuthenticated = false;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    }
+    // Simply remove the storage key - works for both nested and flat formats
+    localStorage.removeItem(STORAGE_KEY);
   } catch {
     // Ignore
   }
@@ -176,6 +177,7 @@ const PRODUCTS: Record<ProductCode, { name: string; color: string }> = {
 
 /**
  * Get current citizen from Command Center storage
+ * Handles both nested format { state: { citizen: {...} } } and flat format { coreId: ... }
  */
 function getCitizen(productCode: ProductCode): CitizenSession | null {
   try {
@@ -183,9 +185,13 @@ function getCitizen(productCode: ProductCode): CitizenSession | null {
     if (!stored) return null;
 
     const data = JSON.parse(stored);
-    if (!data.state?.citizen || !data.state?.isAuthenticated) return null;
 
-    const citizen = data.state.citizen;
+    // Handle both nested (voyo-music) and flat (voyo-fork) formats
+    const citizen = data.state?.citizen || data;
+    const isAuthenticated = data.state?.isAuthenticated ?? Boolean(citizen.coreId);
+
+    if (!citizen.coreId || !isAuthenticated) return null;
+
     const initials = citizen.initials || citizen.fullName?.split(' ').map((n: string) => n[0]?.toUpperCase() || '').join('') || '';
     return {
       coreId: citizen.coreId,
