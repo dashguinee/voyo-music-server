@@ -11,6 +11,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Film, Play } from 'lucide-react';
+import { devLog, devWarn, devError } from '../../../utils/logger';
 
 // Teaser format configurations
 export type TeaserFormat = 'hook' | 'instant' | 'full';
@@ -104,7 +105,7 @@ export const VideoSnippet = ({
     if (isActive && !showIframe) {
       // Immediate load for active card (no delay - preloading handles smoothness)
       setShowIframe(true);
-      console.log(`[VideoSnippet] Loading YouTube iframe for ${youtubeId}`);
+      devLog(`[VideoSnippet] Loading YouTube iframe for ${youtubeId}`);
     }
   }, [isActive, showIframe, youtubeId]);
 
@@ -115,7 +116,7 @@ export const VideoSnippet = ({
       // Preload iframe for next 2 cards
       const preloadTimer = setTimeout(() => {
         setShowIframe(true);
-        console.log(`[VideoSnippet] 🔄 Preloading YouTube iframe for ${youtubeId}`);
+        devLog(`[VideoSnippet] 🔄 Preloading YouTube iframe for ${youtubeId}`);
       }, 300); // 300ms delay to stagger preloads
 
       return () => clearTimeout(preloadTimer);
@@ -132,7 +133,7 @@ export const VideoSnippet = ({
       `{"event":"command","func":"setPlaybackQuality","args":["${teaserConfig.quality}"]}`,
       '*'
     );
-    console.log(`[VideoSnippet] 📺 Quality set to ${teaserConfig.quality} for ${youtubeId}`);
+    devLog(`[VideoSnippet] 📺 Quality set to ${teaserConfig.quality} for ${youtubeId}`);
   }, [isLoaded, teaserConfig.quality, youtubeId]);
 
   // Control playback via postMessage - SIMPLE: active card plays, others pause
@@ -144,7 +145,7 @@ export const VideoSnippet = ({
     if (isActive) {
       // Active card: PLAY (this is the only card that should have audio)
       iframe.contentWindow?.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
-      console.log(`[VideoSnippet] ▶️ Playing: ${youtubeId} (${teaserFormat} format)`);
+      devLog(`[VideoSnippet] ▶️ Playing: ${youtubeId} (${teaserFormat} format)`);
     } else {
       // Inactive cards: PAUSE (prevents audio interference from preloaded cards)
       iframe.contentWindow?.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
@@ -162,7 +163,7 @@ export const VideoSnippet = ({
         // YouTube error codes: 2=invalid param, 5=HTML5 error, 100=not found, 101/150=blocked
         if (data.event === 'onError' || data.info?.errorCode) {
           const errorCode = data.info?.errorCode || data.errorCode;
-          console.error(`[VideoSnippet] ❌ YouTube error ${errorCode} for ${youtubeId}`);
+          devError(`[VideoSnippet] ❌ YouTube error ${errorCode} for ${youtubeId}`);
           setHasError(true);
           onVideoError?.();
         }
@@ -172,7 +173,7 @@ export const VideoSnippet = ({
           // -1 = unstarted/unplayable after attempt
           setTimeout(() => {
             if (!isLoaded) {
-              console.warn(`[VideoSnippet] ⚠️ Video unplayable: ${youtubeId}`);
+              devWarn(`[VideoSnippet] ⚠️ Video unplayable: ${youtubeId}`);
               setHasError(true);
               onVideoError?.();
             }
@@ -193,7 +194,7 @@ export const VideoSnippet = ({
 
     const timeout = setTimeout(() => {
       if (!isLoaded) {
-        console.warn(`[VideoSnippet] ⏱️ Load timeout for ${youtubeId} - assuming blocked`);
+        devWarn(`[VideoSnippet] ⏱️ Load timeout for ${youtubeId} - assuming blocked`);
         setHasError(true);
         onVideoError?.();
       }
@@ -206,7 +207,7 @@ export const VideoSnippet = ({
   const handleIframeLoad = () => {
     setIsLoaded(true);
     onVideoReady?.();
-    console.log(`[VideoSnippet] ✅ YouTube iframe loaded for ${youtubeId}`);
+    devLog(`[VideoSnippet] ✅ YouTube iframe loaded for ${youtubeId}`);
   };
 
   return (
