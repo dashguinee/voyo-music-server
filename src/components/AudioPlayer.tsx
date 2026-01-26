@@ -1052,15 +1052,35 @@ export const AudioPlayer = () => {
       audio.play().catch(() => {});
     } else if (!isPlaying && !audio.paused) {
       audio.pause();
-      // Suspend AudioContext after short delay (allows for quick resume)
-      // Only if tab is also hidden (user not actively using app)
-      setTimeout(() => {
+    }
+  }, [isPlaying, playbackSource]);
+
+  // Suspend AudioContext when paused + hidden (delayed to allow quick resume)
+  const suspendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    // Clear any pending suspend timer
+    if (suspendTimerRef.current) {
+      clearTimeout(suspendTimerRef.current);
+      suspendTimerRef.current = null;
+    }
+
+    // Only set suspend timer when not playing
+    if (!isPlaying && (playbackSource === 'cached' || playbackSource === 'r2')) {
+      suspendTimerRef.current = setTimeout(() => {
         if (!usePlayerStore.getState().isPlaying && document.visibilityState === 'hidden') {
           audioContextRef.current?.suspend();
           devLog('🔋 [Battery] AudioContext suspended (paused + hidden)');
         }
+        suspendTimerRef.current = null;
       }, 5000);
     }
+
+    return () => {
+      if (suspendTimerRef.current) {
+        clearTimeout(suspendTimerRef.current);
+        suspendTimerRef.current = null;
+      }
+    };
   }, [isPlaying, playbackSource]);
 
   // Handle volume (only when using audio element: cached or r2)
