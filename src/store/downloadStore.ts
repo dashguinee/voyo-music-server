@@ -25,8 +25,8 @@ import {
 } from '../services/downloadManager';
 import { audioEngine } from '../services/audioEngine';
 
-// API URL for proxy downloads
-const API_URL = 'https://voyo-music-api.fly.dev';
+// Edge Worker for extraction (replaces Fly.io - FREE + faster)
+const EDGE_WORKER_URL = 'https://voyo-edge.dash-webtv.workers.dev';
 
 interface DownloadProgress {
   trackId: string;
@@ -221,8 +221,8 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
       const bitrateValue = audioEngine.getBitrateValue(optimalBitrate);
       console.log(`🎵 BOOST: Using adaptive bitrate: ${optimalBitrate} (${bitrateValue}kbps)`);
 
-      // Build proxy URL - server will fetch and pipe to us
-      const proxyUrl = `${API_URL}/proxy?v=${normalizedId}&quality=high`;
+      // Extract via Edge Worker (FREE, 300+ locations, handles CORS)
+      const extractUrl = `${EDGE_WORKER_URL}/extract/${normalizedId}`;
 
       // Download with progress tracking (throttled to 500ms)
       let lastUpdateTime = 0;
@@ -231,7 +231,7 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
 
       const success = await downloadTrack(
         normalizedId,
-        proxyUrl,
+        extractUrl,
         { title, artist, duration, thumbnail, quality: 'boosted' },
         'boosted',
         (progress) => {
@@ -325,16 +325,16 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
       return;
     }
 
-    console.log('🎵 CACHE: Auto-caching track:', title, '| quality: standard');
+    console.log('🎵 CACHE: Auto-caching track:', title);
 
     try {
-      // Use standard quality for auto-cache (saves bandwidth)
-      const proxyUrl = `${API_URL}/proxy?v=${normalizedId}&quality=standard`;
+      // Extract via Edge Worker (FREE, handles CORS)
+      const extractUrl = `${EDGE_WORKER_URL}/extract/${normalizedId}`;
 
       // Silent download - no progress UI updates
       const success = await downloadTrack(
         normalizedId,
-        proxyUrl,
+        extractUrl,
         { title, artist, duration, thumbnail, quality: 'standard' },
         'standard'
       );
