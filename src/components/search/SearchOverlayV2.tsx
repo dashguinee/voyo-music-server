@@ -128,7 +128,7 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
 
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const searchIdRef = useRef(0); // Monotonic counter to ignore stale results
   const { addToQueue, updateDiscoveryForTrack } = usePlayerStore();
 
   // Load search history
@@ -148,7 +148,7 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
     });
   };
 
-  // Focus input when opened
+  // Focus input when opened, clean state when closed
   useEffect(() => {
     if (isOpen && inputRef.current) {
       setTimeout(() => inputRef.current?.focus(), 100);
@@ -157,6 +157,9 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
       setResults([]);
       setQuery('');
       setError(null);
+      setIsSearching(false);
+      searchIdRef.current++; // cancel any in-flight search
+      if (debounceRef.current) clearTimeout(debounceRef.current);
     }
   }, [isOpen]);
 
@@ -164,34 +167,31 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
   const performSearch = useCallback(async (searchQuery: string) => {
     if (!searchQuery.trim() || searchQuery.trim().length < 2) {
       setResults([]);
+      setIsSearching(false);
       return;
     }
 
-    // Cancel previous request
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    abortControllerRef.current = new AbortController();
+    // Increment search ID — any older in-flight request becomes stale
+    const thisSearchId = ++searchIdRef.current;
 
     setIsSearching(true);
     setError(null);
     try {
-      // CHECK CACHE FIRST
+      // CHECK CACHE FIRST — instant, no loading flash
       const cachedResults = searchCache.get(searchQuery);
       if (cachedResults) {
-        setResults(cachedResults);
-        setIsSearching(false);
+        if (searchIdRef.current === thisSearchId) {
+          setResults(cachedResults);
+          setIsSearching(false);
+        }
         return;
       }
 
       const dbTracks = await searchDatabase(searchQuery, 20);
 
-      // Check if this request was aborted
-      if (abortControllerRef.current?.signal.aborted) {
-        return;
-      }
+      // Stale check: if user typed more while we were fetching, discard
+      if (searchIdRef.current !== thisSearchId) return;
 
-      // Convert Track to SearchResult format
       const searchResults: SearchResult[] = dbTracks.map(track => ({
         voyoId: track.trackId || track.id,
         title: track.title,
@@ -202,33 +202,43 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
       }));
 
       setResults(searchResults);
+      setIsSearching(false);
       saveToHistory(searchQuery);
 
-      // Cache for next time
       if (searchResults.length > 0) {
         searchCache.set(searchQuery, searchResults);
       }
 
-      // DATABASE SYNC: Every search result goes to collective brain
       syncSearchResults(searchResults);
 
     } catch (err: any) {
-      if (err?.name === 'AbortError') return;
+      if (searchIdRef.current !== thisSearchId) return; // stale
       devWarn('[Search] Error:', err);
-      setError(results.length === 0 ? 'No results found. Try a different search.' : null);
+      setError('No results found. Try a different search.');
       setResults([]);
-    } finally {
       setIsSearching(false);
     }
   }, []);
 
   const handleSearch = (value: string) => {
     setQuery(value);
-    if (value.trim().length < 2) {
+
+    // Don't clear results while typing — keep showing previous results
+    // Only clear if input is empty
+    if (!value.trim()) {
       setResults([]);
+      setIsSearching(false);
+      searchIdRef.current++; // cancel any in-flight
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      return;
     }
+
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => performSearch(value), 150);
+
+    // Short queries: longer debounce (user still typing)
+    // Longer queries: shorter debounce (more intentional)
+    const delay = value.trim().length <= 3 ? 200 : 120;
+    debounceRef.current = setTimeout(() => performSearch(value), delay);
   };
 
   // Convert search result to track
