@@ -143,8 +143,8 @@ export const BoostSettings = ({ isOpen, onClose }: BoostSettingsProps) => {
                       size={22}
                       speed={0.5}
                     />
-                    <span className="text-[11px] font-bold">Calm</span>
-                    <span className="text-[9px] opacity-70">Relaxed</span>
+                    <span className="text-[11px] font-bold">Cool</span>
+                    <span className="text-[9px] opacity-70">Balanced</span>
                   </motion.button>
 
                   {/* VOYEX Preset - Locked to boosted tracks */}
@@ -173,7 +173,7 @@ export const BoostSettings = ({ isOpen, onClose }: BoostSettingsProps) => {
                 </div>
                 <div className="text-[10px] text-gray-500 mt-3 text-center">
                   {boostProfile === 'boosted' && 'Warm bass boost with speaker protection'}
-                  {boostProfile === 'calm' && 'Relaxed, balanced listening'}
+                  {boostProfile === 'calm' && 'Balanced listening'}
                   {boostProfile === 'voyex' && isCurrentTrackBoosted && 'Studio'}
                   {boostProfile === 'voyex' && !isCurrentTrackBoosted && 'VOYEX requires HD audio'}
                 </div>
