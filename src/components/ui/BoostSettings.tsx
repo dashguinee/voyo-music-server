@@ -10,7 +10,7 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Zap, Wifi, WifiOff, Trash2, X, HardDrive, Download, Settings, Crown, Eye, EyeOff, Lock } from 'lucide-react';
+import { Zap, Wifi, WifiOff, Trash2, X, HardDrive, Download, Settings, Crown, Eye, EyeOff } from 'lucide-react';
 import { useDownloadStore } from '../../store/downloadStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { LottieIcon } from './LottieIcon';
@@ -33,10 +33,7 @@ export const BoostSettings = ({ isOpen, onClose }: BoostSettingsProps) => {
     manualBoostCount,
   } = useDownloadStore();
 
-  const { boostProfile, setBoostProfile, oyeBarBehavior, setOyeBarBehavior, playbackSource, voyexSpatial, setVoyexSpatial } = usePlayerStore();
-
-  // VOYEX is available for boosted tracks (local cache OR R2 server cache)
-  const isCurrentTrackBoosted = playbackSource === 'cached' || playbackSource === 'r2';
+  const { boostProfile, setBoostProfile, oyeBarBehavior, setOyeBarBehavior, voyexSpatial, setVoyexSpatial } = usePlayerStore();
 
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
@@ -147,41 +144,32 @@ export const BoostSettings = ({ isOpen, onClose }: BoostSettingsProps) => {
                     <span className="text-[9px] opacity-70">Balanced</span>
                   </motion.button>
 
-                  {/* VOYEX Preset - Locked to boosted tracks */}
+                  {/* VOYEX Preset */}
                   <motion.button
-                    onClick={() => isCurrentTrackBoosted && setBoostProfile('voyex')}
-                    disabled={!isCurrentTrackBoosted}
+                    onClick={() => setBoostProfile('voyex')}
                     className={`flex flex-col items-center gap-1 p-3 rounded-xl border transition-all relative ${
-                      boostProfile === 'voyex' && isCurrentTrackBoosted
+                      boostProfile === 'voyex'
                         ? 'bg-gradient-to-br from-purple-500/20 to-pink-500/20 border-purple-500/30 text-purple-300'
-                        : isCurrentTrackBoosted
-                          ? 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'
-                          : 'bg-white/5 border-white/10 text-gray-600 opacity-50 cursor-not-allowed'
+                        : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'
                     }`}
-                    whileHover={isCurrentTrackBoosted ? { scale: 1.02 } : {}}
-                    whileTap={isCurrentTrackBoosted ? { scale: 0.98 } : {}}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
                   >
-                    {!isCurrentTrackBoosted && (
-                      <div className="absolute top-1 right-1">
-                        <Lock size={10} className="text-gray-500" />
-                      </div>
-                    )}
-                    <Crown size={22} className={boostProfile === 'voyex' && isCurrentTrackBoosted ? 'text-purple-300' : ''} />
+                    <Crown size={22} className={boostProfile === 'voyex' ? 'text-purple-300' : ''} />
                     <span className="text-[11px] font-bold">VOYEX</span>
-                    <span className="text-[9px] opacity-70">{isCurrentTrackBoosted ? 'Full Exp' : 'HD audio only'}</span>
+                    <span className="text-[9px] opacity-70">Studio</span>
                   </motion.button>
                 </div>
                 <div className="text-[10px] text-gray-500 mt-3 text-center">
                   {boostProfile === 'boosted' && 'Warm bass boost with speaker protection'}
                   {boostProfile === 'calm' && 'Balanced listening'}
-                  {boostProfile === 'voyex' && isCurrentTrackBoosted && 'Studio'}
-                  {boostProfile === 'voyex' && !isCurrentTrackBoosted && 'VOYEX requires HD audio'}
+                  {boostProfile === 'voyex' && 'Studio'}
                 </div>
               </div>
 
               {/* VOYEX Spatial Slider */}
               <AnimatePresence>
-                {boostProfile === 'voyex' && isCurrentTrackBoosted && (
+                {boostProfile === 'voyex' && (
                   <motion.div
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: 'auto' }}
