@@ -169,7 +169,7 @@ const TrackItem = memo(({
       }}
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.03 }}
+      transition={{ delay: index * 0.015 }}
       drag="x"
       dragConstraints={{ left: 0, right: 100 }}
       dragElastic={0.2}
@@ -415,14 +415,11 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
 
   const handleSelectTrack = useCallback((result: SearchResult) => {
     const track = resultToTrack(result);
-    // POOL INTEGRATION: Add played search result to track pool for recommendations
     addSearchResultsToPool([track]);
-    // CONSOLIDATED: playTrack handles everything atomically
     usePlayerStore.getState().playTrack(track);
-    // FIX A4: Signal to Classic mode that NowPlaying should open
     usePlayerStore.getState().setShouldOpenNowPlaying(true);
-    // DON'T auto-close - user stays on search, clicks X when done
-  }, [resultToTrack]);
+    onClose();
+  }, [resultToTrack, onClose]);
 
   const handleAddToQueue = useCallback((result: SearchResult, pos: { x: number; y: number }) => {
     setFlyingCD({
@@ -690,7 +687,6 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
                   <div className="text-center py-16">
                     <Music2 className="w-16 h-16 mx-auto mb-4 text-purple-400/40" />
                     <p className="text-white/30">Search for any song or artist</p>
-                    <p className="text-white/20 text-sm mt-2">Drag results to the portals →</p>
                   </div>
                 )}
 
@@ -749,10 +745,8 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
                 )}
               </div>
 
-              {/* Footer hint */}
-              <div className="mt-4 text-center text-white/20 text-xs">
-                Drag tracks to portals or use buttons to add
-              </div>
+              {/* Spacer */}
+              <div className="mt-4" />
             </motion.div>
 
             {/* Right Side - LED Strip Portal Zones - ALWAYS VISIBLE */}
