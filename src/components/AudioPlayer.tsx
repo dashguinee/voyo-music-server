@@ -121,6 +121,22 @@ export const AudioPlayer = () => {
   const audioEnhancedRef = useRef<boolean>(false);
   const currentProfileRef = useRef<BoostPreset>('boosted');
 
+  // VOYEX Spatial Layer refs
+  const spatialEnhancedRef = useRef<boolean>(false);
+  const crossfeedLeftGainRef = useRef<GainNode | null>(null);
+  const crossfeedRightGainRef = useRef<GainNode | null>(null);
+  const panDepthGainRef = useRef<GainNode | null>(null);
+  const haasDelayRef = useRef<DelayNode | null>(null);
+  const reverbDamping1Ref = useRef<BiquadFilterNode | null>(null);
+  const reverbDamping2Ref = useRef<BiquadFilterNode | null>(null);
+  const reverbDamping3Ref = useRef<BiquadFilterNode | null>(null);
+  const reverbFeedback1Ref = useRef<GainNode | null>(null);
+  const reverbFeedback2Ref = useRef<GainNode | null>(null);
+  const reverbFeedback3Ref = useRef<GainNode | null>(null);
+  const reverbWetGainRef = useRef<GainNode | null>(null);
+  const subHarmonicGainRef = useRef<GainNode | null>(null);
+  const spatialInputRef = useRef<GainNode | null>(null);
+
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const lastTrackIdRef = useRef<string | null>(null);
   const previousTrackRef = useRef<Track | null>(null);
@@ -135,7 +151,7 @@ export const AudioPlayer = () => {
 
   // Store state
   const {
-    currentTrack, isPlaying, volume, seekPosition, playbackRate, boostProfile,
+    currentTrack, isPlaying, volume, seekPosition, playbackRate, boostProfile, voyexSpatial,
     currentTime: savedCurrentTime, playbackSource, progress, queue,
     setCurrentTime, setDuration, setProgress, clearSeekPosition, togglePlay,
     nextTrack, predictNextTrack, setBufferHealth, setPlaybackSource,
@@ -334,12 +350,70 @@ export const AudioPlayer = () => {
       audioContextRef.current = ctx;
       currentProfileRef.current = preset;
 
-      // 'off' = RAW AUDIO - bypass all EQ, connect directly to output
+      // === VOYEX SPATIAL LAYER (created once, shared by all presets) ===
+      const spInput = ctx.createGain(); spInput.gain.value = 1;
+      spatialInputRef.current = spInput;
+
+      const cfSplitter = ctx.createChannelSplitter(2);
+      const cfMerger = ctx.createChannelMerger(2);
+      const cfLD = ctx.createDelay(0.01); cfLD.delayTime.value = 0.0003;
+      const cfLF = ctx.createBiquadFilter(); cfLF.type = 'lowpass'; cfLF.frequency.value = 6000;
+      const cfLG = ctx.createGain(); cfLG.gain.value = 0; crossfeedLeftGainRef.current = cfLG;
+      const cfRD = ctx.createDelay(0.01); cfRD.delayTime.value = 0.0003;
+      const cfRF = ctx.createBiquadFilter(); cfRF.type = 'lowpass'; cfRF.frequency.value = 6000;
+      const cfRG = ctx.createGain(); cfRG.gain.value = 0; crossfeedRightGainRef.current = cfRG;
+
+      spInput.connect(cfSplitter);
+      cfSplitter.connect(cfMerger, 0, 0); cfSplitter.connect(cfMerger, 1, 1);
+      cfSplitter.connect(cfLD, 0); cfLD.connect(cfLF); cfLF.connect(cfLG); cfLG.connect(cfMerger, 0, 1);
+      cfSplitter.connect(cfRD, 1); cfRD.connect(cfRF); cfRF.connect(cfRG); cfRG.connect(cfMerger, 0, 0);
+
+      const panner = ctx.createStereoPanner(); panner.pan.value = 0;
+      const lfo1 = ctx.createOscillator(); lfo1.type = 'sine'; lfo1.frequency.value = 0.037;
+      const lfo2 = ctx.createOscillator(); lfo2.type = 'sine'; lfo2.frequency.value = 0.071;
+      const lfo3 = ctx.createOscillator(); lfo3.type = 'sine'; lfo3.frequency.value = 0.113;
+      const panD = ctx.createGain(); panD.gain.value = 0; panDepthGainRef.current = panD;
+      lfo1.connect(panD); lfo2.connect(panD); lfo3.connect(panD); panD.connect(panner.pan);
+      lfo1.start(); lfo2.start(); lfo3.start();
+      cfMerger.connect(panner);
+
+      const hS = ctx.createChannelSplitter(2); const hM = ctx.createChannelMerger(2);
+      const hD = ctx.createDelay(0.02); hD.delayTime.value = 0; haasDelayRef.current = hD;
+      panner.connect(hS); hS.connect(hM, 0, 0); hS.connect(hD, 1); hD.connect(hM, 0, 1);
+      hM.connect(ctx.destination);
+
+      const rvbIn = ctx.createGain(); rvbIn.gain.value = 1;
+      const rvbWet = ctx.createGain(); rvbWet.gain.value = 0; reverbWetGainRef.current = rvbWet;
+      const rvbT = [0.037, 0.047, 0.059];
+      const rvbDR = [reverbDamping1Ref, reverbDamping2Ref, reverbDamping3Ref];
+      const rvbFR = [reverbFeedback1Ref, reverbFeedback2Ref, reverbFeedback3Ref];
+      for (let i = 0; i < 3; i++) {
+        const dl = ctx.createDelay(0.1); dl.delayTime.value = rvbT[i];
+        const dm = ctx.createBiquadFilter(); dm.type = 'lowpass'; dm.frequency.value = 4000;
+        const fb = ctx.createGain(); fb.gain.value = 0;
+        rvbIn.connect(dl); dl.connect(dm); dm.connect(fb); fb.connect(dl); dm.connect(rvbWet);
+        rvbDR[i].current = dm; rvbFR[i].current = fb;
+      }
+      spInput.connect(rvbIn); rvbWet.connect(ctx.destination);
+
+      const sBP = ctx.createBiquadFilter(); sBP.type = 'bandpass'; sBP.frequency.value = 90; sBP.Q.value = 1;
+      const sSh = ctx.createWaveShaper();
+      const sC = new Float32Array(44100);
+      for (let si = 0; si < 44100; si++) { const sx = (si * 2) / 44100 - 1; sC[si] = Math.tanh(sx * 3) * 0.8; }
+      sSh.curve = sC; sSh.oversample = '2x';
+      const sLP = ctx.createBiquadFilter(); sLP.type = 'lowpass'; sLP.frequency.value = 80;
+      const sMx = ctx.createGain(); sMx.gain.value = 0; subHarmonicGainRef.current = sMx;
+      spInput.connect(sBP); sBP.connect(sSh); sSh.connect(sLP); sLP.connect(sMx); sMx.connect(ctx.destination);
+
+      spatialEnhancedRef.current = true;
+      // All presets route final output → spInput → spatial chain → destination
+
+      // 'off' = RAW AUDIO - bypass all EQ, connect directly to spatial input
       if (preset === 'off') {
         devLog('🎵 [VOYO] RAW mode - EQ bypassed');
         const source = ctx.createMediaElementSource(audioRef.current);
         sourceNodeRef.current = source;
-        source.connect(ctx.destination);
+        source.connect(spInput);
         audioEnhancedRef.current = true;
         return;
       }
@@ -492,7 +566,7 @@ export const AudioPlayer = () => {
           harmonic.connect(masterGain);
         }
 
-        masterGain.connect(ctx.destination);
+        masterGain.connect(spInput);
         audioEnhancedRef.current = true;
         devLog('🎛️ [VOYO] Multiband: LOW(<180Hz) 5:1 | MID(180-4.5k) 2:1 | HIGH(>4.5k) 3:1');
         return;
@@ -564,10 +638,10 @@ export const AudioPlayer = () => {
         delayL.connect(merger, 0, 0);
         delayR.connect(merger, 0, 1);
         merger.connect(comp);
-        comp.connect(ctx.destination);
+        comp.connect(spInput);
       } else {
         masterGain.connect(comp);
-        comp.connect(ctx.destination);
+        comp.connect(spInput);
       }
 
       audioEnhancedRef.current = true;
@@ -633,6 +707,68 @@ export const AudioPlayer = () => {
       compressorRef.current.ratio.value = s.compressor.ratio;
     }
     devLog(`🎵 [VOYO] Switched to ${preset.toUpperCase()}`);
+  }, []);
+
+  // Update VOYEX Spatial slider parameters
+  const updateVoyexSpatial = useCallback((value: number) => {
+    if (!spatialEnhancedRef.current) return;
+    const v = Math.max(-100, Math.min(100, value));
+
+    if (v === 0) {
+      // TRUE BYPASS - all spatial gains at zero
+      crossfeedLeftGainRef.current && (crossfeedLeftGainRef.current.gain.value = 0);
+      crossfeedRightGainRef.current && (crossfeedRightGainRef.current.gain.value = 0);
+      panDepthGainRef.current && (panDepthGainRef.current.gain.value = 0);
+      haasDelayRef.current && (haasDelayRef.current.delayTime.value = 0);
+      reverbWetGainRef.current && (reverbWetGainRef.current.gain.value = 0);
+      reverbFeedback1Ref.current && (reverbFeedback1Ref.current.gain.value = 0);
+      reverbFeedback2Ref.current && (reverbFeedback2Ref.current.gain.value = 0);
+      reverbFeedback3Ref.current && (reverbFeedback3Ref.current.gain.value = 0);
+      reverbDamping1Ref.current && (reverbDamping1Ref.current.frequency.value = 4000);
+      reverbDamping2Ref.current && (reverbDamping2Ref.current.frequency.value = 4000);
+      reverbDamping3Ref.current && (reverbDamping3Ref.current.frequency.value = 4000);
+      subHarmonicGainRef.current && (subHarmonicGainRef.current.gain.value = 0);
+      devLog('🎛️ [VOYO] Spatial: BALANCE (bypass)');
+      return;
+    }
+
+    if (v < 0) {
+      // DIVE: crossfeed + dark reverb + sub-harmonics
+      const intensity = Math.abs(v) / 100;
+      crossfeedLeftGainRef.current && (crossfeedLeftGainRef.current.gain.value = intensity * 0.4);
+      crossfeedRightGainRef.current && (crossfeedRightGainRef.current.gain.value = intensity * 0.4);
+      reverbWetGainRef.current && (reverbWetGainRef.current.gain.value = intensity * 0.35);
+      reverbFeedback1Ref.current && (reverbFeedback1Ref.current.gain.value = 0.75);
+      reverbFeedback2Ref.current && (reverbFeedback2Ref.current.gain.value = 0.75);
+      reverbFeedback3Ref.current && (reverbFeedback3Ref.current.gain.value = 0.75);
+      const dampFreq = 4000 - (intensity * 2000);
+      reverbDamping1Ref.current && (reverbDamping1Ref.current.frequency.value = dampFreq);
+      reverbDamping2Ref.current && (reverbDamping2Ref.current.frequency.value = dampFreq);
+      reverbDamping3Ref.current && (reverbDamping3Ref.current.frequency.value = dampFreq);
+      subHarmonicGainRef.current && (subHarmonicGainRef.current.gain.value = intensity * 0.2);
+      // IMMERSE off
+      panDepthGainRef.current && (panDepthGainRef.current.gain.value = 0);
+      haasDelayRef.current && (haasDelayRef.current.delayTime.value = 0);
+      devLog(`🎛️ [VOYO] Spatial: DIVE ${Math.round(intensity * 100)}%`);
+    } else {
+      // IMMERSE: organic panning + Haas widening + bright reverb
+      const intensity = v / 100;
+      panDepthGainRef.current && (panDepthGainRef.current.gain.value = intensity * 0.3);
+      haasDelayRef.current && (haasDelayRef.current.delayTime.value = intensity * 0.004);
+      reverbWetGainRef.current && (reverbWetGainRef.current.gain.value = intensity * 0.25);
+      reverbFeedback1Ref.current && (reverbFeedback1Ref.current.gain.value = 0.6);
+      reverbFeedback2Ref.current && (reverbFeedback2Ref.current.gain.value = 0.6);
+      reverbFeedback3Ref.current && (reverbFeedback3Ref.current.gain.value = 0.6);
+      const dampFreq = 4000 + (intensity * 4000);
+      reverbDamping1Ref.current && (reverbDamping1Ref.current.frequency.value = dampFreq);
+      reverbDamping2Ref.current && (reverbDamping2Ref.current.frequency.value = dampFreq);
+      reverbDamping3Ref.current && (reverbDamping3Ref.current.frequency.value = dampFreq);
+      // DIVE off
+      crossfeedLeftGainRef.current && (crossfeedLeftGainRef.current.gain.value = 0);
+      crossfeedRightGainRef.current && (crossfeedRightGainRef.current.gain.value = 0);
+      subHarmonicGainRef.current && (subHarmonicGainRef.current.gain.value = 0);
+      devLog(`🎛️ [VOYO] Spatial: IMMERSE ${Math.round(intensity * 100)}%`);
+    }
   }, []);
 
   // === MAIN TRACK LOADING LOGIC ===
@@ -1118,6 +1254,18 @@ export const AudioPlayer = () => {
       updateBoostPreset(boostProfile as BoostPreset);
     }
   }, [boostProfile, playbackSource, updateBoostPreset]);
+
+  // VOYEX Spatial slider: apply when slider changes or preset changes
+  useEffect(() => {
+    if ((playbackSource === 'cached' || playbackSource === 'r2') && spatialEnhancedRef.current) {
+      if (boostProfile === 'voyex') {
+        updateVoyexSpatial(voyexSpatial);
+      } else {
+        // Not VOYEX - mute spatial (true bypass)
+        updateVoyexSpatial(0);
+      }
+    }
+  }, [voyexSpatial, boostProfile, playbackSource, updateVoyexSpatial]);
 
   // Media Session (only when using audio element: cached or r2)
   useEffect(() => {

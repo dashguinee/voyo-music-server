@@ -231,6 +231,7 @@ interface PlayerStore {
   // 🟣 voyex (Purple) - Full holistic experience
   // 🔴 xtreme (Red) - Maximum bass power
   boostProfile: 'off' | 'boosted' | 'calm' | 'voyex' | 'xtreme';
+  voyexSpatial: number;
 
   // OYÉ Bar Behavior - Signature VOYO element
   // 'fade' - stays visible but ghosted after timeout
@@ -329,6 +330,7 @@ interface PlayerStore {
   setPrefetchStatus: (trackId: string, status: PrefetchStatus) => void;
   detectNetworkQuality: () => void;
   setBoostProfile: (profile: 'off' | 'boosted' | 'calm' | 'voyex' | 'xtreme') => void;
+  setVoyexSpatial: (value: number) => void;
   setOyeBarBehavior: (behavior: 'fade' | 'disappear') => void;
 }
 
@@ -363,6 +365,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   prefetchStatus: new Map(),
   playbackSource: null,
   boostProfile: 'boosted', // Default to BOOSTED (warm standard with protection)
+  voyexSpatial: 0,
   oyeBarBehavior: 'fade', // Default to FADE (signature always visible)
 
   // FIX 2: Persist queue and history across refreshes
@@ -1344,6 +1347,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   setPlaybackSource: (source) => set({ playbackSource: source }),
 
   setBoostProfile: (profile) => set({ boostProfile: profile }),
+  setVoyexSpatial: (value) => set({ voyexSpatial: Math.max(-100, Math.min(100, value)) }),
   setOyeBarBehavior: (behavior) => set({ oyeBarBehavior: behavior }),
 
   setPrefetchStatus: (trackId, status) => {

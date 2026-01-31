@@ -33,7 +33,7 @@ export const BoostSettings = ({ isOpen, onClose }: BoostSettingsProps) => {
     manualBoostCount,
   } = useDownloadStore();
 
-  const { boostProfile, setBoostProfile, oyeBarBehavior, setOyeBarBehavior, playbackSource } = usePlayerStore();
+  const { boostProfile, setBoostProfile, oyeBarBehavior, setOyeBarBehavior, playbackSource, voyexSpatial, setVoyexSpatial } = usePlayerStore();
 
   // VOYEX is available for boosted tracks (local cache OR R2 server cache)
   const isCurrentTrackBoosted = playbackSource === 'cached' || playbackSource === 'r2';
@@ -178,6 +178,53 @@ export const BoostSettings = ({ isOpen, onClose }: BoostSettingsProps) => {
                   {boostProfile === 'voyex' && !isCurrentTrackBoosted && '🔒 VOYEX requires HD audio (boost or R2 cache)'}
                 </div>
               </div>
+
+              {/* VOYEX Spatial Slider */}
+              <AnimatePresence>
+                {boostProfile === 'voyex' && isCurrentTrackBoosted && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="bg-white/5 rounded-2xl p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="text-sm font-medium text-white">Spatial Experience</div>
+                        <div className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          voyexSpatial < -5 ? 'bg-purple-500/20 text-purple-300' :
+                          voyexSpatial > 5 ? 'bg-pink-500/20 text-pink-300' :
+                          'bg-white/10 text-gray-400'
+                        }`}>
+                          {voyexSpatial < -5 ? 'DIVE' : voyexSpatial > 5 ? 'IMMERSE' : 'BALANCE'}
+                        </div>
+                      </div>
+                      <input
+                        type="range"
+                        min="-100"
+                        max="100"
+                        value={voyexSpatial}
+                        onChange={(e) => setVoyexSpatial(Number(e.target.value))}
+                        className="w-full h-2 rounded-full appearance-none cursor-pointer"
+                        style={{
+                          background: `linear-gradient(to right, #a855f7, #6b21a8 45%, #3b0764 50%, #831843 55%, #ec4899)`,
+                        }}
+                      />
+                      <div className="flex justify-between mt-2">
+                        <span className="text-[10px] text-purple-400 font-medium">DIVE</span>
+                        <span className="text-[10px] text-gray-500">BALANCE</span>
+                        <span className="text-[10px] text-pink-400 font-medium">IMMERSE</span>
+                      </div>
+                      <div className="text-[10px] text-gray-500 mt-2 text-center">
+                        {voyexSpatial < -5 && 'Sound dissolves into you — dark, warm, physical'}
+                        {voyexSpatial > 5 && 'Music breaks free — spatial, wide, all around you'}
+                        {voyexSpatial >= -5 && voyexSpatial <= 5 && 'Pure VOYEX mastering — no spatial effects'}
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* Auto-Boost Toggle */}
               <div className="bg-white/5 rounded-2xl p-4">
