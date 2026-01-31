@@ -717,13 +717,38 @@ export const AudioPlayer = () => {
     devLog(`🎵 [VOYO] Switched to ${preset.toUpperCase()}`);
   }, []);
 
-  // Update VOYEX Spatial slider parameters
+  // Update VOYEX Spatial slider — controls spatial layer + shifts multiband mastering character
   const updateVoyexSpatial = useCallback((value: number) => {
     if (!spatialEnhancedRef.current) return;
     const v = Math.max(-100, Math.min(100, value));
 
+    // --- Multiband mastering shift (subtle, always active) ---
+    // DIV: warmer mastering (boost lows, soften highs)
+    // IMM: open mastering (brighten highs, present mids)
+    // Center: default VOYEX mastering
+    const slider01 = v / 100; // -1 to +1
+    if (multibandLowGainRef.current && multibandMidGainRef.current && multibandHighGainRef.current) {
+      // Base gains from VOYEX preset: low=1.3, mid=1.1, high=1.25
+      if (v < 0) {
+        const i = Math.abs(slider01);
+        multibandLowGainRef.current.gain.value = 1.3 + (i * 0.2);   // 1.3 → 1.5 (warmer)
+        multibandMidGainRef.current.gain.value = 1.1;                 // untouched (clean vocals)
+        multibandHighGainRef.current.gain.value = 1.25 - (i * 0.15); // 1.25 → 1.1 (softer)
+      } else if (v > 0) {
+        const i = slider01;
+        multibandLowGainRef.current.gain.value = 1.3;                 // solid bass
+        multibandMidGainRef.current.gain.value = 1.1 + (i * 0.1);    // 1.1 → 1.2 (vocal presence)
+        multibandHighGainRef.current.gain.value = 1.25 + (i * 0.15); // 1.25 → 1.4 (air, sparkle)
+      } else {
+        multibandLowGainRef.current.gain.value = 1.3;
+        multibandMidGainRef.current.gain.value = 1.1;
+        multibandHighGainRef.current.gain.value = 1.25;
+      }
+    }
+
+    // --- Spatial layer ---
     if (v === 0) {
-      // TRUE BYPASS - all spatial gains at zero
+      // TRUE BYPASS - all spatial effects off, multiband at default
       crossfeedLeftGainRef.current && (crossfeedLeftGainRef.current.gain.value = 0);
       crossfeedRightGainRef.current && (crossfeedRightGainRef.current.gain.value = 0);
       panDepthGainRef.current && (panDepthGainRef.current.gain.value = 0);
@@ -742,11 +767,10 @@ export const AudioPlayer = () => {
     }
 
     if (v < 0) {
-      // DIVE: 70% of original — warm crossfeed + dark reverb + sub + darkening
+      // DIVE: warm crossfeed + dark reverb + sub + gentle darkening
       const intensity = Math.abs(v) / 100;
       crossfeedLeftGainRef.current && (crossfeedLeftGainRef.current.gain.value = intensity * 0.28);
       crossfeedRightGainRef.current && (crossfeedRightGainRef.current.gain.value = intensity * 0.28);
-      // Low-pass: 20kHz → 8.8kHz (warm, still clear)
       diveLowPassRef.current && (diveLowPassRef.current.frequency.value = 20000 - (intensity * 11200));
       reverbWetGainRef.current && (reverbWetGainRef.current.gain.value = intensity * 0.24);
       reverbFeedback1Ref.current && (reverbFeedback1Ref.current.gain.value = 0.7);
@@ -762,10 +786,26 @@ export const AudioPlayer = () => {
       haasDelayRef.current && (haasDelayRef.current.delayTime.value = 0);
       devLog(`🎛️ [VOYO] Spatial: DIVE ${Math.round(intensity * 100)}%`);
     } else {
-      // IMMERSE: subtle spatial presence — gentle drift + mild widening + light reverb
+      // IMMERSE: spatial presence with smooth 8D surround in last 20%
       const intensity = v / 100;
-      panDepthGainRef.current && (panDepthGainRef.current.gain.value = intensity * 0.15);
-      haasDelayRef.current && (haasDelayRef.current.delayTime.value = intensity * 0.002);
+
+      // Pan depth + Haas: gentle 0-80%, surround opens up 80-100%
+      // Continuous curve — no discontinuity, no clicks
+      let panDepth: number;
+      let haas: number;
+      if (intensity <= 0.8) {
+        // 0-80%: subtle enhancement zone
+        panDepth = intensity * 0.15;           // 0 → 0.12
+        haas = intensity * 0.002;              // 0 → 1.6ms
+      } else {
+        // 80-100%: surround zone — opens up smoothly
+        const surround = (intensity - 0.8) / 0.2; // 0→1 within last 20%
+        panDepth = 0.12 + (surround * 0.18);  // 0.12 → 0.30
+        haas = 0.0016 + (surround * 0.002);   // 1.6ms → 3.6ms
+      }
+
+      panDepthGainRef.current && (panDepthGainRef.current.gain.value = panDepth);
+      haasDelayRef.current && (haasDelayRef.current.delayTime.value = haas);
       diveLowPassRef.current && (diveLowPassRef.current.frequency.value = 20000);
       reverbWetGainRef.current && (reverbWetGainRef.current.gain.value = intensity * 0.15);
       reverbFeedback1Ref.current && (reverbFeedback1Ref.current.gain.value = 0.5);
@@ -779,7 +819,7 @@ export const AudioPlayer = () => {
       // DIVE off
       crossfeedLeftGainRef.current && (crossfeedLeftGainRef.current.gain.value = 0);
       crossfeedRightGainRef.current && (crossfeedRightGainRef.current.gain.value = 0);
-      devLog(`🎛️ [VOYO] Spatial: IMMERSE ${Math.round(intensity * 100)}%`);
+      devLog(`🎛️ [VOYO] Spatial: IMMERSE ${Math.round(intensity * 100)}%${intensity > 0.8 ? ' [SURROUND]' : ''}`);
     }
   }, []);
 
