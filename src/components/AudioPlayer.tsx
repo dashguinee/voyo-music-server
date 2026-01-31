@@ -788,8 +788,10 @@ export const AudioPlayer = () => {
       diveReverbWetRef.current && (diveReverbWetRef.current.gain.value = 0);
       immerseReverbWetRef.current && (immerseReverbWetRef.current.gain.value = 0);
       subHarmonicGainRef.current && (subHarmonicGainRef.current.gain.value = 0);
-      // Gain compensation: restore baseline
-      gainNodeRef.current && (gainNodeRef.current.gain.value = 1.4);
+      // Gain compensation: restore VOYEX baseline (only when actually on VOYEX)
+      if (gainNodeRef.current && currentProfileRef.current === 'voyex') {
+        gainNodeRef.current.gain.value = 1.4;
+      }
       devLog('🎛️ [VOYO] INTENSITY: CENTER (baseline)');
       return;
     }
@@ -811,7 +813,9 @@ export const AudioPlayer = () => {
       haasDelayRef.current && (haasDelayRef.current.delayTime.value = 0);
       // GAIN COMPENSATION: reverb + sub + crossfeed + bass boost add energy
       // Pull back dry signal to keep perceived loudness constant
-      gainNodeRef.current && (gainNodeRef.current.gain.value = 1.4 * (1 - i * 0.18));
+      if (gainNodeRef.current && currentProfileRef.current === 'voyex') {
+        gainNodeRef.current.gain.value = 1.4 * (1 - i * 0.18);
+      }
       devLog(`🎛️ [VOYO] DIVE ${Math.round(i * 100)}%`);
     } else {
       // ── IMMERSE: music all around you ──
@@ -842,7 +846,9 @@ export const AudioPlayer = () => {
       crossfeedLeftGainRef.current && (crossfeedLeftGainRef.current.gain.value = 0);
       crossfeedRightGainRef.current && (crossfeedRightGainRef.current.gain.value = 0);
       // GAIN COMPENSATION: reverb + sub + high boost add energy
-      gainNodeRef.current && (gainNodeRef.current.gain.value = 1.4 * (1 - i * 0.12));
+      if (gainNodeRef.current && currentProfileRef.current === 'voyex') {
+        gainNodeRef.current.gain.value = 1.4 * (1 - i * 0.12);
+      }
       devLog(`🎛️ [VOYO] IMMERSE ${Math.round(i * 100)}%${i > 0.8 ? ' [SURROUND]' : ''}`);
     }
   }, []);
