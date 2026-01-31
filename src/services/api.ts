@@ -37,7 +37,7 @@ export interface StreamResponse {
 export async function searchMusic(query: string, limit: number = 10): Promise<SearchResult[]> {
   const response = await fetch(
     `${API_URL}/api/search?q=${encodeURIComponent(query)}&limit=${limit}`,
-    { signal: AbortSignal.timeout(8000) } // 8s timeout - database is primary
+    { signal: AbortSignal.timeout(4000) } // 4s timeout - DB results show first, this just supplements
   );
 
   if (!response.ok) {

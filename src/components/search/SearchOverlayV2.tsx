@@ -8,16 +8,17 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Search, X, Loader2, Music2, Clock, Play, ListPlus, Compass, Disc3, Sparkles } from 'lucide-react';
 import { usePlayerStore } from '../../store/playerStore';
 import { Track } from '../../types';
-import { SearchResult } from '../../services/api';
+import { searchMusic, SearchResult } from '../../services/api';
 import { getThumb } from '../../utils/thumbnail';
 import { SmartImage } from '../ui/SmartImage';
 import { searchCache } from '../../utils/searchCache';
 import { addSearchResultsToPool } from '../../services/personalization';
 import { syncSearchResults } from '../../services/databaseSync';
-import { searchTracks as searchDatabase } from '../../services/databaseDiscovery';
 import { AlbumSection } from './AlbumSection';
 import { VibesSection } from './VibesSection';
 import { devWarn } from '../../utils/logger';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { getVibeEssence } from '../../services/essenceEngine';
 
 interface SearchOverlayProps {
   isOpen: boolean;
@@ -163,7 +164,7 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
     }
   }, [isOpen]);
 
-  // Search 324K database, YouTube fallback built-in
+  // Progressive search: DB results appear fast, YouTube merges in after
   const performSearch = useCallback(async (searchQuery: string) => {
     if (!searchQuery.trim() || searchQuery.trim().length < 2) {
       setResults([]);
@@ -171,53 +172,103 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
       return;
     }
 
-    // Increment search ID — any older in-flight request becomes stale
     const thisSearchId = ++searchIdRef.current;
 
     setIsSearching(true);
     setError(null);
-    try {
-      // CHECK CACHE FIRST — instant, no loading flash
-      const cachedResults = searchCache.get(searchQuery);
-      if (cachedResults) {
-        if (searchIdRef.current === thisSearchId) {
-          setResults(cachedResults);
-          setIsSearching(false);
-        }
-        return;
+
+    // CHECK CACHE FIRST — instant
+    const cachedResults = searchCache.get(searchQuery);
+    if (cachedResults) {
+      if (searchIdRef.current === thisSearchId) {
+        setResults(cachedResults);
+        setIsSearching(false);
       }
+      return;
+    }
 
-      const dbTracks = await searchDatabase(searchQuery, 20);
+    // Deduplicate helper
+    const seen = new Set<string>();
+    const dedup = (items: SearchResult[]) => {
+      const unique: SearchResult[] = [];
+      for (const r of items) {
+        if (!seen.has(r.voyoId)) {
+          seen.add(r.voyoId);
+          unique.push(r);
+        }
+      }
+      return unique;
+    };
 
-      // Stale check: if user typed more while we were fetching, discard
+    let dbResults: SearchResult[] = [];
+
+    // PHASE 1: Database search — fast, show results immediately
+    if (isSupabaseConfigured) {
+      try {
+        const essence = getVibeEssence();
+        const { data } = await supabase!.rpc('search_tracks_by_vibe', {
+          p_query: searchQuery,
+          p_afro_heat: essence.afro_heat,
+          p_chill: essence.chill,
+          p_party: essence.party,
+          p_workout: essence.workout,
+          p_late_night: essence.late_night,
+          p_limit: 20,
+        });
+
+        if (searchIdRef.current !== thisSearchId) return;
+
+        if (data && data.length > 0) {
+          dbResults = data.map((t: any) => ({
+            voyoId: t.youtube_id,
+            title: t.title,
+            artist: t.artist || 'Unknown Artist',
+            duration: 0,
+            thumbnail: t.thumbnail_url || `https://i.ytimg.com/vi/${t.youtube_id}/hqdefault.jpg`,
+            views: Math.round((t.vibe_match_score || 0) * 100),
+          }));
+          dbResults = dedup(dbResults);
+          setResults(dbResults);
+          setIsSearching(false); // Stop spinner — user sees results
+          saveToHistory(searchQuery);
+        }
+      } catch (err) {
+        devWarn('[Search] DB error:', err);
+      }
+    }
+
+    if (searchIdRef.current !== thisSearchId) return;
+
+    // PHASE 2: YouTube search — appends fresh results (non-blocking)
+    try {
+      const ytResults = await searchMusic(searchQuery, 10);
+
       if (searchIdRef.current !== thisSearchId) return;
 
-      const searchResults: SearchResult[] = dbTracks.map(track => ({
-        voyoId: track.trackId || track.id,
-        title: track.title,
-        artist: track.artist,
-        duration: track.duration || 0,
-        thumbnail: track.coverUrl || getThumb(track.trackId || track.id),
-        views: track.oyeScore || 0,
-      }));
-
-      setResults(searchResults);
-      setIsSearching(false);
-      saveToHistory(searchQuery);
-
-      if (searchResults.length > 0) {
-        searchCache.set(searchQuery, searchResults);
+      if (ytResults.length > 0) {
+        const freshYt = dedup(ytResults);
+        if (freshYt.length > 0) {
+          const merged = [...dbResults, ...freshYt].slice(0, 20);
+          setResults(merged);
+        }
       }
-
-      syncSearchResults(searchResults);
-
-    } catch (err: any) {
-      if (searchIdRef.current !== thisSearchId) return; // stale
-      devWarn('[Search] Error:', err);
-      setError('No results found. Try a different search.');
-      setResults([]);
-      setIsSearching(false);
+    } catch (err) {
+      devWarn('[Search] YT error:', err);
     }
+
+    if (searchIdRef.current !== thisSearchId) return;
+
+    // Final: cache merged results, sync, clear loading
+    setIsSearching(false);
+    setResults(prev => {
+      if (prev.length > 0) {
+        searchCache.set(searchQuery, prev);
+        syncSearchResults(prev);
+      } else {
+        setError('No results found. Try a different search.');
+      }
+      return prev;
+    });
   }, []);
 
   const handleSearch = (value: string) => {
