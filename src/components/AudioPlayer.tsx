@@ -742,21 +742,21 @@ export const AudioPlayer = () => {
     }
 
     if (v < 0) {
-      // DIVE: subtle warmth — crossfeed + mild reverb + gentle sub + soft darkening
+      // DIVE: 70% of original — warm crossfeed + dark reverb + sub + darkening
       const intensity = Math.abs(v) / 100;
-      crossfeedLeftGainRef.current && (crossfeedLeftGainRef.current.gain.value = intensity * 0.2);
-      crossfeedRightGainRef.current && (crossfeedRightGainRef.current.gain.value = intensity * 0.2);
-      // Gentle low-pass: 20kHz → 12kHz (warmth without muffling)
-      diveLowPassRef.current && (diveLowPassRef.current.frequency.value = 20000 - (intensity * 8000));
-      reverbWetGainRef.current && (reverbWetGainRef.current.gain.value = intensity * 0.18);
-      reverbFeedback1Ref.current && (reverbFeedback1Ref.current.gain.value = 0.6);
-      reverbFeedback2Ref.current && (reverbFeedback2Ref.current.gain.value = 0.6);
-      reverbFeedback3Ref.current && (reverbFeedback3Ref.current.gain.value = 0.6);
-      const dampFreq = 4000 - (intensity * 1000);
+      crossfeedLeftGainRef.current && (crossfeedLeftGainRef.current.gain.value = intensity * 0.28);
+      crossfeedRightGainRef.current && (crossfeedRightGainRef.current.gain.value = intensity * 0.28);
+      // Low-pass: 20kHz → 8.8kHz (warm, still clear)
+      diveLowPassRef.current && (diveLowPassRef.current.frequency.value = 20000 - (intensity * 11200));
+      reverbWetGainRef.current && (reverbWetGainRef.current.gain.value = intensity * 0.24);
+      reverbFeedback1Ref.current && (reverbFeedback1Ref.current.gain.value = 0.7);
+      reverbFeedback2Ref.current && (reverbFeedback2Ref.current.gain.value = 0.7);
+      reverbFeedback3Ref.current && (reverbFeedback3Ref.current.gain.value = 0.7);
+      const dampFreq = 4000 - (intensity * 1400);
       reverbDamping1Ref.current && (reverbDamping1Ref.current.frequency.value = dampFreq);
       reverbDamping2Ref.current && (reverbDamping2Ref.current.frequency.value = dampFreq);
       reverbDamping3Ref.current && (reverbDamping3Ref.current.frequency.value = dampFreq);
-      subHarmonicGainRef.current && (subHarmonicGainRef.current.gain.value = intensity * 0.1);
+      subHarmonicGainRef.current && (subHarmonicGainRef.current.gain.value = intensity * 0.14);
       // IMMERSE off
       panDepthGainRef.current && (panDepthGainRef.current.gain.value = 0);
       haasDelayRef.current && (haasDelayRef.current.delayTime.value = 0);
