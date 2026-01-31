@@ -1844,6 +1844,12 @@ const BigCenterCard = memo(({ track, onExpandVideo, onShowLyrics, hideThumb }: {
         className="absolute inset-0 pointer-events-none"
         style={{ backgroundColor: 'rgba(139, 92, 246, 0.15)' }}
       />
+      {/* Title + Artist overlay */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
+      <div className="absolute bottom-3 left-3 right-3 pointer-events-none">
+        <p className="text-white font-bold text-[11px] truncate">{track.title}</p>
+        <p className="text-white/50 text-[9px] truncate">{track.artist}</p>
+      </div>
       {/* Lyrics hint icon */}
       {onShowLyrics && (
         <div className="absolute top-3 left-3 bg-black/50 backdrop-blur-sm rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity">
