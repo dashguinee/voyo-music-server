@@ -130,13 +130,8 @@ export const AudioPlayer = () => {
   const panDepthZGainRef = useRef<GainNode | null>(null);
   const diveLowPassRef = useRef<BiquadFilterNode | null>(null);
   const haasDelayRef = useRef<DelayNode | null>(null);
-  const reverbDamping1Ref = useRef<BiquadFilterNode | null>(null);
-  const reverbDamping2Ref = useRef<BiquadFilterNode | null>(null);
-  const reverbDamping3Ref = useRef<BiquadFilterNode | null>(null);
-  const reverbFeedback1Ref = useRef<GainNode | null>(null);
-  const reverbFeedback2Ref = useRef<GainNode | null>(null);
-  const reverbFeedback3Ref = useRef<GainNode | null>(null);
-  const reverbWetGainRef = useRef<GainNode | null>(null);
+  const diveReverbWetRef = useRef<GainNode | null>(null);
+  const immerseReverbWetRef = useRef<GainNode | null>(null);
   const subHarmonicGainRef = useRef<GainNode | null>(null);
   const spatialInputRef = useRef<GainNode | null>(null);
 
@@ -390,19 +385,49 @@ export const AudioPlayer = () => {
       panner.connect(hS); hS.connect(hM, 0, 0); hS.connect(hD, 1); hD.connect(hM, 0, 1);
       hM.connect(ctx.destination);
 
-      const rvbIn = ctx.createGain(); rvbIn.gain.value = 1;
-      const rvbWet = ctx.createGain(); rvbWet.gain.value = 0; reverbWetGainRef.current = rvbWet;
-      const rvbT = [0.037, 0.047, 0.059];
-      const rvbDR = [reverbDamping1Ref, reverbDamping2Ref, reverbDamping3Ref];
-      const rvbFR = [reverbFeedback1Ref, reverbFeedback2Ref, reverbFeedback3Ref];
-      for (let i = 0; i < 3; i++) {
-        const dl = ctx.createDelay(0.1); dl.delayTime.value = rvbT[i];
-        const dm = ctx.createBiquadFilter(); dm.type = 'lowpass'; dm.frequency.value = 4000;
-        const fb = ctx.createGain(); fb.gain.value = 0;
-        rvbIn.connect(dl); dl.connect(dm); dm.connect(fb); fb.connect(dl); dm.connect(rvbWet);
-        rvbDR[i].current = dm; rvbFR[i].current = fb;
-      }
-      spInput.connect(rvbIn); rvbWet.connect(ctx.destination);
+      // ── CONVOLVER REVERB — two real impulse responses (dark + bright) ──
+      // Replaces metallic 3-delay-line feedback reverb with natural room sound
+      const generateIR = (duration: number, decay: number, lpCutoff: number): AudioBuffer => {
+        const len = Math.ceil(ctx.sampleRate * duration);
+        const buf = ctx.createBuffer(2, len, ctx.sampleRate);
+        const L = buf.getChannelData(0), R = buf.getChannelData(1);
+        // Early reflections — discrete taps in first 80ms for room shape
+        const erEnd = Math.ceil(ctx.sampleRate * 0.08);
+        for (let er = 0; er < 12; er++) {
+          const pos = Math.floor(Math.random() * erEnd);
+          const amp = (1 - pos / erEnd) * 0.4;
+          L[pos] += (Math.random() * 2 - 1) * amp;
+          R[pos] += (Math.random() * 2 - 1) * amp;
+        }
+        // Late reverb — exponentially decaying noise (diffuse tail)
+        for (let n = erEnd; n < len; n++) {
+          const env = Math.exp(-decay * (n / ctx.sampleRate));
+          L[n] += (Math.random() * 2 - 1) * env;
+          R[n] += (Math.random() * 2 - 1) * env;
+        }
+        // Frequency shaping — one-pole lowpass for dark/bright character
+        const coeff = Math.exp(-2 * Math.PI * lpCutoff / ctx.sampleRate);
+        let pL = 0, pR = 0;
+        for (let n = 0; n < len; n++) {
+          L[n] = pL = pL * coeff + L[n] * (1 - coeff);
+          R[n] = pR = pR * coeff + R[n] * (1 - coeff);
+        }
+        return buf;
+      };
+
+      // DIVE reverb: dark room — long tail, heavy damping, warm and enveloping
+      const diveConv = ctx.createConvolver();
+      diveConv.buffer = generateIR(2.5, 2.0, 1800);
+      const diveWet = ctx.createGain(); diveWet.gain.value = 0;
+      diveReverbWetRef.current = diveWet;
+      spInput.connect(diveConv); diveConv.connect(diveWet); diveWet.connect(ctx.destination);
+
+      // IMMERSE reverb: bright space — tight, airy, expansive
+      const immConv = ctx.createConvolver();
+      immConv.buffer = generateIR(1.5, 3.5, 9000);
+      const immWet = ctx.createGain(); immWet.gain.value = 0;
+      immerseReverbWetRef.current = immWet;
+      spInput.connect(immConv); immConv.connect(immWet); immWet.connect(ctx.destination);
 
       const sBP = ctx.createBiquadFilter(); sBP.type = 'bandpass'; sBP.frequency.value = 90; sBP.Q.value = 1;
       const sSh = ctx.createWaveShaper();
@@ -760,14 +785,11 @@ export const AudioPlayer = () => {
       panDepthGainRef.current && (panDepthGainRef.current.gain.value = 0);
       haasDelayRef.current && (haasDelayRef.current.delayTime.value = 0);
       diveLowPassRef.current && (diveLowPassRef.current.frequency.value = 20000);
-      reverbWetGainRef.current && (reverbWetGainRef.current.gain.value = 0);
-      reverbFeedback1Ref.current && (reverbFeedback1Ref.current.gain.value = 0);
-      reverbFeedback2Ref.current && (reverbFeedback2Ref.current.gain.value = 0);
-      reverbFeedback3Ref.current && (reverbFeedback3Ref.current.gain.value = 0);
-      reverbDamping1Ref.current && (reverbDamping1Ref.current.frequency.value = 4000);
-      reverbDamping2Ref.current && (reverbDamping2Ref.current.frequency.value = 4000);
-      reverbDamping3Ref.current && (reverbDamping3Ref.current.frequency.value = 4000);
+      diveReverbWetRef.current && (diveReverbWetRef.current.gain.value = 0);
+      immerseReverbWetRef.current && (immerseReverbWetRef.current.gain.value = 0);
       subHarmonicGainRef.current && (subHarmonicGainRef.current.gain.value = 0);
+      // Gain compensation: restore baseline
+      gainNodeRef.current && (gainNodeRef.current.gain.value = 1.4);
       devLog('🎛️ [VOYO] INTENSITY: CENTER (baseline)');
       return;
     }
@@ -779,20 +801,17 @@ export const AudioPlayer = () => {
       crossfeedRightGainRef.current && (crossfeedRightGainRef.current.gain.value = i * 0.45);
       // Low-pass: 20kHz → 7kHz (warm dark, vocals still clear)
       diveLowPassRef.current && (diveLowPassRef.current.frequency.value = 20000 - (i * 13000));
-      // Lush dark reverb
-      reverbWetGainRef.current && (reverbWetGainRef.current.gain.value = i * 0.38);
-      reverbFeedback1Ref.current && (reverbFeedback1Ref.current.gain.value = 0.78);
-      reverbFeedback2Ref.current && (reverbFeedback2Ref.current.gain.value = 0.78);
-      reverbFeedback3Ref.current && (reverbFeedback3Ref.current.gain.value = 0.78);
-      const dampFreq = 4000 - (i * 2200); // 4kHz → 1.8kHz
-      reverbDamping1Ref.current && (reverbDamping1Ref.current.frequency.value = dampFreq);
-      reverbDamping2Ref.current && (reverbDamping2Ref.current.frequency.value = dampFreq);
-      reverbDamping3Ref.current && (reverbDamping3Ref.current.frequency.value = dampFreq);
+      // Dark convolver reverb (natural room, not metallic)
+      diveReverbWetRef.current && (diveReverbWetRef.current.gain.value = i * 0.38);
+      immerseReverbWetRef.current && (immerseReverbWetRef.current.gain.value = 0);
       // Physical sub-bass weight
       subHarmonicGainRef.current && (subHarmonicGainRef.current.gain.value = i * 0.25);
       // IMMERSE spatial off
       panDepthGainRef.current && (panDepthGainRef.current.gain.value = 0);
       haasDelayRef.current && (haasDelayRef.current.delayTime.value = 0);
+      // GAIN COMPENSATION: reverb + sub + crossfeed + bass boost add energy
+      // Pull back dry signal to keep perceived loudness constant
+      gainNodeRef.current && (gainNodeRef.current.gain.value = 1.4 * (1 - i * 0.18));
       devLog(`🎛️ [VOYO] DIVE ${Math.round(i * 100)}%`);
     } else {
       // ── IMMERSE: music all around you ──
@@ -814,20 +833,16 @@ export const AudioPlayer = () => {
       panDepthGainRef.current && (panDepthGainRef.current.gain.value = panDepth);
       haasDelayRef.current && (haasDelayRef.current.delayTime.value = haas);
       diveLowPassRef.current && (diveLowPassRef.current.frequency.value = 20000);
-      // Bright spacious reverb
-      reverbWetGainRef.current && (reverbWetGainRef.current.gain.value = i * 0.30);
-      reverbFeedback1Ref.current && (reverbFeedback1Ref.current.gain.value = 0.65);
-      reverbFeedback2Ref.current && (reverbFeedback2Ref.current.gain.value = 0.65);
-      reverbFeedback3Ref.current && (reverbFeedback3Ref.current.gain.value = 0.65);
-      const dampFreq = 4000 + (i * 5000); // 4kHz → 9kHz (bright, airy)
-      reverbDamping1Ref.current && (reverbDamping1Ref.current.frequency.value = dampFreq);
-      reverbDamping2Ref.current && (reverbDamping2Ref.current.frequency.value = dampFreq);
-      reverbDamping3Ref.current && (reverbDamping3Ref.current.frequency.value = dampFreq);
+      // Bright convolver reverb (airy, expansive)
+      immerseReverbWetRef.current && (immerseReverbWetRef.current.gain.value = i * 0.30);
+      diveReverbWetRef.current && (diveReverbWetRef.current.gain.value = 0);
       // Bass presence
       subHarmonicGainRef.current && (subHarmonicGainRef.current.gain.value = i * 0.15);
       // DIVE off
       crossfeedLeftGainRef.current && (crossfeedLeftGainRef.current.gain.value = 0);
       crossfeedRightGainRef.current && (crossfeedRightGainRef.current.gain.value = 0);
+      // GAIN COMPENSATION: reverb + sub + high boost add energy
+      gainNodeRef.current && (gainNodeRef.current.gain.value = 1.4 * (1 - i * 0.12));
       devLog(`🎛️ [VOYO] IMMERSE ${Math.round(i * 100)}%${i > 0.8 ? ' [SURROUND]' : ''}`);
     }
   }, []);
