@@ -444,115 +444,94 @@ export const AudioPlayer = () => {
       gainNodeRef.current = masterGain;
 
       // ═══════════════════════════════════════════════════════════════
-      // VOYEX: Professional Multiband Compression Chain
+      // VOYEX: Professional Multiband Mastering Chain
+      // 24dB/octave Linkwitz-Riley crossovers + brickwall limiter
       // ═══════════════════════════════════════════════════════════════
       if (settings.multiband) {
-        devLog('🎛️ [VOYO] VOYEX Multiband Mastering Chain Active');
+        devLog('🎛️ [VOYO] VOYEX Mastering Chain — 24dB/oct LR crossovers');
 
-        // Create band-split filters (Linkwitz-Riley style crossover)
-        // LOW BAND: lowpass at crossover frequency
-        const lowFilter = ctx.createBiquadFilter();
-        lowFilter.type = 'lowpass';
-        lowFilter.frequency.value = settings.lowCrossover;
-        lowFilter.Q.value = 0.5; // Gentle slope
-        multibandLowFilterRef.current = lowFilter;
+        // ── 24dB/octave Linkwitz-Riley crossovers (cascaded Butterworth pairs) ──
+        // Q = 0.707 (Butterworth) × 2 cascaded = 24dB/octave with flat sum at crossover
+        const LR_Q = 0.707;
 
-        // MID BAND: highpass at low crossover + lowpass at high crossover
-        const midLowFilter = ctx.createBiquadFilter();
-        midLowFilter.type = 'highpass';
-        midLowFilter.frequency.value = settings.lowCrossover;
-        midLowFilter.Q.value = 0.5;
-        multibandMidLowFilterRef.current = midLowFilter;
+        // LOW BAND: cascaded lowpass pair at low crossover
+        const lowF1 = ctx.createBiquadFilter(); lowF1.type = 'lowpass'; lowF1.frequency.value = settings.lowCrossover; lowF1.Q.value = LR_Q;
+        const lowF2 = ctx.createBiquadFilter(); lowF2.type = 'lowpass'; lowF2.frequency.value = settings.lowCrossover; lowF2.Q.value = LR_Q;
+        multibandLowFilterRef.current = lowF1;
 
-        const midHighFilter = ctx.createBiquadFilter();
-        midHighFilter.type = 'lowpass';
-        midHighFilter.frequency.value = settings.highCrossover;
-        midHighFilter.Q.value = 0.5;
-        multibandMidHighFilterRef.current = midHighFilter;
+        // MID BAND: cascaded highpass at low crossover + cascaded lowpass at high crossover
+        const midHP1 = ctx.createBiquadFilter(); midHP1.type = 'highpass'; midHP1.frequency.value = settings.lowCrossover; midHP1.Q.value = LR_Q;
+        const midHP2 = ctx.createBiquadFilter(); midHP2.type = 'highpass'; midHP2.frequency.value = settings.lowCrossover; midHP2.Q.value = LR_Q;
+        const midLP1 = ctx.createBiquadFilter(); midLP1.type = 'lowpass'; midLP1.frequency.value = settings.highCrossover; midLP1.Q.value = LR_Q;
+        const midLP2 = ctx.createBiquadFilter(); midLP2.type = 'lowpass'; midLP2.frequency.value = settings.highCrossover; midLP2.Q.value = LR_Q;
+        multibandMidLowFilterRef.current = midHP1;
+        multibandMidHighFilterRef.current = midLP1;
 
-        // HIGH BAND: highpass at high crossover frequency
-        const highFilter = ctx.createBiquadFilter();
-        highFilter.type = 'highpass';
-        highFilter.frequency.value = settings.highCrossover;
-        highFilter.Q.value = 0.5;
-        multibandHighFilterRef.current = highFilter;
+        // HIGH BAND: cascaded highpass pair at high crossover
+        const highF1 = ctx.createBiquadFilter(); highF1.type = 'highpass'; highF1.frequency.value = settings.highCrossover; highF1.Q.value = LR_Q;
+        const highF2 = ctx.createBiquadFilter(); highF2.type = 'highpass'; highF2.frequency.value = settings.highCrossover; highF2.Q.value = LR_Q;
+        multibandHighFilterRef.current = highF1;
 
-        // Per-band gain nodes
-        const lowGain = ctx.createGain();
-        lowGain.gain.value = settings.low.gain;
+        // ── Per-band gain nodes ──
+        const lowGain = ctx.createGain(); lowGain.gain.value = settings.low.gain;
+        const midGain = ctx.createGain(); midGain.gain.value = settings.mid.gain;
+        const highGain = ctx.createGain(); highGain.gain.value = settings.high.gain;
         multibandLowGainRef.current = lowGain;
-
-        const midGain = ctx.createGain();
-        midGain.gain.value = settings.mid.gain;
         multibandMidGainRef.current = midGain;
-
-        const highGain = ctx.createGain();
-        highGain.gain.value = settings.high.gain;
         multibandHighGainRef.current = highGain;
 
-        // Per-band compressors
+        // ── Per-band compressors ──
         const lowComp = ctx.createDynamicsCompressor();
-        lowComp.threshold.value = settings.low.threshold;
-        lowComp.knee.value = 6;
-        lowComp.ratio.value = settings.low.ratio;
-        lowComp.attack.value = settings.low.attack;
-        lowComp.release.value = settings.low.release;
+        lowComp.threshold.value = settings.low.threshold; lowComp.knee.value = 6;
+        lowComp.ratio.value = settings.low.ratio; lowComp.attack.value = settings.low.attack; lowComp.release.value = settings.low.release;
         multibandLowCompRef.current = lowComp;
 
         const midComp = ctx.createDynamicsCompressor();
-        midComp.threshold.value = settings.mid.threshold;
-        midComp.knee.value = 10;
-        midComp.ratio.value = settings.mid.ratio;
-        midComp.attack.value = settings.mid.attack;
-        midComp.release.value = settings.mid.release;
+        midComp.threshold.value = settings.mid.threshold; midComp.knee.value = 10;
+        midComp.ratio.value = settings.mid.ratio; midComp.attack.value = settings.mid.attack; midComp.release.value = settings.mid.release;
         multibandMidCompRef.current = midComp;
 
         const highComp = ctx.createDynamicsCompressor();
-        highComp.threshold.value = settings.high.threshold;
-        highComp.knee.value = 8;
-        highComp.ratio.value = settings.high.ratio;
-        highComp.attack.value = settings.high.attack;
-        highComp.release.value = settings.high.release;
+        highComp.threshold.value = settings.high.threshold; highComp.knee.value = 8;
+        highComp.ratio.value = settings.high.ratio; highComp.attack.value = settings.high.attack; highComp.release.value = settings.high.release;
         multibandHighCompRef.current = highComp;
 
-        // Harmonic exciter for warmth
+        // ── Harmonic exciter — low/mid only (not highs, avoids sibilance/grit) ──
         const harmonic = ctx.createWaveShaper();
         if (settings.harmonicAmount > 0) {
           harmonic.curve = makeHarmonicCurve(settings.harmonicAmount);
           harmonic.oversample = '2x';
         }
         harmonicExciterRef.current = harmonic;
+        // Exciter bypass for high band
+        const exciterBypass = ctx.createGain();
+        exciterBypass.gain.value = 1.0;
 
-        // Band merger (sum the 3 bands)
+        // ── Band merger ──
         const bandMerger = ctx.createGain();
         bandMerger.gain.value = 1.0;
 
-        // Connect: source → highPass → [3 parallel bands] → merger → harmonic → stereo → master
+        // ── Wiring: source → highPass → [3 bands with 24dB crossovers] → merge ──
         source.connect(highPass);
 
-        // LOW band chain
-        highPass.connect(lowFilter);
-        lowFilter.connect(lowGain);
-        lowGain.connect(lowComp);
-        lowComp.connect(bandMerger);
+        // LOW: highPass → LR lowpass cascade → gain → comp → exciter → merger
+        highPass.connect(lowF1); lowF1.connect(lowF2);
+        lowF2.connect(lowGain); lowGain.connect(lowComp); lowComp.connect(harmonic);
 
-        // MID band chain
-        highPass.connect(midLowFilter);
-        midLowFilter.connect(midHighFilter);
-        midHighFilter.connect(midGain);
-        midGain.connect(midComp);
-        midComp.connect(bandMerger);
+        // MID: highPass → LR highpass cascade → LR lowpass cascade → gain → comp → exciter → merger
+        highPass.connect(midHP1); midHP1.connect(midHP2);
+        midHP2.connect(midLP1); midLP1.connect(midLP2);
+        midLP2.connect(midGain); midGain.connect(midComp); midComp.connect(harmonic);
 
-        // HIGH band chain
-        highPass.connect(highFilter);
-        highFilter.connect(highGain);
-        highGain.connect(highComp);
-        highComp.connect(bandMerger);
+        // HIGH: highPass → LR highpass cascade → gain → comp → bypass (clean, no exciter) → merger
+        highPass.connect(highF1); highF1.connect(highF2);
+        highF2.connect(highGain); highGain.connect(highComp); highComp.connect(exciterBypass);
 
-        // Harmonic exciter after band merge
-        bandMerger.connect(harmonic);
+        // Exciter output + clean high band → merger
+        harmonic.connect(bandMerger);
+        exciterBypass.connect(bandMerger);
 
-        // Stereo widening
+        // ── Stereo widening ──
         if (settings.stereoWidth > 0) {
           const splitter = ctx.createChannelSplitter(2);
           const merger = ctx.createChannelMerger(2);
@@ -564,19 +543,29 @@ export const AudioPlayer = () => {
           stereoMergerRef.current = merger;
           stereoDelayRef.current = delayR;
 
-          harmonic.connect(splitter);
+          bandMerger.connect(splitter);
           splitter.connect(delayL, 0);
           splitter.connect(delayR, 1);
           delayL.connect(merger, 0, 0);
           delayR.connect(merger, 0, 1);
           merger.connect(masterGain);
         } else {
-          harmonic.connect(masterGain);
+          bandMerger.connect(masterGain);
         }
 
-        masterGain.connect(spInput);
+        // ── BRICKWALL LIMITER — prevents clipping at any intensity ──
+        // Fast attack catches transients, high ratio = brickwall, threshold at -1dB
+        const limiter = ctx.createDynamicsCompressor();
+        limiter.threshold.value = -1;   // Catch anything above -1dB
+        limiter.knee.value = 0;         // Hard knee = true brickwall
+        limiter.ratio.value = 20;       // 20:1 = effectively infinite limiting
+        limiter.attack.value = 0.001;   // 1ms — catches transients
+        limiter.release.value = 0.05;   // 50ms — fast recovery, no pumping
+
+        masterGain.connect(limiter);
+        limiter.connect(spInput);
         audioEnhancedRef.current = true;
-        devLog('🎛️ [VOYO] Multiband: LOW(<180Hz) 5:1 | MID(180-4.5k) 2:1 | HIGH(>4.5k) 3:1');
+        devLog('🎛️ [VOYO] VOYEX: 24dB/oct LR crossovers | 3-band | Brickwall limiter | Exciter (low/mid only)');
         return;
       }
 
