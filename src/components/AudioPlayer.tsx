@@ -742,42 +742,40 @@ export const AudioPlayer = () => {
     }
 
     if (v < 0) {
-      // DIVE: crossfeed + dark reverb + sub-harmonics + progressive darkening
+      // DIVE: subtle warmth — crossfeed + mild reverb + gentle sub + soft darkening
       const intensity = Math.abs(v) / 100;
-      crossfeedLeftGainRef.current && (crossfeedLeftGainRef.current.gain.value = intensity * 0.4);
-      crossfeedRightGainRef.current && (crossfeedRightGainRef.current.gain.value = intensity * 0.4);
-      // Progressive low-pass: 20kHz → 4kHz (sealed underwater feeling)
-      diveLowPassRef.current && (diveLowPassRef.current.frequency.value = 20000 - (intensity * 16000));
-      reverbWetGainRef.current && (reverbWetGainRef.current.gain.value = intensity * 0.35);
-      reverbFeedback1Ref.current && (reverbFeedback1Ref.current.gain.value = 0.75);
-      reverbFeedback2Ref.current && (reverbFeedback2Ref.current.gain.value = 0.75);
-      reverbFeedback3Ref.current && (reverbFeedback3Ref.current.gain.value = 0.75);
-      const dampFreq = 4000 - (intensity * 2000);
+      crossfeedLeftGainRef.current && (crossfeedLeftGainRef.current.gain.value = intensity * 0.2);
+      crossfeedRightGainRef.current && (crossfeedRightGainRef.current.gain.value = intensity * 0.2);
+      // Gentle low-pass: 20kHz → 12kHz (warmth without muffling)
+      diveLowPassRef.current && (diveLowPassRef.current.frequency.value = 20000 - (intensity * 8000));
+      reverbWetGainRef.current && (reverbWetGainRef.current.gain.value = intensity * 0.18);
+      reverbFeedback1Ref.current && (reverbFeedback1Ref.current.gain.value = 0.6);
+      reverbFeedback2Ref.current && (reverbFeedback2Ref.current.gain.value = 0.6);
+      reverbFeedback3Ref.current && (reverbFeedback3Ref.current.gain.value = 0.6);
+      const dampFreq = 4000 - (intensity * 1000);
       reverbDamping1Ref.current && (reverbDamping1Ref.current.frequency.value = dampFreq);
       reverbDamping2Ref.current && (reverbDamping2Ref.current.frequency.value = dampFreq);
       reverbDamping3Ref.current && (reverbDamping3Ref.current.frequency.value = dampFreq);
-      subHarmonicGainRef.current && (subHarmonicGainRef.current.gain.value = intensity * 0.2);
+      subHarmonicGainRef.current && (subHarmonicGainRef.current.gain.value = intensity * 0.1);
       // IMMERSE off
       panDepthGainRef.current && (panDepthGainRef.current.gain.value = 0);
       haasDelayRef.current && (haasDelayRef.current.delayTime.value = 0);
       devLog(`🎛️ [VOYO] Spatial: DIVE ${Math.round(intensity * 100)}%`);
     } else {
-      // IMMERSE: organic spatial movement + Haas widening + bright reverb + bass weight
+      // IMMERSE: subtle spatial presence — gentle drift + mild widening + light reverb
       const intensity = v / 100;
-      // Organic pan movement — gentle 8D drift, never jarring
-      panDepthGainRef.current && (panDepthGainRef.current.gain.value = intensity * 0.25);
-      haasDelayRef.current && (haasDelayRef.current.delayTime.value = intensity * 0.0035);
+      panDepthGainRef.current && (panDepthGainRef.current.gain.value = intensity * 0.15);
+      haasDelayRef.current && (haasDelayRef.current.delayTime.value = intensity * 0.002);
       diveLowPassRef.current && (diveLowPassRef.current.frequency.value = 20000);
-      reverbWetGainRef.current && (reverbWetGainRef.current.gain.value = intensity * 0.25);
-      reverbFeedback1Ref.current && (reverbFeedback1Ref.current.gain.value = 0.6);
-      reverbFeedback2Ref.current && (reverbFeedback2Ref.current.gain.value = 0.6);
-      reverbFeedback3Ref.current && (reverbFeedback3Ref.current.gain.value = 0.6);
-      const dampFreq = 4000 + (intensity * 4000);
+      reverbWetGainRef.current && (reverbWetGainRef.current.gain.value = intensity * 0.15);
+      reverbFeedback1Ref.current && (reverbFeedback1Ref.current.gain.value = 0.5);
+      reverbFeedback2Ref.current && (reverbFeedback2Ref.current.gain.value = 0.5);
+      reverbFeedback3Ref.current && (reverbFeedback3Ref.current.gain.value = 0.5);
+      const dampFreq = 4000 + (intensity * 2500);
       reverbDamping1Ref.current && (reverbDamping1Ref.current.frequency.value = dampFreq);
       reverbDamping2Ref.current && (reverbDamping2Ref.current.frequency.value = dampFreq);
       reverbDamping3Ref.current && (reverbDamping3Ref.current.frequency.value = dampFreq);
-      // Bass weight — VOYEX shouldn't be shy, give IMMERSE physical presence
-      subHarmonicGainRef.current && (subHarmonicGainRef.current.gain.value = intensity * 0.12);
+      subHarmonicGainRef.current && (subHarmonicGainRef.current.gain.value = intensity * 0.07);
       // DIVE off
       crossfeedLeftGainRef.current && (crossfeedLeftGainRef.current.gain.value = 0);
       crossfeedRightGainRef.current && (crossfeedRightGainRef.current.gain.value = 0);
