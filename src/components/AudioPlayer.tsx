@@ -717,28 +717,29 @@ export const AudioPlayer = () => {
     devLog(`🎵 [VOYO] Switched to ${preset.toUpperCase()}`);
   }, []);
 
-  // Update VOYEX Spatial slider — controls spatial layer + shifts multiband mastering character
+  // VOYEX INTENSITY SLIDER — full mastering + spatial control
+  // Center = clean VOYEX baseline. Extremes = full experience.
+  // No caps. No protection. The slider IS the user's control.
   const updateVoyexSpatial = useCallback((value: number) => {
     if (!spatialEnhancedRef.current) return;
     const v = Math.max(-100, Math.min(100, value));
+    const i = Math.abs(v) / 100; // 0→1 intensity
 
-    // --- Multiband mastering shift (subtle, always active) ---
-    // DIV: warmer mastering (boost lows, soften highs)
-    // IMM: open mastering (brighten highs, present mids)
-    // Center: default VOYEX mastering
-    const slider01 = v / 100; // -1 to +1
+    // ══════════════════════════════════════════════════════
+    // LAYER 1: MULTIBAND MASTERING CHARACTER
+    // The actual music changes tone — not just the room
+    // ══════════════════════════════════════════════════════
     if (multibandLowGainRef.current && multibandMidGainRef.current && multibandHighGainRef.current) {
-      // Base gains from VOYEX preset: low=1.3, mid=1.1, high=1.25
       if (v < 0) {
-        const i = Math.abs(slider01);
-        multibandLowGainRef.current.gain.value = 1.3 + (i * 0.2);   // 1.3 → 1.5 (warmer)
-        multibandMidGainRef.current.gain.value = 1.1;                 // untouched (clean vocals)
-        multibandHighGainRef.current.gain.value = 1.25 - (i * 0.15); // 1.25 → 1.1 (softer)
+        // DIVE mastering: massive warm bass, scooped mids, rolled highs
+        multibandLowGainRef.current.gain.value = 1.3 + (i * 0.35);  // 1.3 → 1.65
+        multibandMidGainRef.current.gain.value = 1.1 - (i * 0.05);  // 1.1 → 1.05 (slight scoop)
+        multibandHighGainRef.current.gain.value = 1.25 - (i * 0.3); // 1.25 → 0.95
       } else if (v > 0) {
-        const i = slider01;
-        multibandLowGainRef.current.gain.value = 1.3;                 // solid bass
-        multibandMidGainRef.current.gain.value = 1.1 + (i * 0.1);    // 1.1 → 1.2 (vocal presence)
-        multibandHighGainRef.current.gain.value = 1.25 + (i * 0.15); // 1.25 → 1.4 (air, sparkle)
+        // IMMERSE mastering: crystal highs, present vocals, solid bass
+        multibandLowGainRef.current.gain.value = 1.3;                // anchor
+        multibandMidGainRef.current.gain.value = 1.1 + (i * 0.2);   // 1.1 → 1.3
+        multibandHighGainRef.current.gain.value = 1.25 + (i * 0.3); // 1.25 → 1.55
       } else {
         multibandLowGainRef.current.gain.value = 1.3;
         multibandMidGainRef.current.gain.value = 1.1;
@@ -746,9 +747,25 @@ export const AudioPlayer = () => {
       }
     }
 
-    // --- Spatial layer ---
+    // ══════════════════════════════════════════════════════
+    // LAYER 2: STEREO FIELD
+    // DIV narrows (intimate), IMM widens (open)
+    // ══════════════════════════════════════════════════════
+    if (stereoDelayRef.current) {
+      if (v < 0) {
+        stereoDelayRef.current.delayTime.value = 0.015 - (i * 0.012); // 15ms → 3ms (intimate)
+      } else if (v > 0) {
+        stereoDelayRef.current.delayTime.value = 0.015 + (i * 0.015); // 15ms → 30ms (wide open)
+      } else {
+        stereoDelayRef.current.delayTime.value = 0.015; // VOYEX default
+      }
+    }
+
+    // ══════════════════════════════════════════════════════
+    // LAYER 3: SPATIAL EFFECTS
+    // ══════════════════════════════════════════════════════
     if (v === 0) {
-      // TRUE BYPASS - all spatial effects off, multiband at default
+      // Center = clean VOYEX baseline, spatial bypass
       crossfeedLeftGainRef.current && (crossfeedLeftGainRef.current.gain.value = 0);
       crossfeedRightGainRef.current && (crossfeedRightGainRef.current.gain.value = 0);
       panDepthGainRef.current && (panDepthGainRef.current.gain.value = 0);
@@ -762,64 +779,67 @@ export const AudioPlayer = () => {
       reverbDamping2Ref.current && (reverbDamping2Ref.current.frequency.value = 4000);
       reverbDamping3Ref.current && (reverbDamping3Ref.current.frequency.value = 4000);
       subHarmonicGainRef.current && (subHarmonicGainRef.current.gain.value = 0);
-      devLog('🎛️ [VOYO] Spatial: BALANCE (bypass)');
+      devLog('🎛️ [VOYO] INTENSITY: CENTER (baseline)');
       return;
     }
 
     if (v < 0) {
-      // DIVE: warm crossfeed + dark reverb + sub + gentle darkening
-      const intensity = Math.abs(v) / 100;
-      crossfeedLeftGainRef.current && (crossfeedLeftGainRef.current.gain.value = intensity * 0.28);
-      crossfeedRightGainRef.current && (crossfeedRightGainRef.current.gain.value = intensity * 0.28);
-      diveLowPassRef.current && (diveLowPassRef.current.frequency.value = 20000 - (intensity * 11200));
-      reverbWetGainRef.current && (reverbWetGainRef.current.gain.value = intensity * 0.24);
-      reverbFeedback1Ref.current && (reverbFeedback1Ref.current.gain.value = 0.7);
-      reverbFeedback2Ref.current && (reverbFeedback2Ref.current.gain.value = 0.7);
-      reverbFeedback3Ref.current && (reverbFeedback3Ref.current.gain.value = 0.7);
-      const dampFreq = 4000 - (intensity * 1400);
+      // ── DIVE: swallowed by sound ──
+      // Full crossfeed blend, dark lush reverb, physical sub-bass, warm rolloff
+      crossfeedLeftGainRef.current && (crossfeedLeftGainRef.current.gain.value = i * 0.45);
+      crossfeedRightGainRef.current && (crossfeedRightGainRef.current.gain.value = i * 0.45);
+      // Low-pass: 20kHz → 7kHz (warm dark, vocals still clear)
+      diveLowPassRef.current && (diveLowPassRef.current.frequency.value = 20000 - (i * 13000));
+      // Lush dark reverb
+      reverbWetGainRef.current && (reverbWetGainRef.current.gain.value = i * 0.38);
+      reverbFeedback1Ref.current && (reverbFeedback1Ref.current.gain.value = 0.78);
+      reverbFeedback2Ref.current && (reverbFeedback2Ref.current.gain.value = 0.78);
+      reverbFeedback3Ref.current && (reverbFeedback3Ref.current.gain.value = 0.78);
+      const dampFreq = 4000 - (i * 2200); // 4kHz → 1.8kHz
       reverbDamping1Ref.current && (reverbDamping1Ref.current.frequency.value = dampFreq);
       reverbDamping2Ref.current && (reverbDamping2Ref.current.frequency.value = dampFreq);
       reverbDamping3Ref.current && (reverbDamping3Ref.current.frequency.value = dampFreq);
-      subHarmonicGainRef.current && (subHarmonicGainRef.current.gain.value = intensity * 0.14);
-      // IMMERSE off
+      // Physical sub-bass weight
+      subHarmonicGainRef.current && (subHarmonicGainRef.current.gain.value = i * 0.25);
+      // IMMERSE spatial off
       panDepthGainRef.current && (panDepthGainRef.current.gain.value = 0);
       haasDelayRef.current && (haasDelayRef.current.delayTime.value = 0);
-      devLog(`🎛️ [VOYO] Spatial: DIVE ${Math.round(intensity * 100)}%`);
+      devLog(`🎛️ [VOYO] DIVE ${Math.round(i * 100)}%`);
     } else {
-      // IMMERSE: spatial presence with smooth 8D surround in last 20%
-      const intensity = v / 100;
+      // ── IMMERSE: music all around you ──
+      // 0-80%: crisp, wide, present. 80-100%: surround opens up.
+      // Continuous curve — no discontinuity, no clicks.
 
-      // Pan depth + Haas: gentle 0-80%, surround opens up 80-100%
-      // Continuous curve — no discontinuity, no clicks
       let panDepth: number;
       let haas: number;
-      if (intensity <= 0.8) {
-        // 0-80%: subtle enhancement zone
-        panDepth = intensity * 0.15;           // 0 → 0.12
-        haas = intensity * 0.002;              // 0 → 1.6ms
+      if (i <= 0.8) {
+        panDepth = i * 0.22;              // 0 → 0.176
+        haas = i * 0.003;                 // 0 → 2.4ms
       } else {
-        // 80-100%: surround zone — opens up smoothly
-        const surround = (intensity - 0.8) / 0.2; // 0→1 within last 20%
-        panDepth = 0.12 + (surround * 0.18);  // 0.12 → 0.30
-        haas = 0.0016 + (surround * 0.002);   // 1.6ms → 3.6ms
+        // Surround zone — smooth ramp, same value at boundary
+        const s = (i - 0.8) / 0.2;       // 0→1 in last 20%
+        panDepth = 0.176 + (s * 0.224);   // 0.176 → 0.40
+        haas = 0.0024 + (s * 0.002);      // 2.4ms → 4.4ms
       }
 
       panDepthGainRef.current && (panDepthGainRef.current.gain.value = panDepth);
       haasDelayRef.current && (haasDelayRef.current.delayTime.value = haas);
       diveLowPassRef.current && (diveLowPassRef.current.frequency.value = 20000);
-      reverbWetGainRef.current && (reverbWetGainRef.current.gain.value = intensity * 0.15);
-      reverbFeedback1Ref.current && (reverbFeedback1Ref.current.gain.value = 0.5);
-      reverbFeedback2Ref.current && (reverbFeedback2Ref.current.gain.value = 0.5);
-      reverbFeedback3Ref.current && (reverbFeedback3Ref.current.gain.value = 0.5);
-      const dampFreq = 4000 + (intensity * 2500);
+      // Bright spacious reverb
+      reverbWetGainRef.current && (reverbWetGainRef.current.gain.value = i * 0.30);
+      reverbFeedback1Ref.current && (reverbFeedback1Ref.current.gain.value = 0.65);
+      reverbFeedback2Ref.current && (reverbFeedback2Ref.current.gain.value = 0.65);
+      reverbFeedback3Ref.current && (reverbFeedback3Ref.current.gain.value = 0.65);
+      const dampFreq = 4000 + (i * 5000); // 4kHz → 9kHz (bright, airy)
       reverbDamping1Ref.current && (reverbDamping1Ref.current.frequency.value = dampFreq);
       reverbDamping2Ref.current && (reverbDamping2Ref.current.frequency.value = dampFreq);
       reverbDamping3Ref.current && (reverbDamping3Ref.current.frequency.value = dampFreq);
-      subHarmonicGainRef.current && (subHarmonicGainRef.current.gain.value = intensity * 0.07);
+      // Bass presence
+      subHarmonicGainRef.current && (subHarmonicGainRef.current.gain.value = i * 0.15);
       // DIVE off
       crossfeedLeftGainRef.current && (crossfeedLeftGainRef.current.gain.value = 0);
       crossfeedRightGainRef.current && (crossfeedRightGainRef.current.gain.value = 0);
-      devLog(`🎛️ [VOYO] Spatial: IMMERSE ${Math.round(intensity * 100)}%${intensity > 0.8 ? ' [SURROUND]' : ''}`);
+      devLog(`🎛️ [VOYO] IMMERSE ${Math.round(i * 100)}%${i > 0.8 ? ' [SURROUND]' : ''}`);
     }
   }, []);
 
