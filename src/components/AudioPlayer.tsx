@@ -764,9 +764,9 @@ export const AudioPlayer = () => {
     } else {
       // IMMERSE: organic spatial movement + Haas widening + bright reverb + bass weight
       const intensity = v / 100;
-      // Organic pan movement (scaled down — 75% felt like the sweet spot)
-      panDepthGainRef.current && (panDepthGainRef.current.gain.value = intensity * 0.2);
-      haasDelayRef.current && (haasDelayRef.current.delayTime.value = intensity * 0.003);
+      // Organic pan movement — gentle 8D drift, never jarring
+      panDepthGainRef.current && (panDepthGainRef.current.gain.value = intensity * 0.25);
+      haasDelayRef.current && (haasDelayRef.current.delayTime.value = intensity * 0.0035);
       diveLowPassRef.current && (diveLowPassRef.current.frequency.value = 20000);
       reverbWetGainRef.current && (reverbWetGainRef.current.gain.value = intensity * 0.25);
       reverbFeedback1Ref.current && (reverbFeedback1Ref.current.gain.value = 0.6);
