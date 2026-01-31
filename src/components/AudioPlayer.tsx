@@ -126,6 +126,9 @@ export const AudioPlayer = () => {
   const crossfeedLeftGainRef = useRef<GainNode | null>(null);
   const crossfeedRightGainRef = useRef<GainNode | null>(null);
   const panDepthGainRef = useRef<GainNode | null>(null);
+  const panDepthYGainRef = useRef<GainNode | null>(null);
+  const panDepthZGainRef = useRef<GainNode | null>(null);
+  const diveLowPassRef = useRef<BiquadFilterNode | null>(null);
   const haasDelayRef = useRef<DelayNode | null>(null);
   const reverbDamping1Ref = useRef<BiquadFilterNode | null>(null);
   const reverbDamping2Ref = useRef<BiquadFilterNode | null>(null);
@@ -363,23 +366,38 @@ export const AudioPlayer = () => {
       const cfRF = ctx.createBiquadFilter(); cfRF.type = 'lowpass'; cfRF.frequency.value = 6000;
       const cfRG = ctx.createGain(); cfRG.gain.value = 0; crossfeedRightGainRef.current = cfRG;
 
-      spInput.connect(cfSplitter);
+      // DIVE low-pass: darkens main signal progressively (20kHz = transparent)
+      const diveLP = ctx.createBiquadFilter(); diveLP.type = 'lowpass'; diveLP.frequency.value = 20000; diveLP.Q.value = 0.7;
+      diveLowPassRef.current = diveLP;
+      spInput.connect(diveLP);
+      diveLP.connect(cfSplitter);
       cfSplitter.connect(cfMerger, 0, 0); cfSplitter.connect(cfMerger, 1, 1);
       cfSplitter.connect(cfLD, 0); cfLD.connect(cfLF); cfLF.connect(cfLG); cfLG.connect(cfMerger, 0, 1);
       cfSplitter.connect(cfRD, 1); cfRD.connect(cfRF); cfRF.connect(cfRG); cfRG.connect(cfMerger, 0, 0);
 
-      const panner = ctx.createStereoPanner(); panner.pan.value = 0;
+      // HRTF 3D panner: true binaural spatial positioning
+      const panner3d = ctx.createPanner();
+      panner3d.panningModel = 'HRTF';
+      panner3d.distanceModel = 'inverse';
+      panner3d.refDistance = 1; panner3d.maxDistance = 10000; panner3d.rolloffFactor = 1;
       const lfo1 = ctx.createOscillator(); lfo1.type = 'sine'; lfo1.frequency.value = 0.037;
       const lfo2 = ctx.createOscillator(); lfo2.type = 'sine'; lfo2.frequency.value = 0.071;
       const lfo3 = ctx.createOscillator(); lfo3.type = 'sine'; lfo3.frequency.value = 0.113;
-      const panD = ctx.createGain(); panD.gain.value = 0; panDepthGainRef.current = panD;
-      lfo1.connect(panD); lfo2.connect(panD); lfo3.connect(panD); panD.connect(panner.pan);
+      // X-axis: left-right orbit (widest)
+      const panDX = ctx.createGain(); panDX.gain.value = 0; panDepthGainRef.current = panDX;
+      lfo1.connect(panDX); panDX.connect(panner3d.positionX);
+      // Y-axis: up-down drift (subtle)
+      const panDY = ctx.createGain(); panDY.gain.value = 0; panDepthYGainRef.current = panDY;
+      lfo2.connect(panDY); panDY.connect(panner3d.positionY);
+      // Z-axis: front-back orbit (moderate)
+      const panDZ = ctx.createGain(); panDZ.gain.value = 0; panDepthZGainRef.current = panDZ;
+      lfo3.connect(panDZ); panDZ.connect(panner3d.positionZ);
       lfo1.start(); lfo2.start(); lfo3.start();
-      cfMerger.connect(panner);
+      cfMerger.connect(panner3d);
 
       const hS = ctx.createChannelSplitter(2); const hM = ctx.createChannelMerger(2);
       const hD = ctx.createDelay(0.02); hD.delayTime.value = 0; haasDelayRef.current = hD;
-      panner.connect(hS); hS.connect(hM, 0, 0); hS.connect(hD, 1); hD.connect(hM, 0, 1);
+      panner3d.connect(hS); hS.connect(hM, 0, 0); hS.connect(hD, 1); hD.connect(hM, 0, 1);
       hM.connect(ctx.destination);
 
       const rvbIn = ctx.createGain(); rvbIn.gain.value = 1;
@@ -719,7 +737,10 @@ export const AudioPlayer = () => {
       crossfeedLeftGainRef.current && (crossfeedLeftGainRef.current.gain.value = 0);
       crossfeedRightGainRef.current && (crossfeedRightGainRef.current.gain.value = 0);
       panDepthGainRef.current && (panDepthGainRef.current.gain.value = 0);
+      panDepthYGainRef.current && (panDepthYGainRef.current.gain.value = 0);
+      panDepthZGainRef.current && (panDepthZGainRef.current.gain.value = 0);
       haasDelayRef.current && (haasDelayRef.current.delayTime.value = 0);
+      diveLowPassRef.current && (diveLowPassRef.current.frequency.value = 20000);
       reverbWetGainRef.current && (reverbWetGainRef.current.gain.value = 0);
       reverbFeedback1Ref.current && (reverbFeedback1Ref.current.gain.value = 0);
       reverbFeedback2Ref.current && (reverbFeedback2Ref.current.gain.value = 0);
@@ -733,10 +754,12 @@ export const AudioPlayer = () => {
     }
 
     if (v < 0) {
-      // DIVE: crossfeed + dark reverb + sub-harmonics
+      // DIVE: crossfeed + dark reverb + sub-harmonics + progressive darkening
       const intensity = Math.abs(v) / 100;
       crossfeedLeftGainRef.current && (crossfeedLeftGainRef.current.gain.value = intensity * 0.4);
       crossfeedRightGainRef.current && (crossfeedRightGainRef.current.gain.value = intensity * 0.4);
+      // Progressive low-pass: 20kHz → 4kHz (sealed underwater feeling)
+      diveLowPassRef.current && (diveLowPassRef.current.frequency.value = 20000 - (intensity * 16000));
       reverbWetGainRef.current && (reverbWetGainRef.current.gain.value = intensity * 0.35);
       reverbFeedback1Ref.current && (reverbFeedback1Ref.current.gain.value = 0.75);
       reverbFeedback2Ref.current && (reverbFeedback2Ref.current.gain.value = 0.75);
@@ -748,13 +771,19 @@ export const AudioPlayer = () => {
       subHarmonicGainRef.current && (subHarmonicGainRef.current.gain.value = intensity * 0.2);
       // IMMERSE off
       panDepthGainRef.current && (panDepthGainRef.current.gain.value = 0);
+      panDepthYGainRef.current && (panDepthYGainRef.current.gain.value = 0);
+      panDepthZGainRef.current && (panDepthZGainRef.current.gain.value = 0);
       haasDelayRef.current && (haasDelayRef.current.delayTime.value = 0);
       devLog(`🎛️ [VOYO] Spatial: DIVE ${Math.round(intensity * 100)}%`);
     } else {
-      // IMMERSE: organic panning + Haas widening + bright reverb
+      // IMMERSE: HRTF 3D orbit + Haas widening + bright reverb
       const intensity = v / 100;
-      panDepthGainRef.current && (panDepthGainRef.current.gain.value = intensity * 0.3);
+      // 3-axis elliptical orbit (X=wide L/R, Y=subtle elevation, Z=front-back)
+      panDepthGainRef.current && (panDepthGainRef.current.gain.value = intensity * 3);
+      panDepthYGainRef.current && (panDepthYGainRef.current.gain.value = intensity * 0.5);
+      panDepthZGainRef.current && (panDepthZGainRef.current.gain.value = intensity * 2);
       haasDelayRef.current && (haasDelayRef.current.delayTime.value = intensity * 0.004);
+      diveLowPassRef.current && (diveLowPassRef.current.frequency.value = 20000);
       reverbWetGainRef.current && (reverbWetGainRef.current.gain.value = intensity * 0.25);
       reverbFeedback1Ref.current && (reverbFeedback1Ref.current.gain.value = 0.6);
       reverbFeedback2Ref.current && (reverbFeedback2Ref.current.gain.value = 0.6);
