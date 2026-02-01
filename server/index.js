@@ -29,6 +29,7 @@ const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID || '2b9fcfd8cd9aedbd862ffd071d66
 const R2_ACCESS_KEY = process.env.R2_ACCESS_KEY || '82679709fb4e9f7e77f1b159991c9551';
 const R2_SECRET_KEY = process.env.R2_SECRET_KEY || '306f3d28d29500228a67c8cf70cebe03bba3c765fee173aacb26614276e7bb52';
 const R2_BUCKET = process.env.R2_BUCKET || 'voyo-audio';
+const R2_FEED_BUCKET = 'voyo-feed';
 
 // S3 Client configured for Cloudflare R2
 const r2Client = new S3Client({
@@ -120,6 +121,95 @@ async function streamR2Audio(trackId, quality, req, res) {
     console.log(`[R2] Streaming ${key} (${quality}kbps)`);
   } catch (err) {
     console.error(`[R2] Stream error for ${key}:`, err.message);
+    throw err;
+  }
+}
+
+// R2 feed video availability cache (5 min TTL)
+const r2FeedCache = new Map();
+
+/**
+ * Find a video in the R2 feed bucket by source_id
+ * Tries multiple key patterns: instagram/{id}.mp4, {id}.mp4, {id}
+ * @param {string} sourceId - Instagram/TikTok source ID
+ * @returns {Promise<{exists: boolean, key: string|null, size: number}>}
+ */
+async function checkR2FeedVideo(sourceId) {
+  const cached = r2FeedCache.get(sourceId);
+  if (cached && Date.now() - cached.timestamp < R2_CACHE_TTL) {
+    return cached.result;
+  }
+
+  const keyPatterns = [
+    `instagram/${sourceId}.mp4`,
+    `${sourceId}.mp4`,
+    `${sourceId}`,
+  ];
+
+  for (const key of keyPatterns) {
+    try {
+      const head = await r2Client.send(new HeadObjectCommand({
+        Bucket: R2_FEED_BUCKET,
+        Key: key,
+      }));
+      const result = { exists: true, key, size: head.ContentLength || 0 };
+      r2FeedCache.set(sourceId, { result, timestamp: Date.now() });
+      return result;
+    } catch (err) {
+      // Key not found, try next pattern
+    }
+  }
+
+  const result = { exists: false, key: null, size: 0 };
+  r2FeedCache.set(sourceId, { result, timestamp: Date.now() });
+  return result;
+}
+
+/**
+ * Stream video from R2 feed bucket with range support
+ * @param {string} key - R2 object key
+ * @param {object} req - HTTP request
+ * @param {object} res - HTTP response
+ */
+async function streamR2FeedVideo(key, req, res) {
+  try {
+    const range = req.headers.range;
+    const params = {
+      Bucket: R2_FEED_BUCKET,
+      Key: key,
+    };
+
+    if (range) {
+      params.Range = range;
+    }
+
+    const command = new GetObjectCommand(params);
+    const response = await r2Client.send(command);
+
+    const headers = {
+      'Content-Type': 'video/mp4',
+      'Accept-Ranges': 'bytes',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Range',
+      'Cache-Control': 'public, max-age=86400', // 24 hours
+    };
+
+    if (response.ContentLength) {
+      headers['Content-Length'] = response.ContentLength;
+    }
+    if (response.ContentRange) {
+      headers['Content-Range'] = response.ContentRange;
+    }
+
+    const statusCode = range && response.ContentRange ? 206 : 200;
+    res.writeHead(statusCode, headers);
+
+    response.Body.pipe(res);
+
+    console.log(`[R2/Feed] Streaming ${key}`);
+  } catch (err) {
+    console.error(`[R2/Feed] Stream error for ${key}:`, err.message);
     throw err;
   }
 }
@@ -380,8 +470,18 @@ function cleanupExpiredCache() {
   prefetchKeysToDelete.forEach(k => prefetchCache.delete(k));
   cleaned += prefetchKeysToDelete.length;
 
+  // Clean R2 feed cache (5 min TTL)
+  const feedKeysToDelete = [];
+  for (const [key, entry] of r2FeedCache.entries()) {
+    if (now - entry.timestamp > R2_CACHE_TTL) {
+      feedKeysToDelete.push(key);
+    }
+  }
+  feedKeysToDelete.forEach(k => r2FeedCache.delete(k));
+  cleaned += feedKeysToDelete.length;
+
   if (cleaned > 0) {
-    console.log(`[Cache Cleanup] Removed ${cleaned} expired entries (stream: ${streamCache.size}, thumb: ${thumbnailCache.size}, prefetch: ${prefetchCache.size})`);
+    console.log(`[Cache Cleanup] Removed ${cleaned} expired entries (stream: ${streamCache.size}, thumb: ${thumbnailCache.size}, prefetch: ${prefetchCache.size}, feed: ${r2FeedCache.size})`);
   }
 }
 
@@ -1831,10 +1931,72 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       cacheSize: r2Cache.size,
+      feedCacheSize: r2FeedCache.size,
       bucket: R2_BUCKET,
+      feedBucket: R2_FEED_BUCKET,
       endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
       note: '41K+ pre-cached tracks in R2'
     }));
+    return;
+  }
+
+  // ========================================
+  // R2 FEED VIDEO STREAMING ENDPOINTS
+  // ========================================
+
+  // Check if feed video exists in R2
+  if (pathname.match(/^\/r2\/feed\/[^/]+\/check$/)) {
+    const sourceId = pathname.split('/r2/feed/')[1].replace('/check', '');
+
+    if (!sourceId || sourceId.length > 100) {
+      res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid source ID' }));
+      return;
+    }
+
+    try {
+      const result = await checkR2FeedVideo(sourceId);
+
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        exists: result.exists,
+        size: result.size,
+        sourceId,
+      }));
+    } catch (err) {
+      res.writeHead(500, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+    }
+    return;
+  }
+
+  // Stream feed video from R2
+  if (pathname.match(/^\/r2\/feed\/[^/]+$/) && !pathname.endsWith('/check')) {
+    const sourceId = pathname.split('/r2/feed/')[1];
+
+    if (!sourceId || sourceId.length > 100) {
+      res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid source ID' }));
+      return;
+    }
+
+    try {
+      const result = await checkR2FeedVideo(sourceId);
+
+      if (!result.exists || !result.key) {
+        console.log(`[R2/Feed] Video not found: ${sourceId}`);
+        res.writeHead(404, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Video not found', sourceId }));
+        return;
+      }
+
+      // Stream the video with range support
+      await streamR2FeedVideo(result.key, req, res);
+    } catch (err) {
+      console.error(`[R2/Feed] Error streaming ${sourceId}:`, err.message);
+      res.writeHead(500, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Stream failed' }));
+    }
     return;
   }
 
@@ -1873,6 +2035,9 @@ server.listen(PORT, () => {
   console.log(`   - GET /r2/stream/VIDEO_ID?q=128|64   → Stream from R2 (fast!)`);
   console.log(`   - GET /r2/best?v=ID&q=128|64         → Best URL (R2 or YouTube)`);
   console.log(`   - GET /r2/stats                      → R2 cache stats`);
+  console.log(`\n   🎬 R2 FEED VIDEO STREAMING (voyo-feed bucket):`);
+  console.log(`   - GET /r2/feed/:sourceId              → Stream video from R2`);
+  console.log(`   - GET /r2/feed/:sourceId/check        → Check if video exists`);
   console.log(`\n   💾 OFFLINE PLAYBACK:`);
   console.log(`   - GET /download?v=VIDEO_ID           → Download track`);
   console.log(`   - DELETE /download?v=VIDEO_ID        → Delete downloaded track`);

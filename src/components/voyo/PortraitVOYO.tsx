@@ -4,7 +4,7 @@
  *
  * This is the main container that switches between:
  * - VoyoPortraitPlayer (Music experience)
- * - VoyoVerticalFeed (TikTok-style feed)
+ * - VoyoMoments (4-directional moments feed)
  * - CreatorUpload (Content creation)
  * - Hub (DAHUB social hub)
  */
@@ -13,11 +13,11 @@ import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Send } from 'lucide-react';
 import { usePlayerStore } from '../../store/playerStore';
-import { DJMode } from '../../types';
+import { DJMode, Track } from '../../types';
 
 // Import VOYO components
 import { VoyoBottomNav } from './navigation/VoyoBottomNav';
-import { VoyoVerticalFeed } from './feed/VoyoVerticalFeed';
+import { VoyoMoments, MomentTrackInfo } from './feed/VoyoMoments';
 import { CreatorUpload } from './upload/CreatorUpload';
 import { VoyoPortraitPlayer } from './VoyoPortraitPlayer';
 import { Dahub } from '../dahub/Dahub';
@@ -149,7 +149,7 @@ interface PortraitVOYOProps {
 }
 
 export const PortraitVOYO = ({ onSearch, onDahub, onHome }: PortraitVOYOProps) => {
-  const { isPlaying, togglePlay, refreshRecommendations, setVolume, volume, voyoActiveTab, setVoyoTab } = usePlayerStore();
+  const { isPlaying, togglePlay, refreshRecommendations, setVolume, volume, voyoActiveTab, setVoyoTab, playTrack } = usePlayerStore();
 
   const [djMode, setDjMode] = useState<DJMode>('idle');
   const [djResponse, setDjResponse] = useState<string | null>(null);
@@ -282,9 +282,22 @@ export const PortraitVOYO = ({ onSearch, onDahub, onHome }: PortraitVOYOProps) =
           transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
           style={{ pointerEvents: voyoActiveTab === 'feed' ? 'auto' : 'none' }}
         >
-          <VoyoVerticalFeed
-            isActive={voyoActiveTab === 'feed'}
-            onGoToPlayer={() => setVoyoTab('music')}
+          <VoyoMoments
+            onPlayFullTrack={(trackInfo: MomentTrackInfo) => {
+              const track: Track = {
+                id: trackInfo.id,
+                trackId: trackInfo.id,
+                title: trackInfo.title,
+                artist: trackInfo.artist,
+                coverUrl: `https://i.ytimg.com/vi/${trackInfo.id}/hqdefault.jpg`,
+                duration: 0,
+                tags: [],
+                oyeScore: 0,
+                createdAt: new Date().toISOString(),
+              };
+              playTrack(track);
+              setVoyoTab('music');
+            }}
           />
         </motion.div>
 
