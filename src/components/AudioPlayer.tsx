@@ -785,12 +785,12 @@ export const AudioPlayer = () => {
       let panDepth: number;
       let haas: number;
       if (i <= 0.8) {
-        panDepth = i * 0.22;              // 0 → 0.176
+        panDepth = i * 0.3125;            // 0 → 0.25 (gentle movement from ~30%)
         haas = i * 0.003;                 // 0 → 2.4ms
       } else {
         // Surround zone — smooth ramp, same value at boundary
         const s = (i - 0.8) / 0.2;       // 0→1 in last 20%
-        panDepth = 0.176 + (s * 0.224);   // 0.176 → 0.40
+        panDepth = 0.25 + (s * 0.15);     // 0.25 → 0.40
         haas = 0.0024 + (s * 0.002);      // 2.4ms → 4.4ms
       }
 
