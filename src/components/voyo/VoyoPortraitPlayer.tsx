@@ -1090,7 +1090,7 @@ const BackdropLibrary = ({
         {/* Coming soon note */}
         <div className="mt-4 text-center">
           <span className="text-[10px] text-gray-500">
-            More animated backdrops coming soon • Upload your own
+            Tap any backdrop to apply
           </span>
         </div>
       </motion.div>

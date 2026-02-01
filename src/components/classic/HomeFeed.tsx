@@ -326,7 +326,7 @@ const CenterFocusedCarousel = ({ tracks, onPlay }: CenterCarouselProps) => {
               animate={{ opacity: [0.4, 0.8, 0.4] }}
               transition={{ duration: 2.5, repeat: Infinity }}
             >
-              New drops coming soon
+              Discover more
             </motion.p>
           </motion.div>
         )}
@@ -1136,7 +1136,7 @@ export const HomeFeed = ({ onTrackPlay, onSearch, onDahub, onNavVisibilityChange
           >
             <div className="flex items-center gap-2">
               <Bell className="w-4 h-4 text-white" />
-              <p className="text-white text-sm font-medium">Notifications coming soon!</p>
+              <p className="text-white text-sm font-medium">No new notifications</p>
             </div>
           </motion.div>
         )}

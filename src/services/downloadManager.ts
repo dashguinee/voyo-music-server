@@ -113,6 +113,40 @@ export async function getTrackQuality(trackId: string): Promise<'standard' | 'bo
 }
 
 /**
+ * Mark a cached track as "kept" (permanent - won't be evicted by LRU)
+ * Triggered at 75% playback - genuine interest signal
+ */
+export async function markTrackAsKept(trackId: string): Promise<void> {
+  try {
+    const database = await initDB();
+    const transaction = database.transaction([STORE_NAME, META_STORE], 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    const metaStore = transaction.objectStore(META_STORE);
+    const request = store.get(trackId);
+
+    request.onsuccess = () => {
+      const cached = request.result as CachedTrack | undefined;
+      if (cached && cached.quality !== 'boosted') {
+        cached.quality = 'boosted';
+        store.put(cached);
+      }
+    };
+
+    // Also upgrade meta store
+    const metaRequest = metaStore.get(trackId);
+    metaRequest.onsuccess = () => {
+      const meta = metaRequest.result as TrackMeta | undefined;
+      if (meta && meta.quality !== 'boosted') {
+        meta.quality = 'boosted';
+        metaStore.put(meta);
+      }
+    };
+  } catch {
+    // Silent fail - not critical
+  }
+}
+
+/**
  * Get cached track URL (creates blob URL)
  */
 export async function getCachedTrackUrl(trackId: string): Promise<string | null> {

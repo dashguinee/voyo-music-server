@@ -146,6 +146,8 @@ export const AudioPlayer = () => {
   const hasTriggered50PercentCacheRef = useRef<boolean>(false); // 50% auto-boost trigger
   const hasTriggeredPreloadRef = useRef<boolean>(false); // 70% next-track preload trigger
   const shouldAutoResumeRef = useRef<boolean>(false); // Resume playback on refresh if position was saved
+  const isEdgeStreamRef = useRef<boolean>(false); // True when playing from Edge Worker stream URL (not IndexedDB)
+  const hasTriggered75PercentKeptRef = useRef<boolean>(false); // 75% permanent cache trigger
 
   // Store state
   const {
@@ -211,6 +213,22 @@ export const AudioPlayer = () => {
       backgroundBoostingRef.current = null;
     });
   }, [progress, playbackSource, currentTrack, cacheTrack, downloadSetting]);
+
+  // 75% KEPT: Mark track as permanent cache when user shows strong interest
+  useEffect(() => {
+    if (hasTriggered75PercentKeptRef.current) return;
+    if (progress < 75) return;
+    if (!currentTrack?.trackId) return;
+    if (playbackSource !== 'cached' && playbackSource !== 'r2') return;
+
+    hasTriggered75PercentKeptRef.current = true;
+
+    import('../services/downloadManager').then(({ markTrackAsKept }) => {
+      const normalizedId = currentTrack.trackId.replace('VOYO_', '');
+      markTrackAsKept(normalizedId);
+      devLog('🎵 [VOYO] 75% reached - track marked as KEPT (permanent)');
+    });
+  }, [progress, currentTrack?.trackId, playbackSource]);
 
   // PRELOAD: Start preloading next track IMMEDIATELY when track starts (like Spotify)
   // Major platforms don't wait - they start buffering the next track right away
@@ -575,6 +593,43 @@ export const AudioPlayer = () => {
     gainNodeRef.current.gain.value = baseGain * comp * vol;
   };
 
+  // Smooth volume fade-in for auto-resume (1.2s from silence to target)
+  const fadeInVolume = useCallback((durationMs: number = 1200) => {
+    if (audioContextRef.current && gainNodeRef.current) {
+      const now = audioContextRef.current.currentTime;
+      const preset = currentProfileRef.current;
+      const baseGain = preset === 'off' ? 1.0 : BOOST_PRESETS[preset].gain;
+      const vol = usePlayerStore.getState().volume / 100;
+      let comp = 1;
+      if (preset === 'voyex') {
+        const { voyexSpatial } = usePlayerStore.getState();
+        const si = Math.abs(voyexSpatial) / 100;
+        if (voyexSpatial < 0 && si > 0) comp = 1 - si * 0.18;
+        else if (voyexSpatial > 0 && si > 0) comp = 1 - si * 0.12;
+      }
+      const targetGain = baseGain * comp * vol;
+
+      gainNodeRef.current.gain.cancelScheduledValues(now);
+      gainNodeRef.current.gain.setValueAtTime(0.001, now); // Near-zero (avoid log issues)
+      gainNodeRef.current.gain.linearRampToValueAtTime(targetGain, now + durationMs / 1000);
+
+      if (audioRef.current) audioRef.current.volume = 1.0;
+      devLog(`🎵 [VOYO] Fade-in: 0 → ${targetGain.toFixed(2)} over ${durationMs}ms`);
+    } else if (audioRef.current) {
+      // Fallback: no Web Audio chain - fade HTML element volume
+      audioRef.current.volume = 0;
+      const targetVol = usePlayerStore.getState().volume / 100;
+      const startTime = performance.now();
+      const step = () => {
+        const elapsed = performance.now() - startTime;
+        const t = Math.min(elapsed / durationMs, 1);
+        if (audioRef.current) audioRef.current.volume = t * targetVol;
+        if (t < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    }
+  }, []);
+
   // Update preset dynamically — unified chain, all refs always exist
   const updateBoostPreset = useCallback((preset: BoostPreset) => {
     if (!audioEnhancedRef.current) return;
@@ -784,6 +839,8 @@ export const AudioPlayer = () => {
       trackProgressRef.current = 0;
       hasTriggered50PercentCacheRef.current = false; // Reset 50% trigger for new track
       hasTriggeredPreloadRef.current = false; // Reset preload trigger for new track
+      isEdgeStreamRef.current = false; // Reset edge stream flag for new track
+      hasTriggered75PercentKeptRef.current = false; // Reset 75% kept trigger for new track
 
       // End previous session
       endListenSession(audioRef.current?.currentTime || 0, 0);
@@ -843,6 +900,7 @@ export const AudioPlayer = () => {
       if (cachedUrl) {
         // ⚡ BOOSTED - Play from cache instantly
         devLog('🎵 [VOYO] Playing BOOSTED');
+        isEdgeStreamRef.current = false;
         setPlaybackSource('cached');
 
         if (cachedUrlRef.current) URL.revokeObjectURL(cachedUrlRef.current);
@@ -878,7 +936,11 @@ export const AudioPlayer = () => {
             if ((shouldPlay || shouldAutoResume) && audioRef.current.paused) {
               audioContextRef.current?.state === 'suspended' && audioContextRef.current.resume();
               audioRef.current.play().then(() => {
-                audioRef.current!.volume = 1.0;
+                if (shouldAutoResume) {
+                  fadeInVolume(1200); // Smooth fade-in on session resume
+                } else {
+                  audioRef.current!.volume = 1.0;
+                }
                 recordPlayEvent();
                 // Update store to reflect playing state if we auto-resumed
                 if (shouldAutoResume && !shouldPlay) {
@@ -935,7 +997,11 @@ export const AudioPlayer = () => {
               if ((shouldPlay || shouldAutoResume) && audioRef.current.paused) {
                 audioContextRef.current?.state === 'suspended' && audioContextRef.current.resume();
                 audioRef.current.play().then(() => {
-                  audioRef.current!.volume = 1.0;
+                  if (shouldAutoResume) {
+                    fadeInVolume(1200); // Smooth fade-in on session resume
+                  } else {
+                    audioRef.current!.volume = 1.0;
+                  }
                   recordPlayEvent();
                   // Update store to reflect playing state if we auto-resumed
                   if (shouldAutoResume && !shouldPlay) {
@@ -962,6 +1028,7 @@ export const AudioPlayer = () => {
             }
 
             devLog(`🎵 [VOYO] Got stream URL (${streamData.bitrate}bps ${streamData.mimeType})`);
+            isEdgeStreamRef.current = true; // Mark as streaming (not from IndexedDB)
             setPlaybackSource('cached'); // Treat as cached for EQ purposes
 
             const { boostProfile: profile } = usePlayerStore.getState();
@@ -989,7 +1056,11 @@ export const AudioPlayer = () => {
                 if ((shouldPlay || shouldAutoResume) && audioRef.current.paused) {
                   audioContextRef.current?.state === 'suspended' && audioContextRef.current.resume();
                   audioRef.current.play().then(() => {
-                    audioRef.current!.volume = 1.0;
+                    if (shouldAutoResume) {
+                      fadeInVolume(1200); // Smooth fade-in on session resume
+                    } else {
+                      audioRef.current!.volume = 1.0;
+                    }
                     recordPlayEvent();
                     if (shouldAutoResume && !shouldPlay) {
                       usePlayerStore.getState().togglePlay();
@@ -1001,7 +1072,7 @@ export const AudioPlayer = () => {
 
               // BACKGROUND: Download to cache after playback starts (non-blocking)
               audioRef.current.onplay = () => {
-                // Start background caching after 5 seconds of playback (genuine interest)
+                // Start background caching after 30 seconds of playback (genuine interest)
                 setTimeout(() => {
                   const currentState = usePlayerStore.getState();
                   if (currentState.currentTrack?.trackId === trackId && currentState.isPlaying) {
@@ -1014,7 +1085,7 @@ export const AudioPlayer = () => {
                       `https://voyo-music-api.fly.dev/cdn/art/${trackId}?quality=high`
                     );
                   }
-                }, 5000);
+                }, 30000);
               };
             }
           } catch (streamError) {
@@ -1057,9 +1128,10 @@ export const AudioPlayer = () => {
     const currentId = currentTrack.trackId.replace('VOYO_', '');
     const isCurrentTrackMatch = completedId === currentId || completedId === currentTrack.trackId;
 
-    // Only hot-swap if currently streaming via R2 AND boost is for current track
-    // This upgrades from R2 (potentially low quality) to local cached (high quality)
-    if (!isCurrentTrackMatch || playbackSource !== 'r2') return;
+    // Hot-swap if currently streaming via R2 or Edge Worker stream AND boost is for current track
+    // This upgrades from R2 (potentially low quality) or expiring stream URL to local cached (high quality)
+    if (!isCurrentTrackMatch) return;
+    if (playbackSource !== 'r2' && !(playbackSource === 'cached' && isEdgeStreamRef.current)) return;
 
     // Cancel any previous hot-swap operation to prevent race condition
     if (hotSwapAbortRef.current) {
@@ -1134,7 +1206,8 @@ export const AudioPlayer = () => {
         if (shouldPlayNow && audioRef.current.paused) {
           audioContextRef.current?.state === 'suspended' && audioContextRef.current.resume();
           audioRef.current.play().then(() => {
-            // NOW switch to cached mode - audio is playing, safe to mute iframe
+            // NOW switch to cached mode - audio is playing from local cache
+            isEdgeStreamRef.current = false; // No longer streaming from edge
             setPlaybackSource('cached');
             audioRef.current!.volume = 1.0;
             devLog('🔄 [VOYO] Hot-swap complete! Now playing boosted audio');
@@ -1309,8 +1382,8 @@ export const AudioPlayer = () => {
     setBufferHealth(health.percentage, health.status);
   }, [playbackSource, setBufferHealth]);
 
-  // ERROR HANDLER: Handle audio element errors gracefully
-  const handleAudioError = useCallback((e: React.SyntheticEvent<HTMLAudioElement, Event>) => {
+  // ERROR HANDLER: Handle audio element errors with recovery (music never stops)
+  const handleAudioError = useCallback(async (e: React.SyntheticEvent<HTMLAudioElement, Event>) => {
     if (playbackSource !== 'cached' && playbackSource !== 'r2') return;
 
     const audio = e.currentTarget;
@@ -1325,17 +1398,56 @@ export const AudioPlayer = () => {
     const errorName = error ? (errorCodes[error.code] || `Unknown(${error.code})`) : 'Unknown';
     console.error(`🚨 [VOYO] Audio error: ${errorName}`, error?.message);
 
-    // On error, try to re-extract
-    if (currentTrack?.trackId && error) {
-      devLog('🚨 [VOYO] Audio error - clearing source. User may need to retry.');
-      // Clear the failed audio source
-      audio.src = '';
-      if (cachedUrlRef.current) {
-        URL.revokeObjectURL(cachedUrlRef.current);
-        cachedUrlRef.current = null;
+    if (!currentTrack?.trackId || !error) return;
+
+    const savedPos = usePlayerStore.getState().currentTime;
+
+    // RECOVERY 1: Try cached version from IndexedDB
+    try {
+      const cachedUrl = await checkCache(currentTrack.trackId);
+      if (cachedUrl && audioRef.current) {
+        devLog('🔄 [VOYO] Recovering from error - switching to cached version');
+        if (cachedUrlRef.current) URL.revokeObjectURL(cachedUrlRef.current);
+        cachedUrlRef.current = cachedUrl;
+        audioRef.current.src = cachedUrl;
+        audioRef.current.load();
+        audioRef.current.oncanplaythrough = () => {
+          if (!audioRef.current) return;
+          if (savedPos > 2) audioRef.current.currentTime = savedPos;
+          isEdgeStreamRef.current = false;
+          audioRef.current.play().catch(() => {});
+        };
+        return;
       }
+    } catch {}
+
+    // RECOVERY 2: Re-extract stream URL from Edge Worker
+    try {
+      devLog('🔄 [VOYO] Recovering from error - re-extracting stream URL');
+      const streamResponse = await fetch(`${EDGE_WORKER_URL}/stream?v=${currentTrack.trackId}`);
+      const streamData = await streamResponse.json();
+      if (streamData.url && audioRef.current) {
+        audioRef.current.src = streamData.url;
+        audioRef.current.load();
+        audioRef.current.oncanplaythrough = () => {
+          if (!audioRef.current) return;
+          if (savedPos > 2) audioRef.current.currentTime = savedPos;
+          isEdgeStreamRef.current = true;
+          audioRef.current.play().catch(() => {});
+        };
+        return;
+      }
+    } catch {}
+
+    // RECOVERY 3: Skip to next track (music never stops)
+    devLog('🚨 [VOYO] Cannot recover - skipping to next track');
+    audio.src = '';
+    if (cachedUrlRef.current) {
+      URL.revokeObjectURL(cachedUrlRef.current);
+      cachedUrlRef.current = null;
     }
-  }, [playbackSource, currentTrack?.trackId, setPlaybackSource]);
+    nextTrack();
+  }, [playbackSource, currentTrack?.trackId, checkCache, nextTrack]);
 
   return (
     <audio

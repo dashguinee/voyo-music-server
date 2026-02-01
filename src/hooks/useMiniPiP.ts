@@ -15,8 +15,8 @@ import { useRef, useCallback, useEffect } from 'react';
 import { usePlayerStore } from '../store/playerStore';
 import { getYouTubeThumbnail } from '../data/tracks';
 
-// PiP window size (small and minimal)
-const PIP_SIZE = 256;
+// PiP window size (card-like ratio)
+const PIP_SIZE = 320;
 
 export function useMiniPiP() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -58,18 +58,20 @@ export function useMiniPiP() {
     console.log('[VOYO PiP] Initialized');
   }, []);
 
-  // Draw album art on canvas
-  const drawAlbumArt = useCallback(async (trackId: string) => {
+  // Draw VOYO card on canvas (album art + gradient overlay + title/artist)
+  const drawAlbumArt = useCallback(async (trackId: string, title?: string, artist?: string) => {
     if (!canvasRef.current) return;
 
     const ctx = canvasRef.current.getContext('2d');
     if (!ctx) return;
 
-    // Get thumbnail URL
     const thumbnailUrl = getYouTubeThumbnail(trackId, 'high');
 
+    // Dark base
+    ctx.fillStyle = '#0a0a0f';
+    ctx.fillRect(0, 0, PIP_SIZE, PIP_SIZE);
+
     try {
-      // Load image
       const img = new Image();
       img.crossOrigin = 'anonymous';
 
@@ -79,31 +81,76 @@ export function useMiniPiP() {
         img.src = thumbnailUrl;
       });
 
-      // Draw centered and cropped to square
+      // Draw album art (centered crop to square)
       const size = Math.min(img.width, img.height);
       const sx = (img.width - size) / 2;
       const sy = (img.height - size) / 2;
-
-      ctx.fillStyle = '#0a0a0f';
-      ctx.fillRect(0, 0, PIP_SIZE, PIP_SIZE);
       ctx.drawImage(img, sx, sy, size, size, 0, 0, PIP_SIZE, PIP_SIZE);
-
-      console.log('[VOYO PiP] Album art updated');
-    } catch (err) {
-      // Fallback: gradient background with VOYO text
+    } catch {
+      // Fallback gradient if image fails
       const gradient = ctx.createLinearGradient(0, 0, PIP_SIZE, PIP_SIZE);
       gradient.addColorStop(0, '#7c3aed');
       gradient.addColorStop(1, '#ec4899');
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, PIP_SIZE, PIP_SIZE);
-
-      ctx.fillStyle = 'white';
-      ctx.font = 'bold 32px system-ui';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('VOYO', PIP_SIZE / 2, PIP_SIZE / 2);
     }
-  }, []);
+
+    // Bottom gradient overlay (VOYO card style)
+    const overlay = ctx.createLinearGradient(0, PIP_SIZE * 0.55, 0, PIP_SIZE);
+    overlay.addColorStop(0, 'rgba(0,0,0,0)');
+    overlay.addColorStop(0.4, 'rgba(0,0,0,0.6)');
+    overlay.addColorStop(1, 'rgba(0,0,0,0.9)');
+    ctx.fillStyle = overlay;
+    ctx.fillRect(0, PIP_SIZE * 0.55, PIP_SIZE, PIP_SIZE * 0.45);
+
+    // Track title
+    const trackTitle = title || currentTrack?.title || 'VOYO';
+    const trackArtist = artist || currentTrack?.artist || '';
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 18px system-ui, -apple-system, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'bottom';
+
+    // Truncate title if too long
+    const maxWidth = PIP_SIZE - 32;
+    let displayTitle = trackTitle;
+    while (ctx.measureText(displayTitle).width > maxWidth && displayTitle.length > 3) {
+      displayTitle = displayTitle.slice(0, -2) + '...';
+    }
+    ctx.fillText(displayTitle, 16, PIP_SIZE - 28);
+
+    // Artist name
+    if (trackArtist) {
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.font = '14px system-ui, -apple-system, sans-serif';
+      let displayArtist = trackArtist;
+      while (ctx.measureText(displayArtist).width > maxWidth && displayArtist.length > 3) {
+        displayArtist = displayArtist.slice(0, -2) + '...';
+      }
+      ctx.fillText(displayArtist, 16, PIP_SIZE - 10);
+    }
+
+    // Small VOYO badge (top-left)
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    const badgeWidth = 52;
+    const badgeHeight = 20;
+    const badgeRadius = 10;
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(12, 12, badgeWidth, badgeHeight, badgeRadius);
+    } else {
+      ctx.rect(12, 12, badgeWidth, badgeHeight);
+    }
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.font = 'bold 11px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('VOYO', 12 + badgeWidth / 2, 12 + badgeHeight / 2);
+
+    console.log('[VOYO PiP] Card updated:', trackTitle);
+  }, [currentTrack]);
 
   // Enter PiP mode
   const enterPiP = useCallback(async () => {
@@ -122,8 +169,8 @@ export function useMiniPiP() {
     if (!videoRef.current || !currentTrack) return false;
 
     try {
-      // Update album art
-      await drawAlbumArt(currentTrack.trackId);
+      // Draw VOYO card (album art + title + artist)
+      await drawAlbumArt(currentTrack.trackId, currentTrack.title, currentTrack.artist);
 
       // Play video (required for PiP)
       await videoRef.current.play();
@@ -164,10 +211,10 @@ export function useMiniPiP() {
     }
   }, [enterPiP, exitPiP]);
 
-  // Update album art when track changes (while PiP is active)
+  // Update card when track changes (while PiP is active)
   useEffect(() => {
     if (isActiveRef.current && currentTrack) {
-      drawAlbumArt(currentTrack.trackId);
+      drawAlbumArt(currentTrack.trackId, currentTrack.title, currentTrack.artist);
     }
   }, [currentTrack?.trackId, drawAlbumArt]);
 

@@ -342,6 +342,15 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
       if (success) {
         console.log('🎵 CACHE: ✅ Auto-cached:', title);
         await get().refreshCacheInfo();
+        // Emit completion for hot-swap (upgrade stream → cached)
+        set({
+          lastBoostCompletion: {
+            trackId: normalizedId,
+            duration: 0,
+            isFast: true,
+            timestamp: Date.now(),
+          },
+        });
       }
     } catch (error) {
       // Silent fail - don't interrupt user experience
