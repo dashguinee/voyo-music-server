@@ -1,17 +1,20 @@
 /**
- * VoyoMoments - 4-Directional Content Feed
+ * VoyoMoments - Control vs Surrender Navigation Feed
  *
- * UP/DOWN = scroll through TIME (older/newer)
- * LEFT/RIGHT = scroll through CATEGORIES
- * Category tabs: Countries | Vibes | Genres
+ * UP = Control (deeper in same category, deterministic)
+ * DOWN = Surrender (bleed into adjacent category, organic)
+ * LEFT = Memory (retrace trail with fading precision)
+ * RIGHT = Drift (explore somewhere new, weighted random)
+ * Tabs = Hard shift (intentional dimension change)
+ *
  * Hold = position overlay | Double-tap = OYE reaction
- * No algorithm - organized by PLACE and TIME
+ * Double-tap + hold = Star panel (1 star = follow)
  */
 
 import React, { useState, useRef, useCallback, useEffect, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, Flame, MessageCircle, ExternalLink, Play, Volume2, VolumeX } from 'lucide-react';
-import { useMoments, CategoryAxis } from '../../../hooks/useMoments';
+import { useMoments, CategoryAxis, NavAction } from '../../../hooks/useMoments';
 import type { Moment } from '../../../services/momentsService';
 
 // ============================================
@@ -21,7 +24,17 @@ import type { Moment } from '../../../services/momentsService';
 const SWIPE_THRESHOLD = 50;
 const LONG_PRESS_MS = 500;
 const DOUBLE_TAP_MS = 300;
-const SPRING = { type: 'spring' as const, stiffness: 300, damping: 30, mass: 0.8 };
+const STAR_HOLD_MS = 500; // hold after double-tap to open star panel
+
+// Control = snappy, deterministic feel (UP, LEFT)
+const SPRING_CONTROL = { type: 'spring' as const, stiffness: 400, damping: 35, mass: 0.8 };
+// Surrender = floaty, organic feel (DOWN, RIGHT)
+const SPRING_SURRENDER = { type: 'spring' as const, stiffness: 280, damping: 25, mass: 1.0 };
+
+function getSpring(action: NavAction) {
+  if (action === 'down' || action === 'right') return SPRING_SURRENDER;
+  return SPRING_CONTROL;
+}
 
 // API base for R2 feed video streaming
 const VOYO_API = import.meta.env.VITE_API_URL || (
@@ -38,14 +51,19 @@ function formatCount(n: number): string {
 
 type SlideDir = 'up' | 'down' | 'left' | 'right' | null;
 
-function slideVariants(dir: SlideDir) {
+function slideVariants(dir: SlideDir, isSurrender: boolean = false) {
   const axis = dir === 'up' || dir === 'down' ? 'y' : 'x';
   const sign = dir === 'up' || dir === 'left' ? 1 : dir === 'down' || dir === 'right' ? -1 : 0;
   const hScale = dir === 'left' || dir === 'right' ? 0.92 : 1;
+
+  // Surrender directions get subtle rotation and scale variance
+  const rotateIn = isSurrender ? (Math.random() - 0.5) * 3 : 0;
+  const scaleIn = isSurrender ? 0.95 + Math.random() * 0.05 : hScale;
+
   return {
-    initial: { [axis]: `${sign * 100}%`, opacity: 0.7, scale: hScale },
-    animate: { [axis]: 0, opacity: 1, scale: 1 },
-    exit: { [axis]: `${-sign * 100}%`, opacity: 0.5, scale: hScale },
+    initial: { [axis]: `${sign * 100}%`, opacity: 0.7, scale: scaleIn, rotate: rotateIn },
+    animate: { [axis]: 0, opacity: 1, scale: 1, rotate: 0 },
+    exit: { [axis]: `${-sign * 100}%`, opacity: 0.5, scale: hScale, rotate: -rotateIn },
   };
 }
 
@@ -297,6 +315,115 @@ const PositionOverlay = memo(({ position, categories, totalInCategory, onClose, 
 PositionOverlay.displayName = 'PositionOverlay';
 
 // ============================================
+// STAR PANEL (Double-tap-hold → 1-5 stars)
+// ============================================
+
+interface StarPanelProps {
+  creator: string;
+  onGiveStar: (stars: number) => void;
+  onClose: () => void;
+}
+
+const StarPanel = memo(({ creator, onGiveStar, onClose }: StarPanelProps) => {
+  const initial = (creator || '?')[0].toUpperCase();
+  return (
+    <motion.div
+      style={{ position: 'absolute', inset: 0, zIndex: 60, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+    >
+      <motion.div
+        style={{ background: 'linear-gradient(to top, rgba(10,10,15,0.98), rgba(26,26,46,0.95))', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: '24px 20px 40px', textAlign: 'center' }}
+        initial={{ y: 100, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: 100, opacity: 0 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 8px', fontSize: 16, fontWeight: 700, color: '#fff' }}>{initial}</div>
+        <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.7)', marginBottom: 4 }}>@{creator}</div>
+        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 20 }}>Give a star to follow</div>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
+          {[1, 2, 3, 4, 5].map(n => (
+            <motion.button
+              key={n}
+              style={{
+                width: 48, height: 48, borderRadius: '50%',
+                background: n === 1 ? 'rgba(251,191,36,0.2)' : 'rgba(255,255,255,0.08)',
+                border: n === 1 ? '2px solid rgba(251,191,36,0.4)' : '1px solid rgba(255,255,255,0.1)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 18, cursor: 'pointer', color: '#FBBF24',
+              }}
+              whileHover={{ scale: 1.15 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={() => onGiveStar(n)}
+            >
+              {'★'.repeat(Math.min(n, 3))}{n > 3 ? <span style={{ fontSize: 10, color: 'rgba(251,191,36,0.7)' }}>+{n - 3}</span> : null}
+            </motion.button>
+          ))}
+        </div>
+        {/* Hint: 1 star = follow */}
+        <div style={{ fontSize: 10, color: 'rgba(251,191,36,0.5)', marginTop: 12 }}>1 star = follow this creator</div>
+      </motion.div>
+    </motion.div>
+  );
+});
+StarPanel.displayName = 'StarPanel';
+
+// Star Confirmation (first time per creator)
+interface StarConfirmProps {
+  creator: string;
+  stars: number;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+const StarConfirmation = memo(({ creator, stars, onConfirm, onCancel }: StarConfirmProps) => (
+  <motion.div
+    style={{ position: 'absolute', inset: 0, zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(15px)', WebkitBackdropFilter: 'blur(15px)' }}
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    exit={{ opacity: 0 }}
+    onClick={onConfirm}
+  >
+    <motion.div
+      style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: 20, padding: '28px 36px', textAlign: 'center', maxWidth: 280 }}
+      initial={{ scale: 0.8, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      exit={{ scale: 0.8, opacity: 0 }}
+      onClick={e => e.stopPropagation()}
+    >
+      <div style={{ fontSize: 28, marginBottom: 12 }}>{'★'.repeat(stars)}</div>
+      <div style={{ fontSize: 16, fontWeight: 700, color: '#fff', marginBottom: 4 }}>
+        Send {stars === 1 ? 'a star' : `${stars} stars`} to @{creator}?
+      </div>
+      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 20 }}>
+        {stars === 1 ? 'This will follow them' : 'Stars show your appreciation'}
+      </div>
+      <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+        <motion.button
+          style={{ padding: '10px 24px', borderRadius: 20, background: 'linear-gradient(135deg, #FBBF24, #F59E0B)', color: '#000', fontWeight: 700, fontSize: 14, border: 'none', cursor: 'pointer' }}
+          whileTap={{ scale: 0.95 }}
+          onClick={onConfirm}
+        >
+          Send ★
+        </motion.button>
+        <motion.button
+          style={{ padding: '10px 24px', borderRadius: 20, background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)', fontWeight: 500, fontSize: 14, border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer' }}
+          whileTap={{ scale: 0.95 }}
+          onClick={(e) => { e.stopPropagation(); onCancel(); }}
+        >
+          Cancel
+        </motion.button>
+      </div>
+    </motion.div>
+  </motion.div>
+));
+StarConfirmation.displayName = 'StarConfirmation';
+
+// ============================================
 // MAIN COMPONENT
 // ============================================
 
@@ -314,7 +441,7 @@ export const VoyoMoments: React.FC<VoyoMomentsProps> = ({ onPlayFullTrack }) => 
   const {
     currentMoment, position, categoryAxis, categories, currentCategory, displayName,
     goUp, goDown, goLeft, goRight, setCategoryAxis,
-    loading, totalInCategory, recordPlay, recordOye,
+    loading, totalInCategory, navAction, recordPlay, recordOye, recordStar,
   } = useMoments();
 
   const [showOverlay, setShowOverlay] = useState(false);
@@ -324,14 +451,18 @@ export const VoyoMoments: React.FC<VoyoMomentsProps> = ({ onPlayFullTrack }) => 
   const [mKey, setMKey] = useState(0);
   const [isMuted, setIsMuted] = useState(true);
   const [showVol, setShowVol] = useState(false);
+  const [showStarPanel, setShowStarPanel] = useState(false);
+  const [confirmedCreators, setConfirmedCreators] = useState<Set<string>>(new Set());
+  const [pendingStar, setPendingStar] = useState<{ momentId: string; creator: string; stars: number } | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const lpTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTap = useRef(0);
   const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const touchStart = useRef<{ x: number; y: number; time: number } | null>(null);
   const swiping = useRef(false);
   const volTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const starHoldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Record play when moment changes
   useEffect(() => { if (currentMoment) recordPlay(currentMoment.id); }, [currentMoment?.id, recordPlay]);
@@ -347,10 +478,25 @@ export const VoyoMoments: React.FC<VoyoMomentsProps> = ({ onPlayFullTrack }) => 
 
   const onTS = useCallback((e: React.TouchEvent) => {
     const t = e.touches[0];
-    touchStart.current = { x: t.clientX, y: t.clientY };
+    touchStart.current = { x: t.clientX, y: t.clientY, time: Date.now() };
     swiping.current = false;
+
+    // Check if this is a second tap (potential double-tap-hold for stars)
+    const now = Date.now();
+    if (now - lastTap.current < DOUBLE_TAP_MS && currentMoment) {
+      // Second tap detected — start star hold timer
+      starHoldTimer.current = setTimeout(() => {
+        if (!swiping.current) {
+          const creator = currentMoment.creator_username || currentMoment.creator_name || '';
+          if (creator) {
+            setShowStarPanel(true);
+          }
+        }
+      }, STAR_HOLD_MS);
+    }
+
     lpTimer.current = setTimeout(() => { if (!swiping.current) setShowOverlay(true); }, LONG_PRESS_MS);
-  }, []);
+  }, [currentMoment]);
 
   const onTM = useCallback((e: React.TouchEvent) => {
     if (!touchStart.current) return;
@@ -358,6 +504,7 @@ export const VoyoMoments: React.FC<VoyoMomentsProps> = ({ onPlayFullTrack }) => 
     if (Math.abs(t.clientX - touchStart.current.x) > 10 || Math.abs(t.clientY - touchStart.current.y) > 10) {
       swiping.current = true;
       if (lpTimer.current) { clearTimeout(lpTimer.current); lpTimer.current = null; }
+      if (starHoldTimer.current) { clearTimeout(starHoldTimer.current); starHoldTimer.current = null; }
     }
   }, []);
 
@@ -378,34 +525,51 @@ export const VoyoMoments: React.FC<VoyoMomentsProps> = ({ onPlayFullTrack }) => 
 
   const onTE = useCallback((e: React.TouchEvent) => {
     if (lpTimer.current) { clearTimeout(lpTimer.current); lpTimer.current = null; }
+    if (starHoldTimer.current) { clearTimeout(starHoldTimer.current); starHoldTimer.current = null; }
     if (showOverlay) { setShowOverlay(false); touchStart.current = null; return; }
+    if (showStarPanel) { touchStart.current = null; return; }
     if (!touchStart.current) return;
 
     const t = e.changedTouches[0];
     const dx = t.clientX - touchStart.current.x;
     const dy = t.clientY - touchStart.current.y;
+    const duration = Date.now() - touchStart.current.time;
     touchStart.current = null;
 
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
     if (Math.abs(dx) > SWIPE_THRESHOLD || Math.abs(dy) > SWIPE_THRESHOLD) {
+      // Calculate velocity (px/ms)
+      const velocity = distance / Math.max(duration, 1);
+
       if (Math.abs(dx) > Math.abs(dy)) {
-        dx < 0 ? nav('left', goRight) : nav('right', goLeft);
+        if (dx < 0) {
+          nav('left', () => goRight(velocity));
+        } else {
+          nav('right', () => goLeft(velocity));
+        }
       } else {
-        dy < 0 ? nav('up', goUp) : nav('down', goDown);
+        if (dy < 0) {
+          nav('up', () => goUp(velocity));
+        } else {
+          nav('down', () => goDown(velocity));
+        }
       }
       return;
     }
 
-    // Double-tap detection
+    // Double-tap detection with star-hold
     const now = Date.now();
     if (now - lastTap.current < DOUBLE_TAP_MS) {
       if (tapTimer.current) { clearTimeout(tapTimer.current); tapTimer.current = null; }
+      // Double-tap detected — fire OYE immediately
       if (currentMoment) handleOye(currentMoment.id, t.clientX, t.clientY);
       lastTap.current = 0;
     } else {
       lastTap.current = now;
       tapTimer.current = setTimeout(() => { showVolBadge(); lastTap.current = 0; }, DOUBLE_TAP_MS);
     }
-  }, [showOverlay, currentMoment, goUp, goDown, goLeft, goRight, nav, handleOye, showVolBadge]);
+  }, [showOverlay, showStarPanel, currentMoment, goUp, goDown, goLeft, goRight, nav, handleOye, showVolBadge]);
 
   // ---- KEYBOARD (desktop) ----
 
@@ -428,12 +592,15 @@ export const VoyoMoments: React.FC<VoyoMomentsProps> = ({ onPlayFullTrack }) => 
     if (lpTimer.current) clearTimeout(lpTimer.current);
     if (tapTimer.current) clearTimeout(tapTimer.current);
     if (volTimer.current) clearTimeout(volTimer.current);
+    if (starHoldTimer.current) clearTimeout(starHoldTimer.current);
   }, []);
 
   // Adjacent categories
   const prevCat = categories[(position.categoryIndex - 1 + categories.length) % categories.length];
   const nextCat = categories[(position.categoryIndex + 1) % categories.length];
-  const sv = slideVariants(slideDir);
+  const isSurrender = navAction === 'down' || navAction === 'right';
+  const sv = slideVariants(slideDir, isSurrender);
+  const spring = getSpring(navAction);
   const isOyed = currentMoment ? oyedMoments.has(currentMoment.id) : false;
 
   const handleOyeBtn = useCallback(() => {
@@ -441,6 +608,35 @@ export const VoyoMoments: React.FC<VoyoMomentsProps> = ({ onPlayFullTrack }) => 
     const r = containerRef.current.getBoundingClientRect();
     handleOye(currentMoment.id, r.width / 2, r.height / 2);
   }, [currentMoment, handleOye]);
+
+  // Star giving flow
+  const handleGiveStar = useCallback((stars: number) => {
+    if (!currentMoment) return;
+    const creator = currentMoment.creator_username || currentMoment.creator_name || '';
+    if (!creator) return;
+
+    // First time per creator: show confirmation
+    if (!confirmedCreators.has(creator)) {
+      setPendingStar({ momentId: currentMoment.id, creator, stars });
+      setShowStarPanel(false);
+      return;
+    }
+
+    // Already confirmed: send immediately
+    recordStar(currentMoment.id, creator, stars);
+    setShowStarPanel(false);
+  }, [currentMoment, confirmedCreators, recordStar]);
+
+  const handleConfirmStar = useCallback(() => {
+    if (!pendingStar) return;
+    recordStar(pendingStar.momentId, pendingStar.creator, pendingStar.stars);
+    setConfirmedCreators(prev => { const n = new Set(prev); n.add(pendingStar.creator); return n; });
+    setPendingStar(null);
+  }, [pendingStar, recordStar]);
+
+  const handleCancelStar = useCallback(() => {
+    setPendingStar(null);
+  }, []);
 
   return (
     <div ref={containerRef} style={S.container} onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}>
@@ -470,7 +666,7 @@ export const VoyoMoments: React.FC<VoyoMomentsProps> = ({ onPlayFullTrack }) => 
             <span>Loading moments...</span>
           </motion.div>
         ) : currentMoment ? (
-          <motion.div key={`m-${currentMoment.id}-${mKey}`} style={{ position: 'absolute', inset: 0 }} initial={sv.initial} animate={sv.animate} exit={sv.exit} transition={SPRING}>
+          <motion.div key={`m-${currentMoment.id}-${mKey}`} style={{ position: 'absolute', inset: 0 }} initial={sv.initial} animate={sv.animate} exit={sv.exit} transition={spring}>
             <MomentCard
               moment={currentMoment}
               isOyed={isOyed}
@@ -506,6 +702,29 @@ export const VoyoMoments: React.FC<VoyoMomentsProps> = ({ onPlayFullTrack }) => 
       <AnimatePresence>
         {showOverlay && (
           <PositionOverlay position={position} categories={categories} totalInCategory={totalInCategory} onClose={() => setShowOverlay(false)} displayName={displayName} />
+        )}
+      </AnimatePresence>
+
+      {/* STAR PANEL */}
+      <AnimatePresence>
+        {showStarPanel && currentMoment && (
+          <StarPanel
+            creator={currentMoment.creator_username || currentMoment.creator_name || 'Unknown'}
+            onGiveStar={handleGiveStar}
+            onClose={() => setShowStarPanel(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* STAR CONFIRMATION (first time per creator) */}
+      <AnimatePresence>
+        {pendingStar && (
+          <StarConfirmation
+            creator={pendingStar.creator}
+            stars={pendingStar.stars}
+            onConfirm={handleConfirmStar}
+            onCancel={handleCancelStar}
+          />
         )}
       </AnimatePresence>
     </div>
