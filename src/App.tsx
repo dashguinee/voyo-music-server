@@ -9,25 +9,27 @@
  * 4. Video Mode - Full immersion with floating reactions
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Home, Radio, X, Zap, User, Search } from 'lucide-react';
-import { PortraitVOYO } from './components/voyo/PortraitVOYO';
-import { LandscapeVOYO } from './components/voyo/LandscapeVOYO';
-import { VideoMode } from './components/voyo/VideoMode';
-import { ClassicMode } from './components/classic/ClassicMode';
-import { AudioPlayer } from './components/AudioPlayer';
-import { YouTubeIframe } from './components/YouTubeIframe';
-import { SearchOverlayV2 as SearchOverlay } from './components/search/SearchOverlayV2';
-import { ArtistPage } from './components/voyo/ArtistPage';
-import { AnimatedBackground, BackgroundPicker, BackgroundType, ReactionCanvas } from './components/backgrounds/AnimatedBackgrounds';
 import { usePlayerStore } from './store/playerStore';
 import { getYouTubeThumbnail } from './data/tracks';
 import { setupMobileAudioUnlock } from './utils/mobileAudioUnlock';
+import { AnimatedBackground, BackgroundPicker, BackgroundType, ReactionCanvas } from './components/backgrounds/AnimatedBackgrounds';
+import { AudioPlayer } from './components/AudioPlayer';
+import { YouTubeIframe } from './components/YouTubeIframe';
 import { InstallButton } from './components/ui/InstallButton';
 import { OfflineIndicator } from './components/ui/OfflineIndicator';
 import { VoyoSplash } from './components/voyo/VoyoSplash';
-import { UniversePanel } from './components/universe/UniversePanel';
+
+// Lazy-loaded mode components (code splitting — only load active mode)
+const PortraitVOYO = lazy(() => import('./components/voyo/PortraitVOYO'));
+const LandscapeVOYO = lazy(() => import('./components/voyo/LandscapeVOYO'));
+const VideoMode = lazy(() => import('./components/voyo/VideoMode'));
+const ClassicMode = lazy(() => import('./components/classic/ClassicMode'));
+const SearchOverlay = lazy(() => import('./components/search/SearchOverlayV2'));
+const ArtistPage = lazy(() => import('./components/voyo/ArtistPage'));
+const UniversePanel = lazy(() => import('./components/universe/UniversePanel').then(m => ({ default: m.UniversePanel })));
 import { useReactionStore } from './store/reactionStore';
 import { devLog, devWarn } from './utils/logger';
 import { useAuth } from './hooks/useAuth';
@@ -1202,6 +1204,7 @@ function App() {
 
   return (
     <AuthProvider>
+    <Suspense fallback={<div className="h-full w-full bg-[#0a0a0f]" />}>
     <div className="relative h-full w-full bg-[#0a0a0f] overflow-hidden">
       {/* VOYO Splash Screen - Premium water drop animation */}
       {showSplash && (
@@ -1397,6 +1400,7 @@ function App() {
       {/* Offline Indicator - Shows when network is lost */}
       <OfflineIndicator />
     </div>
+    </Suspense>
     </AuthProvider>
   );
 }
