@@ -966,6 +966,132 @@ export default {
       }
     }
 
-    return new Response('VOYO Edge Worker v5 - Zero Gap + Video Feed', { headers: corsHeaders });
+    // ========================================
+    // SEARCH - YouTube search via Piped API (replaces Fly.io /api/search)
+    // ========================================
+    if (url.pathname === '/api/search') {
+      const query = url.searchParams.get('q');
+      const limit = parseInt(url.searchParams.get('limit') || '20');
+
+      if (!query) {
+        return new Response(JSON.stringify({ error: 'Missing q parameter' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      try {
+        // Use YouTube Innertube search API directly (same clients as extraction)
+        const searchResponse = await fetch(
+          'https://www.youtube.com/youtubei/v1/search?key=AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'User-Agent': 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip',
+              'X-YouTube-Client-Name': 'ANDROID',
+              'X-YouTube-Client-Version': '19.09.37',
+            },
+            body: JSON.stringify({
+              query: query,
+              context: {
+                client: {
+                  clientName: 'ANDROID',
+                  clientVersion: '19.09.37',
+                  androidSdkVersion: 30,
+                  hl: 'en',
+                  gl: 'US',
+                }
+              },
+              params: 'EgWKAQIIAWoMEA4QChADEAQQCRAF' // Music filter
+            })
+          }
+        );
+
+        if (!searchResponse.ok) {
+          return new Response(JSON.stringify({ error: `YouTube search failed: ${searchResponse.status}` }), {
+            status: searchResponse.status,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+
+        const data = await searchResponse.json();
+
+        // Parse Innertube search results
+        const items = [];
+        const contents = data?.contents?.sectionListRenderer?.contents || [];
+        for (const section of contents) {
+          const renderers = section?.itemSectionRenderer?.contents || [];
+          for (const renderer of renderers) {
+            const video = renderer?.compactVideoRenderer || renderer?.videoWithContextRenderer || renderer?.videoRenderer;
+            if (!video) continue;
+            const videoId = video.videoId || video.navigationEndpoint?.watchEndpoint?.videoId;
+            if (!videoId) continue;
+
+            items.push({
+              id: videoId,
+              title: video.title?.runs?.[0]?.text || video.headline?.runs?.[0]?.text || '',
+              artist: video.longBylineText?.runs?.[0]?.text || video.shortBylineText?.runs?.[0]?.text || '',
+              thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+              duration: video.lengthText?.runs?.[0]?.text || video.lengthText?.simpleText || '',
+            });
+
+            if (items.length >= limit) break;
+          }
+          if (items.length >= limit) break;
+        }
+
+        return new Response(JSON.stringify({ items, source: 'innertube' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
+    // ========================================
+    // CDN ART - Album artwork proxy (replaces Fly.io /cdn/art/)
+    // ========================================
+    if (url.pathname.startsWith('/cdn/art/')) {
+      const trackId = url.pathname.split('/')[3];
+      const quality = url.searchParams.get('quality') || 'high';
+
+      if (!trackId) {
+        return new Response('Missing track ID', { status: 400, headers: corsHeaders });
+      }
+
+      const thumbQuality = quality === 'high' ? 'maxresdefault' : 'hqdefault';
+      const thumbUrl = `https://i.ytimg.com/vi/${trackId}/${thumbQuality}.jpg`;
+
+      try {
+        const thumbResponse = await fetch(thumbUrl);
+
+        if (!thumbResponse.ok) {
+          const fallback = await fetch(`https://i.ytimg.com/vi/${trackId}/hqdefault.jpg`);
+          return new Response(fallback.body, {
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'image/jpeg',
+              'Cache-Control': 'public, max-age=86400'
+            }
+          });
+        }
+
+        return new Response(thumbResponse.body, {
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'image/jpeg',
+            'Cache-Control': 'public, max-age=86400'
+          }
+        });
+      } catch (err) {
+        return new Response('Art error', { status: 500, headers: corsHeaders });
+      }
+    }
+
+    return new Response('VOYO Edge Worker v6 - Unified Gateway', { headers: corsHeaders });
   }
 };

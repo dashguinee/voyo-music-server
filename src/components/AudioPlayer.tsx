@@ -193,7 +193,7 @@ export const AudioPlayer = () => {
     // Mark as triggered to prevent duplicate calls
     hasTriggered50PercentCacheRef.current = true;
 
-    const API_BASE = 'https://voyo-music-api.fly.dev';
+    const API_BASE = 'https://voyo-edge.dash-webtv.workers.dev';
     devLog('🎵 [VOYO] 50% reached! Upgrading R2 low quality to HIGH (genuine interest)');
 
     // Start background cache
@@ -932,7 +932,7 @@ export const AudioPlayer = () => {
       }
 
       // Normal loading flow: Check cache first
-      const API_BASE = 'https://voyo-music-api.fly.dev';
+      const API_BASE = 'https://voyo-edge.dash-webtv.workers.dev';
       const { url: bestUrl, cached: fromCache } = audioEngine.getBestAudioUrl(trackId, API_BASE);
       const cachedUrl = fromCache ? bestUrl : await checkCache(trackId);
 
@@ -1122,7 +1122,7 @@ export const AudioPlayer = () => {
                       currentTrack.title,
                       currentTrack.artist,
                       currentTrack.duration || 0,
-                      `https://voyo-music-api.fly.dev/cdn/art/${trackId}?quality=high`
+                      `https://voyo-edge.dash-webtv.workers.dev/cdn/art/${trackId}?quality=high`
                     );
                   }
                 }, 3000);
@@ -1411,7 +1411,7 @@ export const AudioPlayer = () => {
             currentTrack.title,
             currentTrack.artist,
             currentTrack.duration || 0,
-            `https://voyo-music-api.fly.dev/cdn/art/${trackId}?quality=high`
+            `https://voyo-edge.dash-webtv.workers.dev/cdn/art/${trackId}?quality=high`
           ).catch(() => {});
         }
       }
@@ -1428,7 +1428,7 @@ export const AudioPlayer = () => {
       title: currentTrack.title,
       artist: currentTrack.artist,
       album: 'VOYO Music',
-      artwork: [{ src: `https://voyo-music-api.fly.dev/cdn/art/${currentTrack.trackId}?quality=high`, sizes: '512x512', type: 'image/jpeg' }]
+      artwork: [{ src: `https://voyo-edge.dash-webtv.workers.dev/cdn/art/${currentTrack.trackId}?quality=high`, sizes: '512x512', type: 'image/jpeg' }]
     });
 
     navigator.mediaSession.setActionHandler('play', () => !usePlayerStore.getState().isPlaying && togglePlay());

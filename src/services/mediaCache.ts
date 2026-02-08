@@ -23,7 +23,7 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes TTL
 const MAX_CACHE_SIZE = 15;     // Maximum cached items
 
 // API endpoint
-const CDN_BASE = 'https://voyo-music-api.fly.dev/cdn';
+const CDN_BASE = 'https://voyo-edge.dash-webtv.workers.dev/cdn';
 
 // ============================================
 // CACHE TYPES

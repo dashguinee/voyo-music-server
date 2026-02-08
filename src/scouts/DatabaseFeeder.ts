@@ -207,7 +207,7 @@ export async function getDatabaseStats(): Promise<{
 // VOYO API - Use our own backend
 // ============================================
 
-const VOYO_API = 'https://voyo-music-api.fly.dev';
+const VOYO_API = 'https://voyo-edge.dash-webtv.workers.dev';
 
 // ============================================
 // MANUAL SEARCH AND FEED

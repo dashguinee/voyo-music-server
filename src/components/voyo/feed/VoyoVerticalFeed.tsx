@@ -1395,7 +1395,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
       trackId: trackId,
       title: trackTitle,
       artist: trackArtist,
-      coverUrl: `https://voyo-music-api.fly.dev/cdn/art/${trackId}?quality=high`,
+      coverUrl: `https://voyo-edge.dash-webtv.workers.dev/cdn/art/${trackId}?quality=high`,
       duration: 0,
       tags: [],
       oyeScore: 0,
@@ -1416,7 +1416,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
       trackId,
       trackTitle,
       trackArtist,
-      trackThumbnail: `https://voyo-music-api.fly.dev/cdn/art/${trackId}?quality=high`,
+      trackThumbnail: `https://voyo-edge.dash-webtv.workers.dev/cdn/art/${trackId}?quality=high`,
       category: 'afro-heat', // Default category
       reactionType: type,
       trackPosition, // Where in the song the reaction happened
@@ -1436,7 +1436,7 @@ export const VoyoVerticalFeed = ({ isActive, onGoToPlayer }: VoyoVerticalFeedPro
       trackId,
       trackTitle,
       trackArtist,
-      trackThumbnail: `https://voyo-music-api.fly.dev/cdn/art/${trackId}?quality=high`,
+      trackThumbnail: `https://voyo-edge.dash-webtv.workers.dev/cdn/art/${trackId}?quality=high`,
       category: 'afro-heat',
       emoji: text.length <= 30 ? '📍' : '💬', // Punch if short
       comment: text,

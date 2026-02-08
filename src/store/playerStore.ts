@@ -1273,7 +1273,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
                 currentTrack.title,
                 currentTrack.artist,
                 Math.floor(duration || 0),
-                `https://voyo-music-api.fly.dev/cdn/art/${currentTrack.trackId}?quality=high`
+                `https://voyo-edge.dash-webtv.workers.dev/cdn/art/${currentTrack.trackId}?quality=high`
               );
             }
           });

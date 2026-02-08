@@ -10,7 +10,7 @@
  */
 
 // Production endpoints
-const API_URL = 'https://voyo-music-api.fly.dev';
+const API_URL = 'https://voyo-edge.dash-webtv.workers.dev';
 const EDGE_WORKER_URL = 'https://voyo-edge.dash-webtv.workers.dev';
 
 export interface SearchResult {

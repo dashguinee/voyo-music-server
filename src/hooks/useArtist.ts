@@ -69,7 +69,7 @@ export interface UseArtistReturn {
 // HELPERS
 // ============================================
 
-const VOYO_API = 'https://voyo-music-api.fly.dev';
+const VOYO_API = 'https://voyo-edge.dash-webtv.workers.dev';
 
 // Type the imported JSON structure
 interface ArtistMasterEntry {
