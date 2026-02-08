@@ -16,6 +16,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, Flame, MessageCircle, ExternalLink, Play, Volume2, VolumeX } from 'lucide-react';
 import { useMoments, CategoryAxis, NavAction } from '../../../hooks/useMoments';
 import type { Moment } from '../../../services/momentsService';
+import { AnimatedArtCard } from './AnimatedArtCard';
+import { DynamicVignette } from './DynamicVignette';
 
 // ============================================
 // CONSTANTS & HELPERS
@@ -36,10 +38,8 @@ function getSpring(action: NavAction) {
   return SPRING_CONTROL;
 }
 
-// API base for R2 feed video streaming
-const VOYO_API = import.meta.env.VITE_API_URL || (
-  window.location.hostname === 'localhost' ? 'http://localhost:3001' : 'https://voyo-music-api.fly.dev'
-);
+// API base for R2 feed video streaming — Edge Worker (300+ locations)
+const VOYO_API = import.meta.env.VITE_API_URL || 'https://voyo-edge.dash-webtv.workers.dev';
 
 const css = (obj: Record<string, any>) => obj as React.CSSProperties;
 
@@ -73,14 +73,11 @@ function slideVariants(dir: SlideDir, isSurrender: boolean = false) {
 
 const S = {
   container: css({ position: 'relative', width: '100%', height: '100%', backgroundColor: '#000', overflow: 'hidden', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' }),
-  topBar: css({ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 30, paddingTop: 'env(safe-area-inset-top, 12px)', background: 'linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 70%, transparent 100%)', pointerEvents: 'auto' }),
-  axisTabs: css({ display: 'flex', justifyContent: 'center', gap: 4, padding: '8px 16px 4px' }),
-  catRow: css({ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '6px 16px 10px', fontSize: 12, color: 'rgba(255,255,255,0.5)' }),
-  catCurrent: css({ fontSize: 14, fontWeight: 700, color: '#fff', textTransform: 'uppercase', letterSpacing: 1.5 }),
-  catAdj: css({ fontSize: 11, color: 'rgba(255,255,255,0.35)', letterSpacing: 0.5 }),
-  arrow: css({ fontSize: 10, color: 'rgba(255,255,255,0.25)' }),
+  topBar: css({ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 30, paddingTop: 'env(safe-area-inset-top, 12px)', background: 'linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.4) 60%, transparent 100%)', pointerEvents: 'auto' }),
+  axisTabs: css({ display: 'flex', justifyContent: 'center', gap: 4, padding: '8px 16px 2px' }),
+  compassArc: css({ position: 'relative', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: '4px 0 10px', overflow: 'hidden', minHeight: 44 }),
   card: css({ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }),
-  thumb: css({ position: 'absolute', inset: 0, objectFit: 'cover', width: '100%', height: '100%' }),
+  thumb: css({ position: 'absolute', inset: 0, objectFit: 'cover', width: '100%', height: '100%', display: 'block', margin: 0, padding: 0, borderRadius: 0 }),
   grad: css({ position: 'absolute', bottom: 0, left: 0, right: 0, height: '55%', background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 50%, transparent 100%)', zIndex: 2, pointerEvents: 'none' }),
   bottom: css({ position: 'relative', zIndex: 5, padding: '0 16px 24px', paddingBottom: 'max(24px, env(safe-area-inset-bottom, 24px))' }),
   title: css({ fontSize: 16, fontWeight: 700, color: '#fff', lineHeight: 1.3, marginBottom: 4, textShadow: '0 1px 4px rgba(0,0,0,0.5)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } as any),
@@ -108,13 +105,206 @@ const S = {
 };
 
 const axisTab = (on: boolean): React.CSSProperties => ({
-  padding: '6px 16px', borderRadius: 20, fontSize: 13, fontWeight: on ? 700 : 500,
-  color: on ? '#fff' : 'rgba(255,255,255,0.6)',
-  background: on ? 'rgba(255,255,255,0.15)' : 'transparent',
-  backdropFilter: on ? 'blur(20px)' : 'none', WebkitBackdropFilter: on ? 'blur(20px)' : 'none',
-  border: on ? '1px solid rgba(255,255,255,0.2)' : '1px solid transparent',
-  cursor: 'pointer', transition: 'all 0.2s ease', letterSpacing: 0.5,
+  padding: '4px 14px', borderRadius: 16, fontSize: 11, fontWeight: on ? 700 : 500,
+  color: on ? '#fff' : 'rgba(255,255,255,0.45)',
+  background: on ? 'rgba(168,85,247,0.2)' : 'transparent',
+  backdropFilter: on ? 'blur(12px)' : 'none', WebkitBackdropFilter: on ? 'blur(12px)' : 'none',
+  border: on ? '1px solid rgba(168,85,247,0.3)' : '1px solid transparent',
+  cursor: 'pointer', transition: 'all 0.25s ease', letterSpacing: 0.8, textTransform: 'uppercase',
 });
+
+// ============================================
+// COMPASS ARC — Spatial Category Navigation
+// ============================================
+// The arc shows 5-7 categories simultaneously with perspective depth:
+// Center = current (large, bright, purple glow)
+// Adjacent = smaller, dimmer, y-offset creates curve
+// Far = smallest, faintest, at the horizon
+//
+// Rotates with content swipes, tappable for hard jumps
+// Multi-select activates MIX mode (music ducks, moments from all selected)
+
+interface CompassArcProps {
+  categories: string[];
+  currentIndex: number;
+  displayName: (key: string) => string;
+  onJumpTo: (index: number) => void;
+  selectedCategories: Set<number>;
+  onToggleSelect: (index: number) => void;
+  navAction: NavAction;
+}
+
+const CompassArc = memo(({ categories, currentIndex, displayName, onJumpTo, selectedCategories, onToggleSelect, navAction }: CompassArcProps) => {
+  // Show 7 categories: current + 3 on each side (wrapping)
+  const VISIBLE = 7;
+  const HALF = Math.floor(VISIBLE / 2);
+
+  const visibleItems = [];
+  for (let offset = -HALF; offset <= HALF; offset++) {
+    const idx = ((currentIndex + offset) % categories.length + categories.length) % categories.length;
+    visibleItems.push({ index: idx, offset, category: categories[idx] });
+  }
+
+  // Depth mapping: center=0 → edges=3
+  // Creates arc shape via y-offset + scale + opacity
+  const getItemStyle = (offset: number, isSelected: boolean): React.CSSProperties => {
+    const absOffset = Math.abs(offset);
+    const scale = 1 - absOffset * 0.12; // 1.0 → 0.88 → 0.76 → 0.64
+    const opacity = absOffset === 0 ? 1 : absOffset === 1 ? 0.6 : absOffset === 2 ? 0.35 : 0.18;
+    const yShift = absOffset * absOffset * 2.5; // quadratic: 0, 2.5, 10, 22.5 — creates arc
+    const blur = absOffset <= 1 ? 0 : absOffset * 0.5;
+    const fontSize = absOffset === 0 ? 14 : absOffset === 1 ? 12 : 10;
+    const letterSpacing = absOffset === 0 ? 2 : absOffset === 1 ? 1 : 0.5;
+
+    return {
+      transform: `scale(${scale}) translateY(${yShift}px)`,
+      opacity,
+      filter: blur > 0 ? `blur(${blur}px)` : 'none',
+      fontSize,
+      fontWeight: absOffset === 0 ? 800 : absOffset === 1 ? 600 : 400,
+      color: isSelected ? '#A855F7' : absOffset === 0 ? '#fff' : 'rgba(255,255,255,0.8)',
+      letterSpacing,
+      textTransform: 'uppercase' as const,
+      padding: absOffset === 0 ? '5px 16px' : absOffset === 1 ? '3px 10px' : '2px 6px',
+      borderRadius: 12,
+      cursor: 'pointer',
+      transition: 'none', // framer handles it
+      whiteSpace: 'nowrap' as const,
+      flexShrink: 0,
+      background: isSelected
+        ? 'rgba(168,85,247,0.2)'
+        : absOffset === 0
+          ? 'rgba(255,255,255,0.08)'
+          : 'transparent',
+      border: isSelected
+        ? '1px solid rgba(168,85,247,0.4)'
+        : absOffset === 0
+          ? '1px solid rgba(255,255,255,0.12)'
+          : '1px solid transparent',
+      boxShadow: absOffset === 0 && !isSelected
+        ? '0 0 20px rgba(168,85,247,0.15), 0 0 40px rgba(168,85,247,0.05)'
+        : isSelected
+          ? '0 0 16px rgba(168,85,247,0.3)'
+          : 'none',
+    };
+  };
+
+  // Determine the animation direction for the arc rotation
+  const direction = navAction === 'left' || navAction === 'right' ? navAction : null;
+
+  return (
+    <div style={S.compassArc}>
+      <AnimatePresence mode="popLayout" initial={false}>
+        {visibleItems.map(({ index, offset, category }) => {
+          const isSelected = selectedCategories.has(index);
+          return (
+            <motion.div
+              key={`${category}-${index}`}
+              layout
+              style={getItemStyle(offset, isSelected)}
+              initial={{
+                x: direction === 'left' ? 60 : direction === 'right' ? -60 : 0,
+                opacity: 0,
+              }}
+              animate={{
+                x: 0,
+                opacity: getItemStyle(offset, isSelected).opacity,
+              }}
+              exit={{
+                x: direction === 'left' ? -60 : direction === 'right' ? 60 : 0,
+                opacity: 0,
+              }}
+              transition={{
+                type: 'spring',
+                stiffness: 350,
+                damping: 30,
+                mass: 0.8,
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (offset === 0) {
+                  // Tap current = toggle selection
+                  onToggleSelect(index);
+                } else {
+                  // Tap other = jump to it
+                  onJumpTo(index);
+                }
+              }}
+            >
+              {displayName(category)}
+            </motion.div>
+          );
+        })}
+      </AnimatePresence>
+
+      {/* MIX indicator when multi-select active */}
+      {selectedCategories.size > 1 && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          style={{
+            position: 'absolute', bottom: -2, left: '50%', transform: 'translateX(-50%)',
+            fontSize: 8, fontWeight: 800, letterSpacing: 3, textTransform: 'uppercase',
+            color: '#A855F7', opacity: 0.7,
+          }}
+        >
+          MIX
+        </motion.div>
+      )}
+    </div>
+  );
+});
+CompassArc.displayName = 'CompassArc';
+
+// ============================================
+// NEXT MOMENT PREVIEW — Corner fade ghost
+// ============================================
+
+interface NextPreviewProps {
+  moment: Moment | null;
+}
+
+const NextMomentPreview = memo(({ moment }: NextPreviewProps) => {
+  if (!moment || !moment.thumbnail_url) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.6 }}
+      style={{
+        position: 'absolute',
+        bottom: 120,
+        right: 60,
+        width: 56,
+        height: 72,
+        borderRadius: 10,
+        overflow: 'hidden',
+        opacity: 0.25,
+        filter: 'blur(2px)',
+        zIndex: 6,
+        pointerEvents: 'none',
+        border: '1px solid rgba(255,255,255,0.08)',
+      }}
+    >
+      <img
+        src={moment.thumbnail_url}
+        alt=""
+        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        loading="lazy"
+        draggable={false}
+      />
+      {/* Fade edges */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        background: 'radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.8) 100%)',
+      }} />
+    </motion.div>
+  );
+});
+NextMomentPreview.displayName = 'NextMomentPreview';
 
 const actIcon = (on: boolean): React.CSSProperties => ({
   width: 40, height: 40, borderRadius: '50%',
@@ -150,6 +340,8 @@ OyeAnimations.displayName = 'OyeAnimations';
 // ============================================
 // MOMENT CARD
 // ============================================
+
+type MomentFormat = 'r2_video' | 'audio_cover' | 'thumbnail';
 
 interface MomentCardProps {
   moment: Moment;
@@ -188,10 +380,22 @@ const MomentCard = memo(({ moment, isOyed, onOye, isActive, isMuted, onToggleMut
     return () => { cancelled = true; };
   }, [moment.source_id, videoUrl]);
 
-  // Auto-play/pause based on active state
+  // Resolve presentation format based on priority:
+  // 1. R2 video (if available and no error)
+  // 2. Audio + cover composition (if linked to a track with parent_track_id)
+  // 3. Thumbnail static fallback
+  const format: MomentFormat = (() => {
+    if (videoAvailable === true && !videoError) return 'r2_video';
+    // While R2 check is in-flight (null), don't commit to audio_cover yet —
+    // show thumbnail until we know for sure there's no video
+    if (videoAvailable === false && moment.parent_track_id) return 'audio_cover';
+    return 'thumbnail';
+  })();
+
+  // Auto-play/pause based on active state (only for r2_video format)
   useEffect(() => {
     const vid = videoRef.current;
-    if (!vid || !videoAvailable || videoError) return;
+    if (!vid || format !== 'r2_video') return;
 
     if (isActive) {
       vid.currentTime = 0;
@@ -201,7 +405,7 @@ const MomentCard = memo(({ moment, isOyed, onOye, isActive, isMuted, onToggleMut
     } else {
       vid.pause();
     }
-  }, [isActive, videoAvailable, videoError]);
+  }, [isActive, format]);
 
   // Sync muted state
   useEffect(() => {
@@ -211,28 +415,53 @@ const MomentCard = memo(({ moment, isOyed, onOye, isActive, isMuted, onToggleMut
 
   const handleVideoError = useCallback(() => {
     setVideoError(true);
-    console.warn(`[MomentCard] Video load failed for ${moment.source_id}, falling back to thumbnail`);
+    console.warn(`[MomentCard] Video load failed for ${moment.source_id}, falling back`);
   }, [moment.source_id]);
-
-  const showVideo = videoAvailable === true && !videoError;
 
   return (
     <div style={S.card}>
-      {/* Thumbnail as background (always rendered as fallback) */}
-      {moment.thumbnail_url && <img src={moment.thumbnail_url} alt="" style={S.thumb} loading="eager" draggable={false} />}
+      {/* === FORMAT: R2 VIDEO === */}
+      {format === 'r2_video' && (
+        <>
+          {/* Thumbnail as background fallback behind video */}
+          {moment.thumbnail_url && <img src={moment.thumbnail_url} alt="" style={S.thumb} loading="eager" draggable={false} />}
+          <video
+            ref={videoRef}
+            src={videoUrl}
+            style={S.thumb}
+            muted={isMuted}
+            loop
+            playsInline
+            preload={isActive ? 'metadata' : 'none'}
+            onError={handleVideoError}
+          />
+        </>
+      )}
 
-      {/* Video overlay when available */}
-      {showVideo && (
-        <video
-          ref={videoRef}
-          src={videoUrl}
-          style={S.thumb}
-          muted={isMuted}
-          loop
-          playsInline
-          preload="metadata"
-          onError={handleVideoError}
-        />
+      {/* === FORMAT: AUDIO + COVER COMPOSITION === */}
+      {format === 'audio_cover' && (
+        <>
+          <AnimatedArtCard
+            trackId={moment.parent_track_id!}
+            thumbnail={moment.thumbnail_url || ''}
+            isActive={isActive}
+            isPlaying={isActive}
+            displayMode="fullscreen"
+          />
+          <DynamicVignette
+            isActive={isActive}
+            isPlaying={isActive}
+            intensity="medium"
+            pulseEnabled={true}
+          />
+        </>
+      )}
+
+      {/* === FORMAT: THUMBNAIL STATIC === */}
+      {format === 'thumbnail' && (
+        <>
+          {moment.thumbnail_url && <img src={moment.thumbnail_url} alt="" style={S.thumb} loading="eager" draggable={false} />}
+        </>
       )}
 
       <div style={S.grad} />
@@ -300,9 +529,9 @@ const PositionOverlay = memo(({ position, categories, totalInCategory, onClose, 
         <div style={S.posTitle}>YOUR POSITION</div>
         <div style={S.posCats}>
           <span>{displayName(prev)}</span>
-          <span style={S.arrow}>{'>'}</span>
+          <span style={{ opacity: 0.4 }}>{'>'}</span>
           <span style={S.posCur}>{displayName(cur)}</span>
-          <span style={S.arrow}>{'>'}</span>
+          <span style={{ opacity: 0.4 }}>{'>'}</span>
           <span>{displayName(next)}</span>
         </div>
         <div style={{ fontSize: 22, color: 'rgba(255,255,255,0.3)', margin: '4px 0' }}>|</div>
@@ -440,8 +669,9 @@ export interface VoyoMomentsProps {
 export const VoyoMoments: React.FC<VoyoMomentsProps> = ({ onPlayFullTrack }) => {
   const {
     currentMoment, position, categoryAxis, categories, currentCategory, displayName,
-    goUp, goDown, goLeft, goRight, setCategoryAxis,
+    goUp, goDown, goLeft, goRight, setCategoryAxis, jumpToCategory,
     loading, totalInCategory, navAction, recordPlay, recordOye, recordStar,
+    moments,
   } = useMoments();
 
   const [showOverlay, setShowOverlay] = useState(false);
@@ -454,6 +684,7 @@ export const VoyoMoments: React.FC<VoyoMomentsProps> = ({ onPlayFullTrack }) => 
   const [showStarPanel, setShowStarPanel] = useState(false);
   const [confirmedCreators, setConfirmedCreators] = useState<Set<string>>(new Set());
   const [pendingStar, setPendingStar] = useState<{ momentId: string; creator: string; stars: number } | null>(null);
+  const [selectedCategories, setSelectedCategories] = useState<Set<number>>(new Set());
 
   const containerRef = useRef<HTMLDivElement>(null);
   const lpTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -595,9 +826,6 @@ export const VoyoMoments: React.FC<VoyoMomentsProps> = ({ onPlayFullTrack }) => 
     if (starHoldTimer.current) clearTimeout(starHoldTimer.current);
   }, []);
 
-  // Adjacent categories
-  const prevCat = categories[(position.categoryIndex - 1 + categories.length) % categories.length];
-  const nextCat = categories[(position.categoryIndex + 1) % categories.length];
   const isSurrender = navAction === 'down' || navAction === 'right';
   const sv = slideVariants(slideDir, isSurrender);
   const spring = getSpring(navAction);
@@ -638,6 +866,32 @@ export const VoyoMoments: React.FC<VoyoMomentsProps> = ({ onPlayFullTrack }) => 
     setPendingStar(null);
   }, []);
 
+  // Compass Arc handlers
+  const handleCompassJump = useCallback((index: number) => {
+    setSlideDir(index > position.categoryIndex ? 'left' : 'right');
+    setMKey(p => p + 1);
+    jumpToCategory(index);
+  }, [position.categoryIndex, jumpToCategory]);
+
+  const handleCompassToggle = useCallback((index: number) => {
+    setSelectedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }, []);
+
+  // Clear selected categories when axis changes
+  useEffect(() => {
+    setSelectedCategories(new Set());
+  }, [categoryAxis]);
+
+  // Get next moment for preview (next in time axis)
+  const momentsKey = `${categoryAxis}::${currentCategory}`;
+  const categoryMoments = moments.get(momentsKey) || [];
+  const nextMoment = categoryMoments[position.timeIndex + 1] || null;
+
   return (
     <div ref={containerRef} style={S.container} onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}>
       {/* TOP BAR */}
@@ -649,13 +903,15 @@ export const VoyoMoments: React.FC<VoyoMomentsProps> = ({ onPlayFullTrack }) => 
             </div>
           ))}
         </div>
-        <div style={S.catRow}>
-          <span style={S.catAdj}>{displayName(prevCat)}</span>
-          <span style={S.arrow}>{'<'}</span>
-          <span style={S.catCurrent}>{displayName(currentCategory)}</span>
-          <span style={S.arrow}>{'>'}</span>
-          <span style={S.catAdj}>{displayName(nextCat)}</span>
-        </div>
+        <CompassArc
+          categories={categories}
+          currentIndex={position.categoryIndex}
+          displayName={displayName}
+          onJumpTo={handleCompassJump}
+          selectedCategories={selectedCategories}
+          onToggleSelect={handleCompassToggle}
+          navAction={navAction}
+        />
       </div>
 
       {/* MOMENT CARD */}
@@ -686,6 +942,13 @@ export const VoyoMoments: React.FC<VoyoMomentsProps> = ({ onPlayFullTrack }) => 
             <div style={S.emptyH}>No moments in {displayName(currentCategory)}</div>
             <div style={S.emptyP}>Swipe left or right to explore other {categoryAxis}.{'\n'}Moments will appear here as creators share them.</div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Next moment ghost preview */}
+      <AnimatePresence>
+        {nextMoment && !showOverlay && !showStarPanel && (
+          <NextMomentPreview moment={nextMoment} />
         )}
       </AnimatePresence>
 

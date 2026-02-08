@@ -54,6 +54,7 @@ export interface UseMomentsReturn {
   goLeft: (velocity?: number) => void;
   goRight: (velocity?: number) => void;
   setCategoryAxis: (axis: CategoryAxis) => void;
+  jumpToCategory: (index: number) => void;
   moments: Map<string, Moment[]>;
   loading: boolean;
   totalInCategory: number;
@@ -171,7 +172,7 @@ function pickWeightedNeighbor(
 // ============================================
 
 export function useMoments(): UseMomentsReturn {
-  const [categoryAxis, setCategoryAxisState] = useState<CategoryAxis>('countries');
+  const [categoryAxis, setCategoryAxisState] = useState<CategoryAxis>('vibes');
   const [position, setPosition] = useState<MomentPosition>({ categoryIndex: 0, timeIndex: 0 });
   const [moments, setMoments] = useState<Map<string, Moment[]>>(new Map());
   const [loading, setLoading] = useState(false);
@@ -486,6 +487,17 @@ export function useMoments(): UseMomentsReturn {
     setPosition({ categoryIndex: 0, timeIndex: 0 });
   }, [pushTrail]);
 
+  // COMPASS JUMP: direct jump to any category index
+  const jumpToCategory = useCallback((index: number) => {
+    const cats = CATEGORY_PRESETS[categoryAxis];
+    if (index < 0 || index >= cats.length) return;
+    pushTrail('right');
+    setNavAction(index > position.categoryIndex ? 'left' : 'right');
+    consecutiveUpsRef.current = 0;
+    fetchMomentsForCategory(categoryAxis, cats[index]);
+    setPosition({ categoryIndex: index, timeIndex: 0 });
+  }, [categoryAxis, position.categoryIndex, fetchMomentsForCategory, pushTrail]);
+
   // ============================================
   // ENGAGEMENT
   // ============================================
@@ -550,6 +562,7 @@ export function useMoments(): UseMomentsReturn {
     goLeft,
     goRight,
     setCategoryAxis,
+    jumpToCategory,
     moments,
     loading,
     totalInCategory,

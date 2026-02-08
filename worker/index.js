@@ -788,6 +788,184 @@ export default {
       }
     }
 
-    return new Response('VOYO Edge Worker v4 - Zero Gap Architecture', { headers: corsHeaders });
+    // ========================================
+    // VIDEO FEED - Moments video from R2
+    // ========================================
+
+    // Check if video exists in R2 for a moment
+    if (url.pathname.match(/^\/r2\/feed\/[^/]+\/check$/)) {
+      const sourceId = url.pathname.split('/')[3];
+      if (!sourceId) {
+        return new Response(JSON.stringify({ exists: false, error: 'Missing source_id' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      try {
+        // Check Supabase for r2_video_key first
+        if (env.SUPABASE_URL && env.SUPABASE_KEY) {
+          const supabaseResponse = await fetch(
+            `${env.SUPABASE_URL}/rest/v1/voyo_moments?source_id=eq.${sourceId}&select=r2_video_key`,
+            {
+              headers: {
+                'apikey': env.SUPABASE_KEY,
+                'Authorization': `Bearer ${env.SUPABASE_KEY}`,
+              }
+            }
+          );
+
+          if (supabaseResponse.ok) {
+            const rows = await supabaseResponse.json();
+            if (rows.length > 0 && rows[0].r2_video_key) {
+              // Verify it actually exists in R2
+              const obj = await env.VOYO_AUDIO.head(rows[0].r2_video_key);
+              return new Response(JSON.stringify({
+                exists: !!obj,
+                size: obj?.size || 0,
+                key: rows[0].r2_video_key,
+                source: 'supabase'
+              }), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+              });
+            }
+          }
+        }
+
+        // Fallback: check R2 directly with common patterns
+        const patterns = [
+          `moments/tiktok/${sourceId}.mp4`,
+          `moments/instagram/${sourceId}.mp4`,
+          `moments/youtube/${sourceId}.mp4`,
+        ];
+
+        for (const key of patterns) {
+          const obj = await env.VOYO_AUDIO.head(key);
+          if (obj) {
+            return new Response(JSON.stringify({
+              exists: true,
+              size: obj.size,
+              key,
+              source: 'r2-scan'
+            }), {
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+          }
+        }
+
+        return new Response(JSON.stringify({ exists: false }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ exists: false, error: err.message }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
+    // Stream video from R2 for a moment
+    if (url.pathname.match(/^\/r2\/feed\/[^/]+$/) && !url.pathname.endsWith('/check')) {
+      const sourceId = url.pathname.split('/')[3];
+      if (!sourceId) {
+        return new Response(JSON.stringify({ error: 'Missing source_id' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      try {
+        let r2Key = null;
+
+        // Check Supabase for the key
+        if (env.SUPABASE_URL && env.SUPABASE_KEY) {
+          const supabaseResponse = await fetch(
+            `${env.SUPABASE_URL}/rest/v1/voyo_moments?source_id=eq.${sourceId}&select=r2_video_key`,
+            {
+              headers: {
+                'apikey': env.SUPABASE_KEY,
+                'Authorization': `Bearer ${env.SUPABASE_KEY}`,
+              }
+            }
+          );
+
+          if (supabaseResponse.ok) {
+            const rows = await supabaseResponse.json();
+            if (rows.length > 0 && rows[0].r2_video_key) {
+              r2Key = rows[0].r2_video_key;
+            }
+          }
+        }
+
+        // Fallback: try common patterns
+        if (!r2Key) {
+          const patterns = [
+            `moments/tiktok/${sourceId}.mp4`,
+            `moments/instagram/${sourceId}.mp4`,
+            `moments/youtube/${sourceId}.mp4`,
+          ];
+          for (const key of patterns) {
+            const exists = await env.VOYO_AUDIO.head(key);
+            if (exists) { r2Key = key; break; }
+          }
+        }
+
+        if (!r2Key) {
+          return new Response(JSON.stringify({ error: 'Video not found', sourceId }), {
+            status: 404,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+
+        // Stream the video
+        const object = await env.VOYO_AUDIO.get(r2Key);
+        if (!object) {
+          return new Response(JSON.stringify({ error: 'R2 object missing', key: r2Key }), {
+            status: 404,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+
+        const responseHeaders = {
+          ...corsHeaders,
+          'Content-Type': 'video/mp4',
+          'Content-Length': object.size,
+          'Cache-Control': 'public, max-age=31536000',
+          'X-VOYO-Source': 'r2-video',
+          'Accept-Ranges': 'bytes',
+        };
+
+        // Handle Range requests for video seeking
+        const rangeHeader = request.headers.get('Range');
+        if (rangeHeader) {
+          const rangeMatch = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+          if (rangeMatch) {
+            const start = parseInt(rangeMatch[1]);
+            const end = rangeMatch[2] ? parseInt(rangeMatch[2]) : object.size - 1;
+
+            const rangedObject = await env.VOYO_AUDIO.get(r2Key, {
+              range: { offset: start, length: end - start + 1 }
+            });
+
+            return new Response(rangedObject.body, {
+              status: 206,
+              headers: {
+                ...responseHeaders,
+                'Content-Range': `bytes ${start}-${end}/${object.size}`,
+                'Content-Length': end - start + 1,
+              }
+            });
+          }
+        }
+
+        return new Response(object.body, { headers: responseHeaders });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
+    return new Response('VOYO Edge Worker v5 - Zero Gap + Video Feed', { headers: corsHeaders });
   }
 };
