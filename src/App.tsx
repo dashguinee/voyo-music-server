@@ -19,6 +19,7 @@ import { ClassicMode } from './components/classic/ClassicMode';
 import { AudioPlayer } from './components/AudioPlayer';
 import { YouTubeIframe } from './components/YouTubeIframe';
 import { SearchOverlayV2 as SearchOverlay } from './components/search/SearchOverlayV2';
+import { ArtistPage } from './components/voyo/ArtistPage';
 import { AnimatedBackground, BackgroundPicker, BackgroundType, ReactionCanvas } from './components/backgrounds/AnimatedBackgrounds';
 import { usePlayerStore } from './store/playerStore';
 import { getYouTubeThumbnail } from './data/tracks';
@@ -926,6 +927,7 @@ function App() {
   const { currentTrack, setVoyoTab } = usePlayerStore();
   const [bgError, setBgError] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [artistPageName, setArtistPageName] = useState<string | null>(null);
   // VOYO PLAYER FIRST - Default to player, but remember user preference
   const [appMode, setAppMode] = useState<AppMode>(() => {
     // One-time migration: reset to voyo player as new default (v1.2)
@@ -1350,7 +1352,33 @@ function App() {
       <YouTubeIframe />
 
       {/* Search Overlay - Powered by Piped API */}
-      <SearchOverlay isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
+      <SearchOverlay
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        onArtistTap={(name) => { setArtistPageName(name); setIsSearchOpen(false); }}
+      />
+
+      {/* Artist Page Overlay */}
+      {artistPageName && (
+        <ArtistPage
+          artistName={artistPageName}
+          onClose={() => setArtistPageName(null)}
+          onPlayTrack={(trackId, title, artist) => {
+            const { playTrack } = usePlayerStore.getState();
+            playTrack({
+              id: trackId,
+              trackId,
+              title,
+              artist,
+              coverUrl: `https://i.ytimg.com/vi/${trackId}/hqdefault.jpg`,
+              duration: 0,
+              tags: [],
+              oyeScore: 0,
+              createdAt: new Date().toISOString(),
+            });
+          }}
+        />
+      )}
 
       {/* Background/Vibe Picker - Choose your animated background */}
       <BackgroundPicker

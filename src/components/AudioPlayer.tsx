@@ -12,7 +12,7 @@
  *
  * AUDIO ENHANCEMENT (Web Audio API):
  * - Applies to ALL audio (cached + r2)
- * - 4 presets: Boosted, Calm, VOYEX (multiband mastering), Xtreme
+ * - 3 presets: Boosted, Calm, VOYEX (multiband mastering)
  *
  * SMART BANDWIDTH:
  * - Preload next 3 tracks from DJ queue
@@ -47,7 +47,7 @@ import {
   cancelPreload,
 } from '../services/preloadManager';
 
-export type BoostPreset = 'off' | 'boosted' | 'calm' | 'voyex' | 'xtreme';
+export type BoostPreset = 'off' | 'boosted' | 'calm' | 'voyex';
 
 // Audio boost presets
 const BOOST_PRESETS = {
@@ -80,12 +80,6 @@ const BOOST_PRESETS = {
     airFreq: 12000, airGain: 0, harmonicAmount: 8,
     compressor: { threshold: -6, knee: 10, ratio: 2, attack: 0.01, release: 0.2 }
   },
-  xtreme: {
-    gain: 1.35, highPassFreq: 0, bassFreq: 80, bassGain: 10, presenceFreq: 3000, presenceGain: 4,
-    subBassFreq: 40, subBassGain: 7, warmthFreq: 250, warmthGain: 1,
-    airFreq: 10000, airGain: 2, harmonicAmount: 20, stereoWidth: 0,
-    compressor: { threshold: -4, knee: 0, ratio: 20, attack: 0.001, release: 0.1 }
-  }
 };
 
 export const AudioPlayer = () => {
@@ -148,6 +142,7 @@ export const AudioPlayer = () => {
   const shouldAutoResumeRef = useRef<boolean>(false); // Resume playback on refresh if position was saved
   const isEdgeStreamRef = useRef<boolean>(false); // True when playing from Edge Worker stream URL (not IndexedDB)
   const hasTriggered75PercentKeptRef = useRef<boolean>(false); // 75% permanent cache trigger
+  const hasTriggered30sListenRef = useRef<boolean>(false); // 30s artist discovery listen tracking
 
   // Store state
   const {
@@ -230,8 +225,28 @@ export const AudioPlayer = () => {
     });
   }, [progress, currentTrack?.trackId, playbackSource]);
 
-  // PRELOAD: Start preloading next track IMMEDIATELY when track starts (like Spotify)
-  // Major platforms don't wait - they start buffering the next track right away
+  // 30s LISTEN: Flag track for R2 download when user listens > 30 seconds
+  // This powers the demand-driven acquisition pipeline:
+  // User discovers via YouTube → listens 30s → flagged → batch script downloads to R2
+  useEffect(() => {
+    if (hasTriggered30sListenRef.current) return;
+    if (!currentTrack?.trackId) return;
+    const elapsed = (currentTrack.duration || 300) * (progress / 100);
+    if (elapsed < 30) return;
+    if (playbackSource !== 'youtube') return; // Only flag YouTube-sourced tracks
+
+    hasTriggered30sListenRef.current = true;
+    devLog('🎵 [VOYO] 30s listen reached — flagging for R2 download');
+
+    // Flag in video_intelligence for batch download
+    import('../lib/supabase').then(({ videoIntelligenceAPI }) => {
+      videoIntelligenceAPI.flagForDownload(currentTrack.trackId);
+    });
+  }, [progress, currentTrack?.trackId, currentTrack?.duration, playbackSource]);
+
+  // PRELOAD: Start preloading next 2-3 tracks IMMEDIATELY when track starts (like Spotify)
+  // Major platforms don't wait - they start buffering upcoming tracks right away
+  // Staggered: next track immediately, track+2 after 5s, track+3 after 10s
   useEffect(() => {
     if (!currentTrack?.trackId) {
       return;
@@ -241,48 +256,71 @@ export const AudioPlayer = () => {
       return;
     }
 
-    // Determine next track: check queue first, then use prediction
-    let nextTrackToPreload: Track | null | undefined = queue[0]?.track;
+    // Gather next 2-3 tracks from queue + prediction
+    const getUpcomingTracks = (): Track[] => {
+      const upcoming: Track[] = [];
+      const seenIds = new Set<string>();
 
-    if (!nextTrackToPreload?.trackId) {
-      // Queue empty - use predictNextTrack to determine what will play next
-      nextTrackToPreload = predictNextTrack();
-      if (!nextTrackToPreload?.trackId) {
-        devLog(`🔮 [Preload] No next track available (queue empty, prediction empty)`);
-        return;
+      // First: take from queue
+      for (const qi of queue) {
+        if (qi.track?.trackId && !seenIds.has(qi.track.trackId)) {
+          upcoming.push(qi.track);
+          seenIds.add(qi.track.trackId);
+          if (upcoming.length >= 3) break;
+        }
       }
-      devLog(`🔮 [Preload] Queue empty, using prediction: ${nextTrackToPreload.title}`);
+
+      // Fill remaining with predictions
+      if (upcoming.length < 3) {
+        const predicted = predictNextTrack();
+        if (predicted?.trackId && !seenIds.has(predicted.trackId)) {
+          upcoming.push(predicted);
+          seenIds.add(predicted.trackId);
+        }
+      }
+
+      return upcoming;
+    };
+
+    const tracksToPreload = getUpcomingTracks();
+    if (tracksToPreload.length === 0) {
+      devLog(`🔮 [Preload] No upcoming tracks available (queue empty, prediction empty)`);
+      return;
     }
 
-    // Start preload immediately - like Spotify/YouTube Music
-    // Small delay (500ms) just to let current track establish playback first
-    const timeoutId = setTimeout(() => {
-      // Double-check we haven't triggered yet (race condition protection)
-      if (hasTriggeredPreloadRef.current) return;
+    const timeoutIds: ReturnType<typeof setTimeout>[] = [];
 
-      // Verify track hasn't changed
-      const currentState = usePlayerStore.getState();
-      if (currentState.currentTrack?.trackId !== currentTrack.trackId) return;
+    // Stagger preloads: 500ms, 5500ms, 10500ms to avoid bandwidth competition
+    const staggerDelays = [500, 5500, 10500];
 
-      // Re-get next track in case queue changed
-      let trackToPreload = currentState.queue[0]?.track || currentState.predictNextTrack();
-      if (!trackToPreload?.trackId) return;
+    tracksToPreload.forEach((track, index) => {
+      const delay = staggerDelays[index] || staggerDelays[staggerDelays.length - 1];
 
-      hasTriggeredPreloadRef.current = true;
+      const tid = setTimeout(() => {
+        // Double-check we haven't changed tracks
+        const currentState = usePlayerStore.getState();
+        if (currentState.currentTrack?.trackId !== currentTrack.trackId) return;
 
-      devLog(`🔮 [VOYO] Preloading next track: ${trackToPreload.title}`);
-
-      // Start preloading (async, non-blocking) - this buffers the audio data
-      preloadNextTrack(trackToPreload.trackId, checkCache).then((result) => {
-        if (result) {
-          devLog(`🔮 [VOYO] ✅ Preload ready: ${trackToPreload!.title} (source: ${result.source})`);
+        // Only set the flag on the first preload (prevents re-triggering the whole batch)
+        if (index === 0) {
+          hasTriggeredPreloadRef.current = true;
         }
-      }).catch((err) => {
-        devWarn('🔮 [VOYO] Preload failed:', err);
-      });
-    }, 500);
 
-    return () => clearTimeout(timeoutId);
+        devLog(`🔮 [VOYO] Preloading track ${index + 1}/${tracksToPreload.length}: ${track.title}`);
+
+        preloadNextTrack(track.trackId, checkCache).then((result) => {
+          if (result) {
+            devLog(`🔮 [VOYO] ✅ Preload ${index + 1} ready: ${track.title} (source: ${result.source})`);
+          }
+        }).catch((err) => {
+          devWarn(`🔮 [VOYO] Preload ${index + 1} failed:`, err);
+        });
+      }, delay);
+
+      timeoutIds.push(tid);
+    });
+
+    return () => timeoutIds.forEach(id => clearTimeout(id));
   }, [currentTrack?.trackId, queue, checkCache, predictNextTrack]);
 
   // PRELOAD CLEANUP: Cancel preload when track changes (user skipped to different track)
@@ -841,6 +879,7 @@ export const AudioPlayer = () => {
       hasTriggeredPreloadRef.current = false; // Reset preload trigger for new track
       isEdgeStreamRef.current = false; // Reset edge stream flag for new track
       hasTriggered75PercentKeptRef.current = false; // Reset 75% kept trigger for new track
+      hasTriggered30sListenRef.current = false; // Reset 30s listen flag for new track
 
       // End previous session
       endListenSession(audioRef.current?.currentTime || 0, 0);
@@ -1070,13 +1109,14 @@ export const AudioPlayer = () => {
                 }
               };
 
-              // BACKGROUND: Download to cache after playback starts (non-blocking)
+              // BACKGROUND: Download to cache ASAP after playback starts (non-blocking)
+              // 3s delay = start caching almost immediately so local fallback is ready fast
+              // This prevents stream URL expiration from causing skips/stuttering
               audioRef.current.onplay = () => {
-                // Start background caching after 30 seconds of playback (genuine interest)
                 setTimeout(() => {
                   const currentState = usePlayerStore.getState();
                   if (currentState.currentTrack?.trackId === trackId && currentState.isPlaying) {
-                    devLog('🎵 [VOYO] Starting background cache for streaming track');
+                    devLog('🎵 [VOYO] Starting aggressive background cache for streaming track');
                     cacheTrack(
                       trackId,
                       currentTrack.title,
@@ -1085,7 +1125,7 @@ export const AudioPlayer = () => {
                       `https://voyo-music-api.fly.dev/cdn/art/${trackId}?quality=high`
                     );
                   }
-                }, 30000);
+                }, 3000);
               };
             }
           } catch (streamError) {
@@ -1322,6 +1362,64 @@ export const AudioPlayer = () => {
     }
   }, [voyexSpatial, boostProfile, playbackSource, updateVoyexSpatial]);
 
+  // BUFFER HEALTH MONITORING: Active monitoring every 2s during playback
+  // Emergency (<3s buffer): immediately try local cache fallback
+  // Warning (<8s buffer): start pre-fetching more aggressively
+  useEffect(() => {
+    if (!audioRef.current || !isPlaying) return;
+    if (playbackSource !== 'cached' && playbackSource !== 'r2') return;
+
+    const cleanup = audioEngine.startBufferMonitoring(
+      audioRef.current,
+      // EMERGENCY: buffer < 3 seconds
+      async (health) => {
+        if (!currentTrack?.trackId || !audioRef.current) return;
+        devWarn(`🚨 [VOYO] Buffer EMERGENCY: ${health.current.toFixed(1)}s remaining`);
+        setBufferHealth(health.percentage, 'emergency');
+
+        // If streaming from edge (not local cache), try to swap to local cache immediately
+        if (isEdgeStreamRef.current) {
+          const cachedUrl = await checkCache(currentTrack.trackId);
+          if (cachedUrl && audioRef.current) {
+            const savedPos = audioRef.current.currentTime;
+            devLog('🔄 [VOYO] Emergency cache swap - switching to local cache');
+            if (cachedUrlRef.current) URL.revokeObjectURL(cachedUrlRef.current);
+            cachedUrlRef.current = cachedUrl;
+            audioRef.current.src = cachedUrl;
+            audioRef.current.load();
+            audioRef.current.oncanplaythrough = () => {
+              if (!audioRef.current) return;
+              if (savedPos > 2) audioRef.current.currentTime = savedPos;
+              isEdgeStreamRef.current = false;
+              setPlaybackSource('cached');
+              audioRef.current.play().catch(() => {});
+              devLog('🔄 [VOYO] Emergency cache swap complete');
+            };
+          }
+        }
+      },
+      // WARNING: buffer < 8 seconds
+      (health) => {
+        devWarn(`⚠️ [VOYO] Buffer WARNING: ${health.current.toFixed(1)}s remaining`);
+        setBufferHealth(health.percentage, 'warning');
+
+        // Trigger aggressive pre-caching of current track if not already cached
+        if (isEdgeStreamRef.current && currentTrack?.trackId) {
+          const trackId = currentTrack.trackId;
+          cacheTrack(
+            trackId,
+            currentTrack.title,
+            currentTrack.artist,
+            currentTrack.duration || 0,
+            `https://voyo-music-api.fly.dev/cdn/art/${trackId}?quality=high`
+          ).catch(() => {});
+        }
+      }
+    );
+
+    return cleanup;
+  }, [isPlaying, playbackSource, currentTrack?.trackId, checkCache, setBufferHealth, setPlaybackSource, cacheTrack]);
+
   // Media Session (only when using audio element: cached or r2)
   useEffect(() => {
     if (!('mediaSession' in navigator) || !currentTrack || (playbackSource !== 'cached' && playbackSource !== 'r2')) return;
@@ -1383,6 +1481,8 @@ export const AudioPlayer = () => {
   }, [playbackSource, setBufferHealth]);
 
   // ERROR HANDLER: Handle audio element errors with recovery (music never stops)
+  // IMPROVED: Immediate cache check first (should be ready with 3s auto-cache),
+  // seamless position-preserving swap, max 500ms silence target
   const handleAudioError = useCallback(async (e: React.SyntheticEvent<HTMLAudioElement, Event>) => {
     if (playbackSource !== 'cached' && playbackSource !== 'r2') return;
 
@@ -1396,58 +1496,101 @@ export const AudioPlayer = () => {
     };
 
     const errorName = error ? (errorCodes[error.code] || `Unknown(${error.code})`) : 'Unknown';
+    const recoveryStart = performance.now();
     console.error(`🚨 [VOYO] Audio error: ${errorName}`, error?.message);
 
     if (!currentTrack?.trackId || !error) return;
 
     const savedPos = usePlayerStore.getState().currentTime;
 
-    // RECOVERY 1: Try cached version from IndexedDB
+    // RECOVERY 1 (FASTEST): Check local cache IMMEDIATELY
+    // With 3s auto-cache delay, cache should be ready for most tracks
     try {
       const cachedUrl = await checkCache(currentTrack.trackId);
       if (cachedUrl && audioRef.current) {
-        devLog('🔄 [VOYO] Recovering from error - switching to cached version');
+        const swapStart = performance.now();
+        devLog('🔄 [VOYO] FAST RECOVERY - switching to local cache');
         if (cachedUrlRef.current) URL.revokeObjectURL(cachedUrlRef.current);
         cachedUrlRef.current = cachedUrl;
         audioRef.current.src = cachedUrl;
         audioRef.current.load();
-        audioRef.current.oncanplaythrough = () => {
+
+        // Use oncanplay (not oncanplaythrough) for fastest possible resume
+        audioRef.current.oncanplay = () => {
           if (!audioRef.current) return;
+          audioRef.current.oncanplay = null; // Clear to prevent re-trigger
           if (savedPos > 2) audioRef.current.currentTime = savedPos;
           isEdgeStreamRef.current = false;
-          audioRef.current.play().catch(() => {});
+          setPlaybackSource('cached');
+          audioRef.current.play().then(() => {
+            const elapsed = performance.now() - recoveryStart;
+            devLog(`🔄 [VOYO] Cache recovery complete in ${elapsed.toFixed(0)}ms (swap: ${(performance.now() - swapStart).toFixed(0)}ms)`);
+          }).catch(() => {});
         };
         return;
       }
     } catch {}
 
-    // RECOVERY 2: Re-extract stream URL from Edge Worker
+    // RECOVERY 2: Check R2 collective cache (faster than re-extracting)
     try {
-      devLog('🔄 [VOYO] Recovering from error - re-extracting stream URL');
-      const streamResponse = await fetch(`${EDGE_WORKER_URL}/stream?v=${currentTrack.trackId}`);
+      devLog('🔄 [VOYO] Recovery 2 - checking R2 collective cache');
+      const r2Result = await checkR2Cache(currentTrack.trackId);
+      if (r2Result.exists && r2Result.url && audioRef.current) {
+        audioRef.current.src = r2Result.url;
+        audioRef.current.load();
+        audioRef.current.oncanplay = () => {
+          if (!audioRef.current) return;
+          audioRef.current.oncanplay = null;
+          if (savedPos > 2) audioRef.current.currentTime = savedPos;
+          isEdgeStreamRef.current = false;
+          setPlaybackSource('r2');
+          audioRef.current.play().then(() => {
+            const elapsed = performance.now() - recoveryStart;
+            devLog(`🔄 [VOYO] R2 recovery complete in ${elapsed.toFixed(0)}ms`);
+          }).catch(() => {});
+        };
+        return;
+      }
+    } catch {}
+
+    // RECOVERY 3: Re-extract stream URL from Edge Worker (last resort before skip)
+    try {
+      devLog('🔄 [VOYO] Recovery 3 - re-extracting stream URL');
+      // Use AbortController with 5s timeout to keep recovery fast
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const streamResponse = await fetch(`${EDGE_WORKER_URL}/stream?v=${currentTrack.trackId}`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
       const streamData = await streamResponse.json();
       if (streamData.url && audioRef.current) {
         audioRef.current.src = streamData.url;
         audioRef.current.load();
-        audioRef.current.oncanplaythrough = () => {
+        audioRef.current.oncanplay = () => {
           if (!audioRef.current) return;
+          audioRef.current.oncanplay = null;
           if (savedPos > 2) audioRef.current.currentTime = savedPos;
           isEdgeStreamRef.current = true;
-          audioRef.current.play().catch(() => {});
+          audioRef.current.play().then(() => {
+            const elapsed = performance.now() - recoveryStart;
+            devLog(`🔄 [VOYO] Stream re-extract recovery complete in ${elapsed.toFixed(0)}ms`);
+          }).catch(() => {});
         };
         return;
       }
     } catch {}
 
-    // RECOVERY 3: Skip to next track (music never stops)
-    devLog('🚨 [VOYO] Cannot recover - skipping to next track');
+    // RECOVERY 4: Skip to next track (music never stops)
+    const elapsed = performance.now() - recoveryStart;
+    devLog(`🚨 [VOYO] Cannot recover after ${elapsed.toFixed(0)}ms - skipping to next track`);
     audio.src = '';
     if (cachedUrlRef.current) {
       URL.revokeObjectURL(cachedUrlRef.current);
       cachedUrlRef.current = null;
     }
     nextTrack();
-  }, [playbackSource, currentTrack?.trackId, checkCache, nextTrack]);
+  }, [playbackSource, currentTrack?.trackId, checkCache, nextTrack, setPlaybackSource]);
 
   return (
     <audio

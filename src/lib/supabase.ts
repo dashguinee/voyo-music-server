@@ -1417,6 +1417,49 @@ export const videoIntelligenceAPI = {
       recentDiscoveries: recentRes.count || 0,
     };
   },
+
+  /**
+   * Flag a track for R2 download (demand-driven acquisition)
+   * Called when user listens to a YouTube track for >30 seconds
+   */
+  async flagForDownload(youtubeId: string): Promise<void> {
+    if (!supabase) return;
+
+    const normalizedId = youtubeId.replace('VOYO_', '');
+    const { error } = await supabase
+      .from('video_intelligence')
+      .update({
+        discovery_method: 'manual_play' as const,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('youtube_id', normalizedId);
+
+    if (error) {
+      console.warn('[VideoIntelligence] Flag for download failed:', error.message);
+    } else {
+      console.log(`[VideoIntelligence] Flagged ${normalizedId} for R2 download`);
+    }
+  },
+
+  /**
+   * Get tracks by artist name
+   */
+  async getByArtist(artistName: string, limit = 50): Promise<VideoIntelligenceRow[]> {
+    if (!supabase || !artistName) return [];
+
+    const { data, error } = await supabase
+      .from('video_intelligence')
+      .select('*')
+      .eq('matched_artist', artistName)
+      .order('voyo_play_count', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      console.warn('[VideoIntelligence] getByArtist error:', error.message);
+      return [];
+    }
+    return data || [];
+  },
 };
 
 // ============================================

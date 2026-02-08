@@ -22,6 +22,7 @@ import { CreatorUpload } from './upload/CreatorUpload';
 import { VoyoPortraitPlayer } from './VoyoPortraitPlayer';
 import { Dahub } from '../dahub/Dahub';
 import { APP_CODES } from '../../lib/dahub/dahub-api';
+import { ArtistPage } from './ArtistPage';
 
 // Quick DJ Prompts
 const DJ_PROMPTS = [
@@ -154,6 +155,7 @@ export const PortraitVOYO = ({ onSearch, onDahub, onHome }: PortraitVOYOProps) =
   const [djMode, setDjMode] = useState<DJMode>('idle');
   const [djResponse, setDjResponse] = useState<string | null>(null);
   const [isTextInputOpen, setIsTextInputOpen] = useState(false);
+  const [artistPageName, setArtistPageName] = useState<string | null>(null);
   const originalVolumeRef = useRef(volume);
 
   // Fade music when DJ is active
@@ -298,6 +300,7 @@ export const PortraitVOYO = ({ onSearch, onDahub, onHome }: PortraitVOYOProps) =
               playTrack(track);
               setVoyoTab('music');
             }}
+            onArtistTap={(name) => setArtistPageName(name)}
           />
         </motion.div>
 
@@ -337,6 +340,30 @@ export const PortraitVOYO = ({ onSearch, onDahub, onHome }: PortraitVOYOProps) =
         onClose={handleCloseTextInput}
         onSubmit={handleDJCommand}
       />
+
+      {/* Artist Page Overlay */}
+      <AnimatePresence>
+        {artistPageName && (
+          <ArtistPage
+            artistName={artistPageName}
+            onClose={() => setArtistPageName(null)}
+            onPlayTrack={(trackId, title, artist) => {
+              const track: Track = {
+                id: trackId,
+                trackId,
+                title,
+                artist,
+                coverUrl: `https://i.ytimg.com/vi/${trackId}/hqdefault.jpg`,
+                duration: 0,
+                tags: [],
+                oyeScore: 0,
+                createdAt: new Date().toISOString(),
+              };
+              playTrack(track);
+            }}
+          />
+        )}
+      </AnimatePresence>
 
     </>
   );

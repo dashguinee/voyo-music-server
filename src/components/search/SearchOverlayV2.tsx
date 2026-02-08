@@ -5,7 +5,7 @@
 
 import { useState, useRef, useEffect, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, X, Loader2, Music2, Clock, Play, ListPlus, Compass, Disc3, Sparkles } from 'lucide-react';
+import { Search, X, Loader2, Music2, Clock, Play, ListPlus, Compass, Disc3, Sparkles, User } from 'lucide-react';
 import { usePlayerStore } from '../../store/playerStore';
 import { Track } from '../../types';
 import { searchMusic, SearchResult } from '../../services/api';
@@ -23,6 +23,7 @@ import { getVibeEssence } from '../../services/essenceEngine';
 interface SearchOverlayProps {
   isOpen: boolean;
   onClose: () => void;
+  onArtistTap?: (artistName: string) => void;
 }
 
 const SEARCH_HISTORY_KEY = 'voyo_search_history';
@@ -116,13 +117,29 @@ const TrackItem = memo(({
   );
 });
 
-export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
+// Artist master data for search
+import artistMasterJSON from '../../data/artist_master.json';
+const ARTIST_LIST = Object.values((artistMasterJSON as any).artists || artistMasterJSON) as Array<{
+  canonical_name: string; normalized_name: string; tier: string;
+  country: string; region: string; primary_genre: string;
+}>;
+
+// Country flag mapping
+const COUNTRY_FLAGS: Record<string, string> = {
+  NG: '\u{1F1F3}\u{1F1EC}', GH: '\u{1F1EC}\u{1F1ED}', KE: '\u{1F1F0}\u{1F1EA}',
+  ZA: '\u{1F1FF}\u{1F1E6}', SN: '\u{1F1F8}\u{1F1F3}', DZ: '\u{1F1E9}\u{1F1FF}',
+  GN: '\u{1F1EC}\u{1F1F3}', CI: '\u{1F1E8}\u{1F1EE}', CD: '\u{1F1E8}\u{1F1E9}',
+  CM: '\u{1F1E8}\u{1F1F2}', TZ: '\u{1F1F9}\u{1F1FF}', GB: '\u{1F1EC}\u{1F1E7}',
+  US: '\u{1F1FA}\u{1F1F8}', FR: '\u{1F1EB}\u{1F1F7}', JM: '\u{1F1EF}\u{1F1F2}',
+};
+
+export const SearchOverlayV2 = ({ isOpen, onClose, onArtistTap }: SearchOverlayProps) => {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<'tracks' | 'albums' | 'vibes'>('tracks');
+  const [activeTab, setActiveTab] = useState<'tracks' | 'albums' | 'artists' | 'vibes'>('tracks');
 
   // Toast feedback for queue/discovery actions
   const [toast, setToast] = useState<{ text: string; type: 'queue' | 'discovery' } | null>(null);
@@ -412,6 +429,7 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
               <div className="flex gap-1 mt-3">
                 {([
                   { key: 'tracks' as const, icon: Music2, label: 'Tracks' },
+                  { key: 'artists' as const, icon: User, label: 'Artists' },
                   { key: 'albums' as const, icon: Disc3, label: 'Albums' },
                   { key: 'vibes' as const, icon: Sparkles, label: 'Vibes' },
                 ]).map(({ key, icon: Icon, label }) => (
@@ -433,6 +451,48 @@ export const SearchOverlayV2 = ({ isOpen, onClose }: SearchOverlayProps) => {
 
             {/* Results - Full width scrollable area */}
             <div className="flex-1 overflow-y-auto space-y-0.5 pb-4 overscroll-contain">
+              {/* Artist Section */}
+              {activeTab === 'artists' && (
+                <div className="space-y-1 px-1">
+                  {query.trim().length >= 2 ? (
+                    ARTIST_LIST
+                      .filter(a => a.canonical_name.toLowerCase().includes(query.toLowerCase()) || a.normalized_name.includes(query.toLowerCase()))
+                      .slice(0, 20)
+                      .map((artist) => (
+                        <div
+                          key={artist.normalized_name}
+                          className="flex items-center gap-3 p-3 rounded-xl cursor-pointer active:bg-white/[0.06]"
+                          style={{ background: 'rgba(255,255,255,0.03)' }}
+                          onClick={() => {
+                            if (onArtistTap) {
+                              onArtistTap(artist.canonical_name);
+                              onClose();
+                            }
+                          }}
+                        >
+                          <div className="w-10 h-10 rounded-full flex items-center justify-center text-white/80 text-sm font-bold"
+                            style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.3), rgba(139,92,246,0.1))' }}>
+                            {artist.canonical_name.charAt(0)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-white/90 font-medium truncate text-sm">{artist.canonical_name}</h4>
+                            <p className="text-white/40 text-xs truncate">
+                              {COUNTRY_FLAGS[artist.country] || ''} {artist.primary_genre} · Tier {artist.tier}
+                            </p>
+                          </div>
+                          <User className="w-4 h-4 text-white/20" />
+                        </div>
+                      ))
+                  ) : (
+                    <div className="text-center py-8">
+                      <User className="w-8 h-8 text-white/20 mx-auto mb-2" />
+                      <p className="text-white/30 text-sm">Search for an artist</p>
+                      <p className="text-white/15 text-xs mt-1">{ARTIST_LIST.length} artists in library</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Album Section */}
               {activeTab === 'albums' && (
                 <AlbumSection query={query} isVisible={true} />

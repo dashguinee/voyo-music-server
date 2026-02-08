@@ -351,9 +351,10 @@ interface MomentCardProps {
   isMuted: boolean;
   onToggleMute: () => void;
   onPlayTrack?: () => void;
+  onArtistTap?: (artistName: string) => void;
 }
 
-const MomentCard = memo(({ moment, isOyed, onOye, isActive, isMuted, onToggleMute, onPlayTrack }: MomentCardProps) => {
+const MomentCard = memo(({ moment, isOyed, onOye, isActive, isMuted, onToggleMute, onPlayTrack, onArtistTap }: MomentCardProps) => {
   const initial = (moment.creator_name || moment.creator_username || '?')[0].toUpperCase();
   const creator = moment.creator_name || moment.creator_username || 'Unknown';
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -499,7 +500,15 @@ const MomentCard = memo(({ moment, isOyed, onOye, isActive, isMuted, onToggleMut
             onClick={(e) => { if (onPlayTrack) { e.stopPropagation(); onPlayTrack(); } }}
           >
             <Play size={10} style={{ color: 'rgba(255,255,255,0.5)' }} />
-            <span>{moment.parent_track_artist} - {moment.parent_track_title}</span>
+            <span
+              onClick={(e) => {
+                if (onArtistTap && moment.parent_track_artist) {
+                  e.stopPropagation();
+                  onArtistTap(moment.parent_track_artist);
+                }
+              }}
+              style={{ textDecoration: onArtistTap && moment.parent_track_artist ? 'underline' : 'none', textDecorationColor: 'rgba(255,255,255,0.3)' }}
+            >{moment.parent_track_artist}</span> - <span>{moment.parent_track_title}</span>
           </div>
         )}
       </div>
@@ -664,9 +673,10 @@ export interface MomentTrackInfo {
 
 export interface VoyoMomentsProps {
   onPlayFullTrack?: (track: MomentTrackInfo) => void;
+  onArtistTap?: (artistName: string) => void;
 }
 
-export const VoyoMoments: React.FC<VoyoMomentsProps> = ({ onPlayFullTrack }) => {
+export const VoyoMoments: React.FC<VoyoMomentsProps> = ({ onPlayFullTrack, onArtistTap }) => {
   const {
     currentMoment, position, categoryAxis, categories, currentCategory, displayName,
     goUp, goDown, goLeft, goRight, setCategoryAxis, jumpToCategory,
@@ -935,6 +945,7 @@ export const VoyoMoments: React.FC<VoyoMomentsProps> = ({ onPlayFullTrack }) => 
                 title: currentMoment.parent_track_title || 'Unknown',
                 artist: currentMoment.parent_track_artist || 'Unknown Artist',
               }) : undefined}
+              onArtistTap={onArtistTap}
             />
           </motion.div>
         ) : (
