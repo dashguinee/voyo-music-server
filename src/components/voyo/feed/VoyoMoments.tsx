@@ -14,7 +14,7 @@
 import React, { useState, useRef, useCallback, useEffect, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, Flame, MessageCircle, ExternalLink, Play, Volume2, VolumeX } from 'lucide-react';
-import { useMoments, CategoryAxis, NavAction } from '../../../hooks/useMoments';
+import { useMoments, CategoryAxis, NavAction, CATEGORY_PRESETS } from '../../../hooks/useMoments';
 import type { Moment } from '../../../services/momentsService';
 import { AnimatedArtCard } from './AnimatedArtCard';
 import { DynamicVignette } from './DynamicVignette';
@@ -678,10 +678,10 @@ export interface VoyoMomentsProps {
 
 export const VoyoMoments: React.FC<VoyoMomentsProps> = ({ onPlayFullTrack, onArtistTap }) => {
   const {
-    currentMoment, position, categoryAxis, categories, currentCategory, displayName,
+    currentMoment: hookCurrentMoment, position, categoryAxis, categories, currentCategory, displayName,
     goUp, goDown, goLeft, goRight, setCategoryAxis, jumpToCategory,
     loading, totalInCategory, navAction, recordPlay, recordOye, recordStar,
-    moments,
+    moments, fetchMomentsForCategory, cacheKey,
   } = useMoments();
 
   const [showOverlay, setShowOverlay] = useState(false);
@@ -695,6 +695,62 @@ export const VoyoMoments: React.FC<VoyoMomentsProps> = ({ onPlayFullTrack, onArt
   const [confirmedCreators, setConfirmedCreators] = useState<Set<string>>(new Set());
   const [pendingStar, setPendingStar] = useState<{ momentId: string; creator: string; stars: number } | null>(null);
   const [selectedCategories, setSelectedCategories] = useState<Set<number>>(new Set());
+  const [mixIndex, setMixIndex] = useState(0);
+
+  // ============================================
+  // MIX MODE — multi-category blended feed
+  // ============================================
+
+  const isMixMode = selectedCategories.size > 1;
+
+  // Fetch moments for all selected categories when in MIX mode
+  useEffect(() => {
+    if (!isMixMode) return;
+    const cats = CATEGORY_PRESETS[categoryAxis];
+    selectedCategories.forEach(idx => {
+      const cat = cats[idx];
+      if (cat) fetchMomentsForCategory(categoryAxis, cat);
+    });
+  }, [isMixMode, selectedCategories, categoryAxis, fetchMomentsForCategory]);
+
+  // Build the mixed moments feed: merge from all selected categories, interleave, dedup
+  const mixedMoments = React.useMemo(() => {
+    if (!isMixMode) return [];
+    const cats = CATEGORY_PRESETS[categoryAxis];
+    const buckets: Moment[][] = [];
+    selectedCategories.forEach(idx => {
+      const cat = cats[idx];
+      if (!cat) return;
+      const key = cacheKey(categoryAxis, cat);
+      const catMoments = moments.get(key) || [];
+      if (catMoments.length > 0) buckets.push([...catMoments]);
+    });
+    if (buckets.length === 0) return [];
+
+    // Round-robin interleave for fair representation, then dedup by id
+    const interleaved: Moment[] = [];
+    const seen = new Set<string>();
+    const maxLen = Math.max(...buckets.map(b => b.length));
+    for (let i = 0; i < maxLen; i++) {
+      for (const bucket of buckets) {
+        if (i < bucket.length && !seen.has(bucket[i].id)) {
+          seen.add(bucket[i].id);
+          interleaved.push(bucket[i]);
+        }
+      }
+    }
+    return interleaved;
+  }, [isMixMode, selectedCategories, categoryAxis, moments, cacheKey]);
+
+  // Reset mix index when mix changes
+  useEffect(() => {
+    setMixIndex(0);
+  }, [isMixMode, selectedCategories.size]);
+
+  // Derive current moment: MIX mode uses mixedMoments, otherwise hook's single-category
+  const currentMoment = isMixMode
+    ? (mixedMoments[mixIndex] || null)
+    : hookCurrentMoment;
 
   const containerRef = useRef<HTMLDivElement>(null);
   const lpTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -714,6 +770,25 @@ export const VoyoMoments: React.FC<VoyoMomentsProps> = ({ onPlayFullTrack, onArt
     setMKey(p => p + 1);
     fn();
   }, []);
+
+  // MIX mode navigation wrappers — override UP/DOWN to step through mixed feed
+  const mixGoUp = useCallback((velocity?: number) => {
+    if (isMixMode) {
+      const skip = velocity && velocity > 1.5 ? Math.min(Math.floor(velocity), 3) : 1;
+      setMixIndex(prev => Math.min(prev + skip, mixedMoments.length - 1));
+    } else {
+      goUp(velocity);
+    }
+  }, [isMixMode, mixedMoments.length, goUp]);
+
+  const mixGoDown = useCallback((velocity?: number) => {
+    if (isMixMode) {
+      const skip = velocity && velocity > 1.5 ? Math.min(Math.floor(velocity), 3) : 1;
+      setMixIndex(prev => Math.max(prev - skip, 0));
+    } else {
+      goDown(velocity);
+    }
+  }, [isMixMode, goDown]);
 
   // ---- TOUCH HANDLERS ----
 
@@ -791,9 +866,9 @@ export const VoyoMoments: React.FC<VoyoMomentsProps> = ({ onPlayFullTrack, onArt
         }
       } else {
         if (dy < 0) {
-          nav('up', () => goUp(velocity));
+          nav('up', () => mixGoUp(velocity));
         } else {
-          nav('down', () => goDown(velocity));
+          nav('down', () => mixGoDown(velocity));
         }
       }
       return;
@@ -810,15 +885,15 @@ export const VoyoMoments: React.FC<VoyoMomentsProps> = ({ onPlayFullTrack, onArt
       lastTap.current = now;
       tapTimer.current = setTimeout(() => { showVolBadge(); lastTap.current = 0; }, DOUBLE_TAP_MS);
     }
-  }, [showOverlay, showStarPanel, currentMoment, goUp, goDown, goLeft, goRight, nav, handleOye, showVolBadge]);
+  }, [showOverlay, showStarPanel, currentMoment, mixGoUp, mixGoDown, goLeft, goRight, nav, handleOye, showVolBadge]);
 
   // ---- KEYBOARD (desktop) ----
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       switch (e.key) {
-        case 'ArrowUp': e.preventDefault(); nav('up', goUp); break;
-        case 'ArrowDown': e.preventDefault(); nav('down', goDown); break;
+        case 'ArrowUp': e.preventDefault(); nav('up', mixGoUp); break;
+        case 'ArrowDown': e.preventDefault(); nav('down', mixGoDown); break;
         case 'ArrowLeft': e.preventDefault(); nav('right', goLeft); break;
         case 'ArrowRight': e.preventDefault(); nav('left', goRight); break;
         case ' ': e.preventDefault(); showVolBadge(); break;
@@ -826,7 +901,7 @@ export const VoyoMoments: React.FC<VoyoMomentsProps> = ({ onPlayFullTrack, onArt
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [goUp, goDown, goLeft, goRight, nav, showVolBadge]);
+  }, [mixGoUp, mixGoDown, goLeft, goRight, nav, showVolBadge]);
 
   // Cleanup
   useEffect(() => () => {
@@ -897,10 +972,15 @@ export const VoyoMoments: React.FC<VoyoMomentsProps> = ({ onPlayFullTrack, onArt
     setSelectedCategories(new Set());
   }, [categoryAxis]);
 
-  // Get next moment for preview (next in time axis)
+  // Get next moment for preview (next in time axis — or next in mix feed)
   const momentsKey = `${categoryAxis}::${currentCategory}`;
   const categoryMoments = moments.get(momentsKey) || [];
-  const nextMoment = categoryMoments[position.timeIndex + 1] || null;
+  const nextMoment = isMixMode
+    ? (mixedMoments[mixIndex + 1] || null)
+    : (categoryMoments[position.timeIndex + 1] || null);
+
+  // Effective total for display
+  const effectiveTotalInCategory = isMixMode ? mixedMoments.length : totalInCategory;
 
   return (
     <div ref={containerRef} style={S.container} onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}>
@@ -923,6 +1003,45 @@ export const VoyoMoments: React.FC<VoyoMomentsProps> = ({ onPlayFullTrack, onArt
           navAction={navAction}
         />
       </div>
+
+      {/* MIX MODE BADGE — visible when multi-category blending is active */}
+      <AnimatePresence>
+        {isMixMode && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.25 }}
+            style={{
+              position: 'absolute',
+              top: 100,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 35,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '6px 16px',
+              borderRadius: 20,
+              background: 'rgba(168,85,247,0.15)',
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              border: '1px solid rgba(168,85,247,0.3)',
+              pointerEvents: 'none',
+            }}
+          >
+            <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 3, textTransform: 'uppercase', color: '#A855F7' }}>
+              MIX
+            </span>
+            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)' }}>
+              {selectedCategories.size} categories
+            </span>
+            <span style={{ fontSize: 10, color: 'rgba(168,85,247,0.6)' }}>
+              {mixedMoments.length > 0 ? `${mixIndex + 1}/${mixedMoments.length}` : '...'}
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* MOMENT CARD */}
       <AnimatePresence mode="wait" initial={false}>
@@ -950,8 +1069,15 @@ export const VoyoMoments: React.FC<VoyoMomentsProps> = ({ onPlayFullTrack, onArt
           </motion.div>
         ) : (
           <motion.div key="empty" style={S.empty} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <div style={S.emptyH}>No moments in {displayName(currentCategory)}</div>
-            <div style={S.emptyP}>Swipe left or right to explore other {categoryAxis}.{'\n'}Moments will appear here as creators share them.</div>
+            <div style={S.emptyH}>
+              {isMixMode ? 'No moments in MIX' : `No moments in ${displayName(currentCategory)}`}
+            </div>
+            <div style={S.emptyP}>
+              {isMixMode
+                ? 'Selected categories have no moments yet. Try adding more categories.'
+                : `Swipe left or right to explore other ${categoryAxis}.\nMoments will appear here as creators share them.`
+              }
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -975,7 +1101,7 @@ export const VoyoMoments: React.FC<VoyoMomentsProps> = ({ onPlayFullTrack, onArt
 
       <AnimatePresence>
         {showOverlay && (
-          <PositionOverlay position={position} categories={categories} totalInCategory={totalInCategory} onClose={() => setShowOverlay(false)} displayName={displayName} />
+          <PositionOverlay position={position} categories={categories} totalInCategory={effectiveTotalInCategory} onClose={() => setShowOverlay(false)} displayName={displayName} />
         )}
       </AnimatePresence>
 

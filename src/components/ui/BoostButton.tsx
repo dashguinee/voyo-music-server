@@ -24,7 +24,7 @@ interface BoostButtonProps {
 }
 
 // Preset color configurations
-// ⚪ off (Gray) | 🟡 boosted (Yellow) | 🔵 calm (Blue) | 🟣 voyex (Purple) | 🔴 xtreme (Red)
+// ⚪ off (Gray) | 🟡 boosted (Yellow) | 🔵 calm (Blue) | 🟣 voyex (Purple)
 const PRESET_COLORS = {
   off: {
     primary: '#6b7280',    // Gray
@@ -66,19 +66,9 @@ const PRESET_COLORS = {
     shadow: 'shadow-purple-500/30',
     text: 'text-purple-400',
   },
-  xtreme: {
-    primary: '#ef4444',    // Red
-    secondary: '#dc2626',
-    light: '#f87171',
-    glow: 'rgba(239,68,68,0.6)',
-    bg: 'bg-red-500/30',
-    border: 'border-red-400/60',
-    shadow: 'shadow-red-500/30',
-    text: 'text-red-400',
-  },
 };
 
-type BoostPreset = 'off' | 'boosted' | 'calm' | 'voyex' | 'xtreme';
+type BoostPreset = 'off' | 'boosted' | 'calm' | 'voyex';
 
 // Clean Lightning Bolt SVG Icon - Color changes based on preset
 // NEW: outlineOnly mode = yellow stroke, no fill (for R2 server-boosted)

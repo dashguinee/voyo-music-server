@@ -63,13 +63,15 @@ export interface UseMomentsReturn {
   recordPlay: (momentId: string) => void;
   recordOye: (momentId: string) => void;
   recordStar: (momentId: string, creatorUsername: string, stars: number) => void;
+  fetchMomentsForCategory: (axis: CategoryAxis, category: string, offset?: number) => Promise<void>;
+  cacheKey: (axis: CategoryAxis, cat: string) => string;
 }
 
 // ============================================
 // FIXED CATEGORY PRESETS
 // ============================================
 
-const CATEGORY_PRESETS: Record<CategoryAxis, string[]> = {
+export const CATEGORY_PRESETS: Record<CategoryAxis, string[]> = {
   countries: [
     'nigeria', 'ghana', 'kenya', 'south africa', 'senegal',
     'algeria', 'uk', 'usa', 'france', 'diaspora',
@@ -571,6 +573,8 @@ export function useMoments(): UseMomentsReturn {
     recordPlay,
     recordOye,
     recordStar,
+    fetchMomentsForCategory,
+    cacheKey,
   };
 }
 

@@ -57,20 +57,27 @@ interface PreloadManager {
   preloaded: PreloadedTrack | null;
   isPreloading: boolean;
   lastPreloadedId: string | null;
+  // Multi-track preload cache (up to 3 tracks)
+  preloadedTracks: Map<string, PreloadedTrack>;
 }
 
 const state: PreloadManager = {
   preloaded: null,
   isPreloading: false,
   lastPreloadedId: null,
+  preloadedTracks: new Map(),
 };
 
-// Keep reference to abort controller for cleanup
+// Keep reference to abort controllers for cleanup (one per track)
 let preloadAbortController: AbortController | null = null;
+const trackAbortControllers: Map<string, AbortController> = new Map();
+
+// Max preloaded tracks to keep in memory
+const MAX_PRELOADED_TRACKS = 3;
 
 /**
  * Preload the next track for instant playback
- * Call this at ~70% progress of current track
+ * Supports multiple concurrent preloads (staggered by AudioPlayer)
  */
 export async function preloadNextTrack(
   trackId: string,
@@ -78,28 +85,25 @@ export async function preloadNextTrack(
 ): Promise<PreloadedTrack | null> {
   const normalizedId = decodeVoyoId(trackId);
 
-  // Already preloading this track
-  if (state.isPreloading && state.lastPreloadedId === normalizedId) {
+  // Already preloaded this track in multi-track cache
+  const existingPreload = state.preloadedTracks.get(normalizedId);
+  if (existingPreload?.isReady) {
+    devLog('🔮 [Preload] Already preloaded in cache:', normalizedId);
+    return existingPreload;
+  }
+
+  // Already preloading this specific track
+  if (trackAbortControllers.has(normalizedId)) {
     devLog('🔮 [Preload] Already preloading:', normalizedId);
-    return state.preloaded;
+    return state.preloadedTracks.get(normalizedId) || state.preloaded;
   }
 
-  // Already preloaded this track
-  if (state.preloaded?.normalizedId === normalizedId && state.preloaded.isReady) {
-    devLog('🔮 [Preload] Already preloaded:', normalizedId);
-    return state.preloaded;
-  }
+  // Create abort controller for this specific track
+  const abortCtrl = new AbortController();
+  trackAbortControllers.set(normalizedId, abortCtrl);
+  const signal = abortCtrl.signal;
 
-  // Cancel previous preload
-  if (preloadAbortController) {
-    preloadAbortController.abort();
-  }
-  preloadAbortController = new AbortController();
-  const signal = preloadAbortController.signal;
-
-  // Cleanup previous preloaded track
-  cleanupPreloaded();
-
+  // Also set legacy single-track state for backward compatibility
   state.isPreloading = true;
   state.lastPreloadedId = normalizedId;
 
@@ -115,7 +119,7 @@ export async function preloadNextTrack(
       devLog('🔮 [Preload] Found in local cache, preloading audio element');
       const audioEl = createPreloadAudioElement(cachedUrl, signal);
 
-      state.preloaded = {
+      const preloadEntry: PreloadedTrack = {
         trackId,
         normalizedId,
         source: 'cached',
@@ -125,7 +129,10 @@ export async function preloadNextTrack(
         preloadedAt: Date.now(),
       };
 
-      // Wait for audio to be ready
+      state.preloaded = preloadEntry;
+      state.preloadedTracks.set(normalizedId, preloadEntry);
+      evictOldPreloads();
+
       await waitForAudioReady(audioEl, signal);
 
       if (signal.aborted) {
@@ -133,10 +140,11 @@ export async function preloadNextTrack(
         return null;
       }
 
-      state.preloaded.isReady = true;
+      preloadEntry.isReady = true;
       state.isPreloading = false;
+      trackAbortControllers.delete(normalizedId);
       devLog('🔮 [Preload] ✅ Local cache preload complete');
-      return state.preloaded;
+      return preloadEntry;
     }
 
     // STEP 2: Check R2 collective cache
@@ -148,7 +156,7 @@ export async function preloadNextTrack(
       devLog('🔮 [Preload] Found in R2, preloading audio element');
       const audioEl = createPreloadAudioElement(r2Result.url, signal);
 
-      state.preloaded = {
+      const preloadEntry: PreloadedTrack = {
         trackId,
         normalizedId,
         source: 'r2',
@@ -158,7 +166,10 @@ export async function preloadNextTrack(
         preloadedAt: Date.now(),
       };
 
-      // Wait for audio to be ready (with shorter timeout for R2)
+      state.preloaded = preloadEntry;
+      state.preloadedTracks.set(normalizedId, preloadEntry);
+      evictOldPreloads();
+
       await waitForAudioReady(audioEl, signal, 5000);
 
       if (signal.aborted) {
@@ -166,14 +177,14 @@ export async function preloadNextTrack(
         return null;
       }
 
-      state.preloaded.isReady = true;
+      preloadEntry.isReady = true;
       state.isPreloading = false;
+      trackAbortControllers.delete(normalizedId);
       devLog('🔮 [Preload] ✅ R2 preload complete');
-      return state.preloaded;
+      return preloadEntry;
     }
 
     // STEP 3: Get YouTube direct URL and preload
-    // Browser fetches from YouTube CDN directly
     devLog('🔮 [Preload] Not in cache/R2, getting YouTube stream URL');
 
     try {
@@ -186,12 +197,13 @@ export async function preloadNextTrack(
       if (!streamData.url) {
         devWarn('🔮 [Preload] No stream URL available for:', normalizedId);
         state.isPreloading = false;
+        trackAbortControllers.delete(normalizedId);
         return null;
       }
 
       const audioEl = createPreloadAudioElement(streamData.url, signal);
 
-      state.preloaded = {
+      const preloadEntry: PreloadedTrack = {
         trackId,
         normalizedId,
         source: 'r2', // Treat as r2 for consistent handling
@@ -201,7 +213,10 @@ export async function preloadNextTrack(
         preloadedAt: Date.now(),
       };
 
-      // Wait for audio to buffer enough to play
+      state.preloaded = preloadEntry;
+      state.preloadedTracks.set(normalizedId, preloadEntry);
+      evictOldPreloads();
+
       await waitForAudioReady(audioEl, signal, 8000);
 
       if (signal.aborted) {
@@ -209,29 +224,61 @@ export async function preloadNextTrack(
         return null;
       }
 
-      state.preloaded.isReady = true;
+      preloadEntry.isReady = true;
       state.isPreloading = false;
+      trackAbortControllers.delete(normalizedId);
       devLog('🔮 [Preload] ✅ YouTube direct stream preload complete');
-      return state.preloaded;
+      return preloadEntry;
     } catch (extractError) {
       devWarn('🔮 [Preload] Stream preload error:', extractError);
       state.isPreloading = false;
+      trackAbortControllers.delete(normalizedId);
       return null;
     }
 
   } catch (error) {
     devWarn('🔮 [Preload] Error:', error);
     state.isPreloading = false;
+    trackAbortControllers.delete(normalizedId);
     return null;
   }
 }
 
 /**
+ * Evict oldest preloaded tracks when exceeding MAX_PRELOADED_TRACKS
+ */
+function evictOldPreloads(): void {
+  if (state.preloadedTracks.size <= MAX_PRELOADED_TRACKS) return;
+
+  // Sort by preloadedAt, evict oldest
+  const entries = Array.from(state.preloadedTracks.entries())
+    .sort((a, b) => a[1].preloadedAt - b[1].preloadedAt);
+
+  while (entries.length > MAX_PRELOADED_TRACKS) {
+    const [key, entry] = entries.shift()!;
+    if (entry.audioElement) {
+      entry.audioElement.pause();
+      entry.audioElement.src = '';
+    }
+    state.preloadedTracks.delete(key);
+    devLog(`🔮 [Preload] Evicted oldest preload: ${key}`);
+  }
+}
+
+/**
  * Get preloaded track if available for the given trackId
+ * Checks multi-track cache first, then legacy single-track state
  */
 export function getPreloadedTrack(trackId: string): PreloadedTrack | null {
   const normalizedId = decodeVoyoId(trackId);
 
+  // Check multi-track cache first
+  const cached = state.preloadedTracks.get(normalizedId);
+  if (cached?.isReady) {
+    return cached;
+  }
+
+  // Fallback to legacy single-track state
   if (state.preloaded?.normalizedId === normalizedId && state.preloaded.isReady) {
     return state.preloaded;
   }
@@ -246,6 +293,17 @@ export function getPreloadedTrack(trackId: string): PreloadedTrack | null {
 export function consumePreloadedAudio(trackId: string): HTMLAudioElement | null {
   const normalizedId = decodeVoyoId(trackId);
 
+  // Check multi-track cache first
+  const cached = state.preloadedTracks.get(normalizedId);
+  if (cached?.audioElement) {
+    const audioEl = cached.audioElement;
+    cached.audioElement = null; // Transfer ownership
+    state.preloadedTracks.delete(normalizedId);
+    devLog('🔮 [Preload] Consumed preloaded audio element from multi-track cache');
+    return audioEl;
+  }
+
+  // Fallback to legacy single-track state
   if (state.preloaded?.normalizedId === normalizedId && state.preloaded.audioElement) {
     const audioEl = state.preloaded.audioElement;
     state.preloaded.audioElement = null; // Transfer ownership
@@ -261,6 +319,8 @@ export function consumePreloadedAudio(trackId: string): HTMLAudioElement | null 
  */
 export function isPreloaded(trackId: string): boolean {
   const normalizedId = decodeVoyoId(trackId);
+  const cached = state.preloadedTracks.get(normalizedId);
+  if (cached?.isReady) return true;
   return state.preloaded?.normalizedId === normalizedId && state.preloaded.isReady;
 }
 
@@ -280,25 +340,40 @@ export function getPreloadStatus(): {
 }
 
 /**
- * Cleanup preloaded resources
+ * Cleanup preloaded resources (all tracks)
  */
 export function cleanupPreloaded(): void {
+  // Clean legacy single-track state
   if (state.preloaded?.audioElement) {
     state.preloaded.audioElement.pause();
     state.preloaded.audioElement.src = '';
     state.preloaded.audioElement = null;
   }
   state.preloaded = null;
+
+  // Clean multi-track cache
+  for (const [key, entry] of state.preloadedTracks) {
+    if (entry.audioElement) {
+      entry.audioElement.pause();
+      entry.audioElement.src = '';
+    }
+  }
+  state.preloadedTracks.clear();
 }
 
 /**
- * Cancel any in-progress preload
+ * Cancel any in-progress preloads
  */
 export function cancelPreload(): void {
   if (preloadAbortController) {
     preloadAbortController.abort();
     preloadAbortController = null;
   }
+  // Cancel all track-specific abort controllers
+  for (const [key, ctrl] of trackAbortControllers) {
+    ctrl.abort();
+  }
+  trackAbortControllers.clear();
   state.isPreloading = false;
 }
 
