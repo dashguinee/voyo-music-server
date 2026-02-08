@@ -118,7 +118,7 @@ const TrackItem = memo(({
 });
 
 // Artist master data for search
-import artistMasterJSON from '../../../data/artist_master.json';
+import artistMasterJSON from '../../data/artist_master.json';
 const ARTIST_LIST = Object.values((artistMasterJSON as any).artists || artistMasterJSON) as Array<{
   canonical_name: string; normalized_name: string; tier: string;
   country: string; region: string; primary_genre: string;

@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import artistMasterData from '../../data/artist_master.json';
+import artistMasterData from '../data/artist_master.json';
 
 // ============================================
 // TYPES
