@@ -233,7 +233,7 @@ export const AudioPlayer = () => {
     if (!currentTrack?.trackId) return;
     const elapsed = (currentTrack.duration || 300) * (progress / 100);
     if (elapsed < 30) return;
-    if (playbackSource !== 'youtube') return; // Only flag YouTube-sourced tracks
+    if (playbackSource !== 'iframe') return; // Only flag iframe-sourced tracks (not yet in R2)
 
     hasTriggered30sListenRef.current = true;
     devLog('🎵 [VOYO] 30s listen reached — flagging for R2 download');
