@@ -22,7 +22,6 @@
 
 import { create } from 'zustand';
 import { usePreferenceStore } from './preferenceStore';
-import { usePlayerStore } from './playerStore';
 import {
   universeAPI,
   isSupabaseConfigured,
@@ -124,9 +123,9 @@ interface UniverseStore {
   leavePortal: () => void;
 
   // Backup Actions
-  exportUniverse: () => UniverseData;
+  exportUniverse: () => Promise<UniverseData>;
   importUniverse: (data: UniverseData) => Promise<boolean>;
-  downloadBackup: () => void;
+  downloadBackup: () => Promise<void>;
   generatePassphrase: () => string;
   saveToCloud: (passphrase: string) => Promise<boolean>;
   restoreFromCloud: (passphrase: string) => Promise<boolean>;
@@ -487,7 +486,8 @@ export const useUniverseStore = create<UniverseStore>((set, get) => ({
     if (!isLoggedIn || !currentUsername || !isSupabaseConfigured) return false;
 
     const preferences = usePreferenceStore.getState();
-    const player = usePlayerStore.getState();
+    const { usePlayerStore: ps } = await import('./playerStore');
+    const player = ps.getState();
 
     const state: Partial<UniverseState> = {
       likes: Object.keys(preferences.trackPreferences).filter(
@@ -549,7 +549,8 @@ export const useUniverseStore = create<UniverseStore>((set, get) => ({
 
       const cloudState = data.state as UniverseState;
       const preferences = usePreferenceStore.getState();
-      const player = usePlayerStore.getState();
+      const { usePlayerStore: ps } = await import('./playerStore');
+    const player = ps.getState();
 
       // Restore likes to preferenceStore
       if (cloudState.likes && cloudState.likes.length > 0) {
@@ -599,7 +600,8 @@ export const useUniverseStore = create<UniverseStore>((set, get) => ({
     const { currentUsername, isPortalOpen } = get();
     if (!currentUsername || !isPortalOpen || !isSupabaseConfigured) return;
 
-    const player = usePlayerStore.getState();
+    const { usePlayerStore: ps } = await import('./playerStore');
+    const player = ps.getState();
     if (!player.currentTrack) {
       await universeAPI.updateNowPlaying(currentUsername, null);
       return;
@@ -682,9 +684,10 @@ export const useUniverseStore = create<UniverseStore>((set, get) => ({
   // ========================================
   // BACKUP: Export universe
   // ========================================
-  exportUniverse: () => {
+  exportUniverse: async () => {
     const preferences = usePreferenceStore.getState();
-    const player = usePlayerStore.getState();
+    const { usePlayerStore: ps } = await import('./playerStore');
+    const player = ps.getState();
     const { currentUsername } = get();
 
     return {
@@ -758,10 +761,10 @@ export const useUniverseStore = create<UniverseStore>((set, get) => ({
   // ========================================
   // BACKUP: Download as file
   // ========================================
-  downloadBackup: () => {
+  downloadBackup: async () => {
     set({ isExporting: true });
 
-    const universe = get().exportUniverse();
+    const universe = await get().exportUniverse();
     const blob = new Blob([JSON.stringify(universe, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -787,7 +790,7 @@ export const useUniverseStore = create<UniverseStore>((set, get) => ({
   // ========================================
   saveToCloud: async (passphrase: string) => {
     try {
-      const universe = get().exportUniverse();
+      const universe = await get().exportUniverse();
       const encrypted = await encryptData(JSON.stringify(universe), passphrase);
       const hash = await crypto.subtle.digest(
         'SHA-256',
